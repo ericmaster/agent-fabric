@@ -1,0 +1,40 @@
+{
+  "target": "kilo",
+  "profiles": {
+    "readonly": {
+      "model": "openai/gpt-5.6",
+      "effort": "high",
+      "sandbox": "read-only"
+    },
+    "worker": {
+      "model": "openai/gpt-5.6",
+      "effort": "high",
+      "sandbox": "workspace"
+    },
+    "reviewer": {
+      "model": "openai/gpt-5.6",
+      "effort": "high",
+      "sandbox": "read-only"
+    },
+    "supervisor": {
+      "model": "openai/gpt-5.6",
+      "effort": "high",
+      "sandbox": "workspace"
+    },
+    "planner": {
+      "model": "openai/gpt-5.6",
+      "effort": "high",
+      "sandbox": "workspace"
+    },
+    "qa": {
+      "model": "openai/gpt-5.6",
+      "effort": "high",
+      "sandbox": "read-only"
+    },
+    "recursive": {
+      "model": "openai/gpt-5.6",
+      "effort": "max",
+      "sandbox": "workspace"
+    }
+  }
+}

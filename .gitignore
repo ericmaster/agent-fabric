@@ -1,0 +1,14 @@
+/dist/
+/agent-fabric
+/*.exe
+/coverage/
+*.test
+.env
+.env.*
+!.env.example
+.dev.vars
+*.pem
+*.key
+*.p12
+node_modules/
+.DS_Store

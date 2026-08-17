@@ -1,0 +1,40 @@
+{
+  "target": "codex",
+  "profiles": {
+    "readonly": {
+      "model": "gpt-5-codex",
+      "effort": "high",
+      "sandbox": "read-only"
+    },
+    "worker": {
+      "model": "gpt-5-codex",
+      "effort": "high",
+      "sandbox": "workspace"
+    },
+    "reviewer": {
+      "model": "gpt-5-codex",
+      "effort": "high",
+      "sandbox": "read-only"
+    },
+    "supervisor": {
+      "model": "gpt-5-codex",
+      "effort": "high",
+      "sandbox": "workspace"
+    },
+    "planner": {
+      "model": "gpt-5-codex",
+      "effort": "high",
+      "sandbox": "workspace"
+    },
+    "qa": {
+      "model": "gpt-5-codex",
+      "effort": "high",
+      "sandbox": "read-only"
+    },
+    "recursive": {
+      "model": "gpt-5-codex",
+      "effort": "max",
+      "sandbox": "workspace"
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "target": "claude",
+  "profiles": {
+    "readonly": {
+      "model": "claude-sonnet",
+      "effort": "high",
+      "sandbox": "read-only"
+    },
+    "worker": {
+      "model": "claude-sonnet",
+      "effort": "high",
+      "sandbox": "workspace"
+    },
+    "reviewer": {
+      "model": "claude-sonnet",
+      "effort": "high",
+      "sandbox": "read-only"
+    },
+    "supervisor": {
+      "model": "claude-sonnet",
+      "effort": "high",
+      "sandbox": "workspace"
+    },
+    "planner": {
+      "model": "claude-sonnet",
+      "effort": "high",
+      "sandbox": "workspace"
+    },
+    "qa": {
+      "model": "claude-sonnet",
+      "effort": "high",
+      "sandbox": "read-only"
+    },
+    "recursive": {
+      "model": "claude-sonnet",
+      "effort": "max",
+      "sandbox": "workspace"
+    }
+  }
+}
