@@ -48,6 +48,34 @@ func TestExtractTarGzRejectsTraversalAndExtractsRegularFiles(t *testing.T) {
 	}
 }
 
+func TestExtractTarGzSkipsPaxMetadata(t *testing.T) {
+	var buffer bytes.Buffer
+	gz := gzip.NewWriter(&buffer)
+	tw := tar.NewWriter(gz)
+	if err := tw.WriteHeader(&tar.Header{Name: "pax_global_header", Typeflag: tar.TypeXGlobalHeader}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.WriteHeader(&tar.Header{Name: "hub.json", Mode: 0o644, Size: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte("{}")); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := extractTarGz(bytes.NewReader(buffer.Bytes()), root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "hub.json")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMergeManifestPreservesPreviouslyManagedFiles(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".agent-fabric-manifest.json")
 	old := manifest.Manifest{

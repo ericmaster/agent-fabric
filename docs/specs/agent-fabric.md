@@ -23,10 +23,12 @@ invalid managed destinations, and unavailable source mappings.
 Hub sources must be local directories, local `.tar.gz` archives, or HTTPS. GitHub
 repository/tree/tag URLs are converted to archive URLs; HTTPS Git URLs are
 shallow-cloned with prompts disabled. Archive downloads have redirect,
-compressed-size, extracted-size, per-file-size, regular-file, and path-traversal
-limits. `hub.json` must agree with each definition's dependency metadata. Hub
-dependencies are offered interactively and fail before writes in noninteractive
-mode when Fabric dependencies are not installed for every selected target.
+compressed-size, extracted-size, per-file-size, regular-file, metadata-header,
+and path-traversal limits. PAX/GNU metadata headers are ignored without being
+written; links, devices, and other entry types are rejected. `hub.json` must
+agree with each definition's dependency metadata. Hub dependencies are offered
+interactively and fail before writes in noninteractive mode when Fabric
+dependencies are not installed for every selected target.
 
 Hook events are contract-only. Local `.agent-hooks/<event>.md|sh` precedes global
 `~/.agent-hooks/<event>.*`; Markdown is authoritative and scripts run only when

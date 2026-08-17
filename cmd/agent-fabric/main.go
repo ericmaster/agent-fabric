@@ -1295,6 +1295,10 @@ func extractTarGz(r io.Reader, dir string) error {
 		if e != nil {
 			return e
 		}
+		switch h.Typeflag {
+		case tar.TypeXGlobalHeader, tar.TypeXHeader, tar.TypeGNULongName, tar.TypeGNULongLink:
+			continue
+		}
 		name := filepath.Clean(h.Name)
 		if name == "." || name == ".." || filepath.IsAbs(name) || strings.HasPrefix(name, ".."+string(os.PathSeparator)) {
 			return errors.New("unsafe hub archive path")
