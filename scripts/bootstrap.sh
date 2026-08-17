@@ -61,11 +61,15 @@ else
 fi
 printf 'installed %s\n' "$install_dir/$bin"
 
-if [[ -r /dev/tty ]] && exec 3<>/dev/tty 2>/dev/null; then
-  exec "$install_dir/$bin" "$@" <&3
+args=("$@")
+if [[ ${#args[@]} -eq 0 || "${args[0]}" == -* ]]; then
+  args=(install "${args[@]}")
+fi
+if [[ -r /dev/tty ]] && { exec 3<>/dev/tty; } 2>/dev/null; then
+  exec "$install_dir/$bin" "${args[@]}" <&3
 fi
 if [[ $# -eq 0 ]]; then
   printf 'noninteractive install requires explicit agent-fabric flags (for example --all --tools opencode --yes)\n' >&2
   exit 2
 fi
-exec "$install_dir/$bin" "$@"
+exec "$install_dir/$bin" "${args[@]}"
