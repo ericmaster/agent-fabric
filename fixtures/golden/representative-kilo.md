@@ -11,15 +11,4 @@ permission:
   edit: "deny"
 hooks: ["load-task"]
 ---
-## Agent Fabric Policy
-profile: reviewer
-effort: high
-visibility: hidden
-isolation: sandbox
-sandbox: read-only
-permissions:
-- bash: allow
-- edit: deny
-hooks: load-task
-
 Fixture body.

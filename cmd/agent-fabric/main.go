@@ -43,6 +43,11 @@ type pendingWrite struct {
 	path, body, id, target string
 }
 
+type hookResolution struct {
+	markdown string
+	script   string
+}
+
 type hubCatalog struct {
 	Schema int                     `json:"schema"`
 	Agents map[string]hubAgentMeta `json:"agents"`
@@ -60,7 +65,7 @@ type fileSnapshot struct {
 }
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "--version" {
+	if len(os.Args) >= 2 && (os.Args[1] == "--version" || os.Args[1] == "-version" || os.Args[1] == "-v" || os.Args[1] == "version") {
 		fmt.Println(version)
 		return
 	}
@@ -93,6 +98,13 @@ func main() {
 	fs.BoolVar(&o.json, "json", false, "machine-readable output")
 	if err := fs.Parse(args); err != nil {
 		fail(err)
+	}
+	if len(fs.Args()) > 0 {
+		if (cmd == "install" || cmd == "sync") && o.agents == "" && !o.all {
+			o.agents = strings.Join(fs.Args(), ",")
+		} else {
+			fail(fmt.Errorf("unexpected arguments: %s", strings.Join(fs.Args(), " ")))
+		}
 	}
 	var err error
 	switch cmd {
@@ -128,17 +140,31 @@ func sourceDir(o options) (string, error) {
 		return filepath.Abs(env)
 	}
 	cwd, _ := os.Getwd()
-	if _, err := os.Stat(filepath.Join(cwd, "agents")); err == nil {
+	if isSourceRoot(cwd) {
 		return cwd, nil
 	}
 	if executable, err := os.Executable(); err == nil {
+		if resolved, evalErr := filepath.EvalSymlinks(executable); evalErr == nil {
+			executable = resolved
+		}
 		root := filepath.Dir(executable)
-		if _, statErr := os.Stat(filepath.Join(root, "agents")); statErr == nil {
+		if isSourceRoot(root) {
 			return root, nil
 		}
 	}
 	return "", errors.New("source is required outside an agent-fabric checkout")
 }
+
+func isSourceRoot(root string) bool {
+	for _, name := range []string{"agents", "adapters"} {
+		info, err := os.Stat(filepath.Join(root, name))
+		if err != nil || !info.IsDir() {
+			return false
+		}
+	}
+	return true
+}
+
 func load(o options) (string, []agent.Definition, error) {
 	root, err := sourceDir(o)
 	if err != nil {
@@ -354,27 +380,35 @@ func applyUserOverrides(m *adapter.Mapping, target string) error {
 	if err := json.Unmarshal(b, &config); err != nil {
 		return fmt.Errorf("read Agent Fabric config: %w", err)
 	}
-	for profile, override := range config.Profiles[target] {
-		base, exists := m.Profiles[profile]
-		if !exists {
-			return fmt.Errorf("config override targets unknown %s profile %q", target, profile)
-		}
-		if override.Model != "" {
-			base.Model = override.Model
-		}
-		if override.Effort != "" {
-			base.Effort = override.Effort
-		}
-		if override.Sandbox != "" {
-			base.Sandbox = override.Sandbox
-		}
-		for key, value := range override.Permissions {
-			if base.Permissions == nil {
-				base.Permissions = map[string]string{}
+	targetsToApply := []string{target}
+	if target == "antigravity" {
+		targetsToApply = append(targetsToApply, "agy")
+	} else if target == "agy" {
+		targetsToApply = append(targetsToApply, "antigravity")
+	}
+	for _, t := range targetsToApply {
+		for profile, override := range config.Profiles[t] {
+			base, exists := m.Profiles[profile]
+			if !exists {
+				return fmt.Errorf("config override targets unknown %s profile %q", target, profile)
 			}
-			base.Permissions[key] = value
+			if override.Model != "" {
+				base.Model = override.Model
+			}
+			if override.Effort != "" {
+				base.Effort = override.Effort
+			}
+			if override.Sandbox != "" {
+				base.Sandbox = override.Sandbox
+			}
+			for key, value := range override.Permissions {
+				if base.Permissions == nil {
+					base.Permissions = map[string]string{}
+				}
+				base.Permissions[key] = value
+			}
+			m.Profiles[profile] = base
 		}
-		m.Profiles[profile] = base
 	}
 	return nil
 }
@@ -407,15 +441,104 @@ func targetBase(o options, target string) (string, error) {
 	case "kilo":
 		return filepath.Join(home, ".config", "kilo"), nil
 	case "antigravity":
-		return filepath.Join(home, ".agents"), nil
+		return filepath.Join(home, ".gemini", "config"), nil
 	case "agy":
-		return filepath.Join(home, ".agents"), nil
+		return filepath.Join(home, ".gemini", "config"), nil
 	case "codex":
 		return filepath.Join(home, ".codex"), nil
 	case "claude":
 		return filepath.Join(home, ".claude"), nil
 	}
 	return "", fmt.Errorf("unknown target %s", target)
+}
+
+func renderHookPlaceholders(d agent.Definition) (agent.Definition, error) {
+	if !strings.Contains(d.Body, "<agent-hooks:") {
+		return d, nil
+	}
+	directories, err := hookDirectories()
+	if err != nil {
+		return d, err
+	}
+	resolved := make(map[string]hookResolution, len(d.Fabric.Hooks))
+	for _, event := range d.Fabric.Hooks {
+		resolution, resolveErr := resolveHook(event, directories)
+		if resolveErr != nil {
+			return d, resolveErr
+		}
+		resolved[event] = resolution
+		marker := "<agent-hooks:invoke:" + event + ">"
+		if strings.Count(d.Body, marker) != 1 {
+			return d, fmt.Errorf("%s must contain %q exactly once", d.ID, marker)
+		}
+		d.Body = strings.ReplaceAll(d.Body, marker, hookInvocation(event, resolution))
+	}
+	const listMarker = "<agent-hooks:list-available>"
+	if strings.Count(d.Body, listMarker) != 1 {
+		return d, fmt.Errorf("%s must contain %q exactly once", d.ID, listMarker)
+	}
+	d.Body = strings.ReplaceAll(d.Body, listMarker, hookList(d.Fabric.Hooks, resolved))
+	if strings.Contains(d.Body, "<agent-hooks:") {
+		return d, fmt.Errorf("%s contains an unknown or unregistered hook placeholder", d.ID)
+	}
+	return d, nil
+}
+
+func hookDirectories() ([]string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	return []string{filepath.Join(home, ".agent-hooks")}, nil
+}
+
+func resolveHook(event string, directories []string) (hookResolution, error) {
+	for _, directory := range directories {
+		markdown := filepath.Join(directory, event+".md")
+		if regularFile(markdown, false) {
+			return hookResolution{markdown: markdown}, nil
+		}
+		script := filepath.Join(directory, event+".sh")
+		if regularFile(script, true) {
+			return hookResolution{script: script}, nil
+		}
+	}
+	return hookResolution{}, nil
+}
+
+func regularFile(path string, executable bool) bool {
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	return !executable || info.Mode().Perm()&0o111 != 0
+}
+
+func hookInvocation(event string, resolution hookResolution) string {
+	if resolution.markdown != "" {
+		return fmt.Sprintf("Execute `%s` hook instructions in `%s`.", event, resolution.markdown)
+	}
+	if resolution.script != "" {
+		return fmt.Sprintf("Invoke executable `%s`.", resolution.script)
+	}
+	return fmt.Sprintf("No `%s` hook is installed; continue without it.", event)
+}
+
+func hookList(events []string, resolved map[string]hookResolution) string {
+	var b strings.Builder
+	b.WriteString("## Installed Hooks\n\n")
+	for _, event := range events {
+		resolution := resolved[event]
+		if resolution.markdown != "" {
+			fmt.Fprintf(&b, "- `%s`: instructions `%s`\n", event, resolution.markdown)
+		} else if resolution.script != "" {
+			fmt.Fprintf(&b, "- `%s`: executable `%s`\n", event, resolution.script)
+		}
+	}
+	if b.Len() == len("## Installed Hooks\n\n") {
+		b.WriteString("No registered hooks are installed.\n")
+	}
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 func expectedManagedPath(o options, file manifest.File) (string, error) {
@@ -442,11 +565,13 @@ func expectedManagedPath(o options, file manifest.File) (string, error) {
 			prefix = ".codex"
 		}
 	}
-	ext := ".md"
-	if target == "codex" {
-		ext = ".toml"
+	path := filepath.Join(prefix, "agents", file.Agent+".md")
+	if target == "antigravity" {
+		path = filepath.Join(prefix, "agents", file.Agent, "agent.md")
+	} else if target == "codex" {
+		path = filepath.Join(prefix, "agents", file.Agent+".toml")
 	}
-	expected, err := filepath.Abs(filepath.Join(base, prefix, "agents", file.Agent+ext))
+	expected, err := filepath.Abs(filepath.Join(base, path))
 	if err != nil {
 		return "", err
 	}
@@ -483,6 +608,12 @@ func install(o options, sync bool) error {
 	ds, err = selectedAgents(ds, o.agents, o.all)
 	if err != nil {
 		return err
+	}
+	for i, d := range ds {
+		ds[i], err = renderHookPlaceholders(d)
+		if err != nil {
+			return err
+		}
 	}
 	ts, err := selectedTools(o.tools)
 	if err != nil {
@@ -530,10 +661,13 @@ func install(o options, sync bool) error {
 	for _, w := range writes {
 		m.Files = append(m.Files, manifest.File{Path: w.path, Hash: manifest.Hash([]byte(w.body)), Agent: w.id, Target: w.target})
 	}
+	if err := migrateMovedManagedFiles(manifestPath, &m, o.force); err != nil {
+		return err
+	}
 	if err := migrateLegacy(o, &m); err != nil {
 		return err
 	}
-	m, err = mergeManifest(manifestPath, m)
+	m, err = mergeManifest(manifestPath, m, o)
 	if err != nil {
 		return err
 	}
@@ -557,10 +691,11 @@ func safeWrite(path string, body []byte, managed map[string]string, force bool) 
 	}
 	name := tmp.Name()
 	defer os.Remove(name)
-	if _, err = tmp.Write(body); err == nil {
-		err = tmp.Close()
-	} else {
-		_ = tmp.Close()
+	if err = tmp.Chmod(0o644); err == nil {
+		_, err = tmp.Write(body)
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
 	}
 	if err != nil {
 		return err
@@ -696,7 +831,7 @@ func installedAgents(path string) (map[string]map[string]bool, error) {
 	return installed, nil
 }
 
-func mergeManifest(path string, next manifest.Manifest) (manifest.Manifest, error) {
+func mergeManifest(path string, next manifest.Manifest, o options) (manifest.Manifest, error) {
 	previous, err := manifest.Read(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return next, nil
@@ -704,8 +839,21 @@ func mergeManifest(path string, next manifest.Manifest) (manifest.Manifest, erro
 	if err != nil {
 		return next, err
 	}
+	nextKeys := make(map[string]bool, len(next.Files))
+	for _, file := range next.Files {
+		nextKeys[file.Target+"\x00"+file.Agent] = true
+	}
 	files := make(map[string]manifest.File, len(previous.Files)+len(next.Files))
 	for _, file := range previous.Files {
+		if nextKeys[file.Target+"\x00"+file.Agent] {
+			continue
+		}
+		if _, selected := next.Mappings[file.Target]; selected {
+			if _, pathErr := expectedManagedPath(o, file); pathErr != nil {
+				next.Migration = append(next.Migration, "preserved obsolete managed file "+file.Path)
+				continue
+			}
+		}
 		files[file.Path] = file
 	}
 	for _, file := range next.Files {
@@ -731,6 +879,50 @@ func mergeManifest(path string, next manifest.Manifest) (manifest.Manifest, erro
 	return next, nil
 }
 
+func migrateMovedManagedFiles(manifestPath string, next *manifest.Manifest, force bool) error {
+	previous, err := manifest.Read(manifestPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	nextByKey := make(map[string]manifest.File, len(next.Files))
+	for _, file := range next.Files {
+		nextByKey[file.Target+"\x00"+file.Agent] = file
+	}
+	for _, old := range previous.Files {
+		replacement, moved := nextByKey[old.Target+"\x00"+old.Agent]
+		if !moved || old.Path == replacement.Path {
+			continue
+		}
+		info, statErr := os.Lstat(old.Path)
+		if errors.Is(statErr, os.ErrNotExist) {
+			continue
+		}
+		if statErr != nil {
+			return statErr
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			next.Migration = append(next.Migration, "preserved non-regular obsolete managed file "+old.Path)
+			continue
+		}
+		body, readErr := os.ReadFile(old.Path)
+		if readErr != nil {
+			return readErr
+		}
+		if !force && manifest.Hash(body) != old.Hash {
+			next.Migration = append(next.Migration, "preserved modified obsolete managed file "+old.Path)
+			continue
+		}
+		if removeErr := os.Remove(old.Path); removeErr != nil {
+			return removeErr
+		}
+		next.Migration = append(next.Migration, "removed obsolete managed file "+old.Path)
+	}
+	return nil
+}
+
 func appendUnique(existing, additions []string) []string {
 	seen := make(map[string]bool, len(existing)+len(additions))
 	result := make([]string, 0, len(existing)+len(additions))
@@ -751,7 +943,6 @@ func migrateLegacy(o options, m *manifest.Manifest) error {
 		}
 		old = []string{
 			filepath.Join(project, ".kilo", "agent"),
-			filepath.Join(project, ".gemini", "config", "agents"),
 			filepath.Join(project, ".gemini", "antigravity", "agents"),
 			filepath.Join(project, ".config", "antigravity", "agents"),
 		}
@@ -763,7 +954,6 @@ func migrateLegacy(o options, m *manifest.Manifest) error {
 		old = []string{
 			filepath.Join(home, ".config", "kilo", "agent"),
 			filepath.Join(home, ".kilo", "agent"),
-			filepath.Join(home, ".gemini", "config", "agents"),
 			filepath.Join(home, ".gemini", "antigravity", "agents"),
 			filepath.Join(home, ".config", "antigravity", "agents"),
 		}
@@ -856,6 +1046,7 @@ func doctor(o options) error {
 				issues = append(issues, fmt.Sprintf("%s mapping unavailable: %v", target, mappingErr))
 			}
 		}
+		warnings := []string{}
 		for _, file := range m.Files {
 			path, pathErr := expectedManagedPath(o, file)
 			if pathErr != nil {
@@ -873,11 +1064,17 @@ func doctor(o options) error {
 				continue
 			}
 			if manifest.Hash(b) != file.Hash {
-				issues = append(issues, fmt.Sprintf("modified managed file: %s", path))
+				warnings = append(warnings, fmt.Sprintf("modified managed file: %s", path))
 			}
 			if info, statErr := os.Stat(path); statErr == nil && info.Mode().Perm()&0o022 != 0 {
 				issues = append(issues, fmt.Sprintf("world/group-writable managed file: %s", path))
 			}
+		}
+		for _, w := range warnings {
+			fmt.Printf("warning: %s\n", w)
+		}
+		if o.strict && len(warnings) > 0 {
+			issues = append(issues, warnings...)
 		}
 	} else if errors.Is(manifestErr, os.ErrNotExist) {
 		fmt.Println("manifest: absent")
@@ -915,6 +1112,13 @@ func runHub(args []string) error {
 	fs.BoolVar(&o.force, "force", false, "replace modified managed files")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if len(fs.Args()) > 0 {
+		if o.agents == "" {
+			o.agents = strings.Join(fs.Args(), ",")
+		} else {
+			return fmt.Errorf("unexpected arguments: %s", strings.Join(fs.Args(), " "))
+		}
 	}
 	dir, cleanup, err := hubSource(source)
 	if err != nil {
@@ -968,6 +1172,10 @@ func runHub(args []string) error {
 			}
 		}
 	}
+	allHubByID := make(map[string]agent.Definition, len(ds))
+	for _, d := range ds {
+		allHubByID[d.ID] = d
+	}
 	ds, err = selectedAgents(ds, o.agents, false)
 	if err != nil {
 		return err
@@ -1016,21 +1224,34 @@ func runHub(args []string) error {
 				continue
 			}
 			dependencyDefinition, exists := fabricByID[dependency]
+			isHubDep := false
 			if !exists {
-				return fmt.Errorf("hub agent %s requires missing fabric agent %s", d.ID, dependency)
+				dependencyDefinition, exists = allHubByID[dependency]
+				isHubDep = true
 			}
-			if o.yes || !hasTTY() {
-				return fmt.Errorf("hub agent %s requires %s for %s; install Agent Fabric first", d.ID, dependency, strings.Join(missing, ","))
+			if !exists {
+				return fmt.Errorf("hub agent %s requires missing dependency %s", d.ID, dependency)
 			}
-			accept, promptErr := promptYes(fmt.Sprintf("Hub agent %s requires %s for %s. Install it now?", d.ID, dependency, strings.Join(missing, ",")))
-			if promptErr != nil {
-				return promptErr
-			}
-			if !accept {
-				return fmt.Errorf("hub dependency declined: %s requires %s", d.ID, dependency)
+			if !isHubDep {
+				if o.yes || !hasTTY() {
+					return fmt.Errorf("hub agent %s requires %s for %s; install Agent Fabric first", d.ID, dependency, strings.Join(missing, ","))
+				}
+				accept, promptErr := promptYes(fmt.Sprintf("Hub agent %s requires %s for %s. Install it now?", d.ID, dependency, strings.Join(missing, ",")))
+				if promptErr != nil {
+					return promptErr
+				}
+				if !accept {
+					return fmt.Errorf("hub dependency declined: %s requires %s", d.ID, dependency)
+				}
 			}
 			ds = append(ds, dependencyDefinition)
 			selected[dependency] = true
+		}
+	}
+	for i, d := range ds {
+		ds[i], err = renderHookPlaceholders(d)
+		if err != nil {
+			return err
 		}
 	}
 	release := os.Getenv("AGF_VERSION")
@@ -1063,7 +1284,13 @@ func runHub(args []string) error {
 	for _, w := range writes {
 		m.Files = append(m.Files, manifest.File{Path: w.path, Hash: manifest.Hash([]byte(w.body)), Agent: w.id, Target: w.target})
 	}
-	m, err = mergeManifest(manifestPath, m)
+	if err := migrateMovedManagedFiles(manifestPath, &m, o.force); err != nil {
+		return err
+	}
+	if err := migrateLegacy(o, &m); err != nil {
+		return err
+	}
+	m, err = mergeManifest(manifestPath, m, o)
 	if err != nil {
 		return err
 	}

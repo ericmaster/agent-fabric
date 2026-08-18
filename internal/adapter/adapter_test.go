@@ -24,6 +24,11 @@ func TestRenderTargets(t *testing.T) {
 		if target == "codex" && !strings.Contains(body, "developer_instructions") {
 			t.Fatal("codex instructions missing")
 		}
+		if target == "antigravity" {
+			if path != filepath.Join("agents", "demo", "agent.md") || !strings.Contains(body, "name: \"demo\"") {
+				t.Fatalf("antigravity must render a named native agent profile: path=%q body=%s", path, body)
+			}
+		}
 		if target == "opencode" && strings.Contains(body, "x-agent-fabric") {
 			t.Fatal("extension leaked")
 		}
@@ -33,12 +38,24 @@ func TestRenderTargets(t *testing.T) {
 		if !strings.Contains(body, "sandbox") {
 			t.Fatal("sandbox mapping missing")
 		}
-		if !strings.Contains(body, "visibility") || !strings.Contains(body, "edit") {
-			t.Fatal("policy mapping missing")
+		if strings.Contains(body, "## Agent Fabric Policy") {
+			t.Fatal("policy block leaked into agent instructions")
 		}
-		if !strings.Contains(body, "network") || !strings.Contains(body, "planner") {
-			t.Fatal("mapping overrides or dependencies missing")
+		if target != "codex" && (!strings.Contains(body, "visibility") || !strings.Contains(body, "edit") || !strings.Contains(body, "network")) {
+			t.Fatal("native adapter mapping missing")
 		}
+	}
+}
+
+func TestRenderAntigravityProjectPathUsesWorkspaceAgentDirectory(t *testing.T) {
+	d := agent.Definition{ID: "planner", Description: "Planner", Mode: "primary", Body: "plan\n", Fabric: agent.Fabric{Profile: "planner"}}
+	m := Mapping{Profiles: map[string]Profile{"planner": {Model: "gemini/test"}}}
+	_, path, _, err := Render("antigravity", d, m, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != filepath.Join(".agents", "agents", "planner", "agent.md") {
+		t.Fatalf("project antigravity path = %q", path)
 	}
 }
 

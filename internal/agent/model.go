@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -61,10 +62,17 @@ func parse(id, text string) (Definition, error) {
 			continue
 		}
 		if indent == 0 {
+			if strings.HasSuffix(line, ":") && !strings.Contains(line, ": ") {
+				section = strings.TrimSuffix(line, ":")
+				continue
+			}
 			section = ""
 		}
-		if strings.HasSuffix(line, ":") && !strings.Contains(line, ": ") {
-			section = strings.TrimSuffix(line, ":")
+		if indent > 0 && strings.HasSuffix(line, ":") && !strings.Contains(line, ": ") {
+			sub := strings.TrimSuffix(line, ":")
+			if section == "x-agent-fabric" && sub == "permissions" {
+				section = "permissions"
+			}
 			continue
 		}
 		kv := strings.SplitN(line, ":", 2)
@@ -72,10 +80,14 @@ func parse(id, text string) (Definition, error) {
 			return Definition{}, fmt.Errorf("invalid frontmatter line %q", raw)
 		}
 		key, value := strings.TrimSpace(kv[0]), strings.Trim(strings.TrimSpace(kv[1]), "\"'")
-		if section == "x-agent-fabric" || strings.HasPrefix(raw, "  ") {
+		if section == "x-agent-fabric" || section == "permissions" {
 			switch key {
 			case "schema":
-				d.Fabric.Schema = atoi(value)
+				s, err := strconv.Atoi(value)
+				if err != nil {
+					return Definition{}, fmt.Errorf("invalid schema value %q", value)
+				}
+				d.Fabric.Schema = s
 			case "profile":
 				d.Fabric.Profile = value
 			case "effort":
@@ -93,13 +105,15 @@ func parse(id, text string) (Definition, error) {
 			}
 			continue
 		}
-		switch key {
-		case "description":
-			d.Description = value
-		case "mode":
-			d.Mode = value
-		case "hooks":
-			d.Fabric.Hooks = list(value)
+		if indent == 0 {
+			switch key {
+			case "description":
+				d.Description = value
+			case "mode":
+				d.Mode = value
+			case "hooks":
+				d.Fabric.Hooks = list(value)
+			}
 		}
 	}
 	d.Body = strings.TrimSpace(parts[2]) + "\n"
@@ -176,15 +190,6 @@ func LoadDir(dir string) ([]Definition, error) {
 	return out, nil
 }
 
-func atoi(s string) int {
-	n := 0
-	for _, r := range s {
-		if r >= '0' && r <= '9' {
-			n = n*10 + int(r-'0')
-		}
-	}
-	return n
-}
 func list(s string) []string {
 	s = strings.TrimSpace(s)
 	s = strings.Trim(s, "[]")

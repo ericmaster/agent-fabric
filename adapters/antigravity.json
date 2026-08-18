@@ -2,37 +2,37 @@
   "target": "antigravity",
   "profiles": {
     "readonly": {
-      "model": "gemini-2.5-pro",
+      "model": "gemini-3.7-flash",
       "effort": "high",
       "sandbox": "read-only"
     },
     "worker": {
-      "model": "gemini-2.5-pro",
+      "model": "gemini-3.7-flash",
       "effort": "high",
       "sandbox": "workspace"
     },
     "reviewer": {
-      "model": "gemini-2.5-pro",
+      "model": "gemini-3.7-flash",
       "effort": "high",
       "sandbox": "read-only"
     },
     "supervisor": {
-      "model": "gemini-2.5-pro",
+      "model": "gemini-3.1-pro",
       "effort": "high",
       "sandbox": "workspace"
     },
     "planner": {
-      "model": "gemini-2.5-pro",
+      "model": "gemini-3.1-pro",
       "effort": "high",
       "sandbox": "workspace"
     },
     "qa": {
-      "model": "gemini-2.5-pro",
+      "model": "gemini-3.7-flash",
       "effort": "high",
       "sandbox": "read-only"
     },
     "recursive": {
-      "model": "gemini-2.5-pro",
+      "model": "gemini-3.1-pro",
       "effort": "max",
       "sandbox": "workspace"
     }

@@ -3,4 +3,4 @@ description = "Representative adapter fixture"
 model = "provider/test"
 sandbox_mode = "read-only"
 hooks = ["load-task"]
-developer_instructions = "## Agent Fabric Policy\nprofile: reviewer\neffort: high\nvisibility: hidden\nisolation: sandbox\nsandbox: read-only\npermissions:\n- bash: allow\n- edit: deny\nhooks: load-task\nFixture body."
+developer_instructions = "Fixture body."

@@ -1,7 +1,10 @@
 # Agent Fabric Specification
 
 Canonical definitions are Markdown files with YAML-like frontmatter. Identity is
-the filename stem. `description` and `x-agent-fabric.schema: 1` are required.
+the filename stem. `description` and `x-agent-fabric.schema: 1` are required. A
+checkout or installed source is recognized only when both `agents/` and
+`adapters/` directories are present, so unrelated working-directory folders do
+not shadow the bundled source.
 Adapters must validate the complete source set before writing anything. Adapter
 profiles are loaded from the checked-in mapping and may be partially overridden
 by one user file at `~/.config/agent-fabric/config.json` or `AGF_CONFIG`.
@@ -20,6 +23,13 @@ back when a write fails. Modified managed files are never overwritten without
 upgrades. `doctor` reports missing files, hash drift, unsafe writable permissions,
 invalid managed destinations, and unavailable source mappings.
 
+Antigravity global agents are installed to
+`~/.gemini/config/agents/<agent-id>/agent.md`; project-scoped agents use
+`<project>/.agents/agents/<agent-id>/agent.md`. The Antigravity adapter renders
+the native `name` field. When an adapter destination changes, installation removes
+only the previous manifest-owned file whose hash is unchanged, preserving modified
+or non-regular prior files as unmanaged artifacts.
+
 Hub sources must be local directories, local `.tar.gz` archives, or HTTPS. GitHub
 repository/tree/tag URLs are converted to archive URLs; HTTPS Git URLs are
 shallow-cloned with prompts disabled. Archive downloads have redirect,
@@ -30,9 +40,21 @@ agree with each definition's dependency metadata. Hub dependencies are offered
 interactively and fail before writes in noninteractive mode when Fabric
 dependencies are not installed for every selected target.
 
-Hook events are contract-only. Local `.agent-hooks/<event>.md|sh` precedes global
-`~/.agent-hooks/<event>.*`; Markdown is authoritative and scripts run only when
-permitted. Missing provider capability returns `CAPABILITY_UNAVAILABLE`.
+Canonical agent bodies are the complete portable workflow contract, not role
+summaries. They retain role boundaries, decision and evidence requirements,
+failure handling, and output schemas. They must not contain provider model IDs,
+private Company OS paths, named task-system commands, credentials, or trace/cache
+environment variables; adapters and hosts own those integrations.
+
+Canonical bodies declare registered hooks with `<agent-hooks:list-available>` and
+`<agent-hooks:invoke:<event>>` placeholders. During install or sync, the CLI
+resolves each registered event once from host-global `~/.agent-hooks/`; Markdown
+precedes an executable script. The generated agent receives either instructions
+to follow the Markdown file, an executable script path, or an explicit no-hook
+continuation. The generated file is therefore deterministic until its next
+install or sync. Hooks own their own caching, logging, input transport, and
+failure semantics; canonical agents only follow the rendered invocation
+instruction.
 
 Release archives are static cross-platform builds accompanied by
 `sha256sums.txt` and a machine-readable `release-manifest.json`. Bootstrap verifies

@@ -42,12 +42,6 @@ func Render(target string, d agent.Definition, m Mapping, project bool) (string,
 	if p.Model == "" {
 		return "", "", nil, fmt.Errorf("%s: profile %q has no model", target, d.Fabric.Profile)
 	}
-	if p.Effort == "" {
-		warn = append(warn, "effort rendered in the portable policy only")
-	}
-	if p.Sandbox == "" {
-		warn = append(warn, "sandbox rendered in the portable policy only")
-	}
 	prefix := ""
 	if project {
 		switch target {
@@ -69,7 +63,7 @@ func Render(target string, d agent.Definition, m Mapping, project bool) (string,
 	case "kilo":
 		return markdown(d, p), filepath.Join(prefix, "agents", d.ID+".md"), warn, nil
 	case "antigravity":
-		return markdown(d, p), filepath.Join(prefix, "agents", d.ID+".md"), warn, nil
+		return antigravityMarkdown(d, p), filepath.Join(prefix, "agents", d.ID, "agent.md"), warn, nil
 	case "claude":
 		return markdown(d, p), filepath.Join(prefix, "agents", d.ID+".md"), warn, nil
 	case "codex":
@@ -98,14 +92,18 @@ func markdown(d agent.Definition, p Profile) string {
 		fmt.Fprintf(&b, "hooks: [%s]\n", quotedList(d.Fabric.Hooks))
 	}
 	b.WriteString("---\n")
-	b.WriteString(policy(d, p))
-	b.WriteString("\n\n")
 	b.WriteString(d.Body)
 	if !strings.HasSuffix(d.Body, "\n") {
 		b.WriteByte('\n')
 	}
 	return b.String()
 }
+
+func antigravityMarkdown(d agent.Definition, p Profile) string {
+	body := markdown(d, p)
+	return strings.Replace(body, "---\n", fmt.Sprintf("---\nname: %q\n", d.ID), 1)
+}
+
 func toml(d agent.Definition, p Profile) (string, error) {
 	body := fmt.Sprintf("name = %q\ndescription = %q\nmodel = %q\n", d.ID, d.Description, p.Model)
 	if p.Sandbox != "" {
@@ -114,7 +112,7 @@ func toml(d agent.Definition, p Profile) (string, error) {
 	if len(d.Fabric.Hooks) > 0 {
 		body += fmt.Sprintf("hooks = [%s]\n", quotedList(d.Fabric.Hooks))
 	}
-	body += fmt.Sprintf("developer_instructions = %q\n", policy(d, p)+"\n"+strings.TrimSpace(d.Body))
+	body += fmt.Sprintf("developer_instructions = %q\n", strings.TrimSpace(d.Body))
 	return body, nil
 }
 
@@ -142,31 +140,6 @@ func writePermissions(b *strings.Builder, permissions map[string]string) {
 	for _, key := range keys {
 		fmt.Fprintf(b, "  %s: %q\n", key, permissions[key])
 	}
-}
-
-func policy(d agent.Definition, p Profile) string {
-	var b strings.Builder
-	sandbox := p.Sandbox
-	if sandbox == "" {
-		sandbox = "portable-policy-only"
-	}
-	fmt.Fprintf(&b, "## Agent Fabric Policy\nprofile: %s\neffort: %s\nvisibility: %s\nisolation: %s\nsandbox: %s\npermissions:", d.Fabric.Profile, d.Fabric.Effort, d.Fabric.Visibility, d.Fabric.Isolation, sandbox)
-	merged := permissions(d, p)
-	keys := make([]string, 0, len(merged))
-	for key := range merged {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		fmt.Fprintf(&b, "\n- %s: %s", key, merged[key])
-	}
-	if len(d.Fabric.Requires) > 0 {
-		fmt.Fprintf(&b, "\nrequires: %s", strings.Join(d.Fabric.Requires, ", "))
-	}
-	if len(d.Fabric.Hooks) > 0 {
-		fmt.Fprintf(&b, "\nhooks: %s", strings.Join(d.Fabric.Hooks, ", "))
-	}
-	return b.String()
 }
 
 func quotedList(values []string) string {

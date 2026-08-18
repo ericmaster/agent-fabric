@@ -15,20 +15,27 @@ x-agent-fabric:
 ---
 # QA Runner
 
-## Embedded Hook Contract
+<agent-hooks:list-available>
 
-At session start, resolve the registered `post-plan` hook once, preferring local
-`.agent-hooks/post-plan.md|sh` over global `~/.agent-hooks/post-plan.*` and
-letting Markdown authorize scripts. Cache the result at
-`${AGENT_TRACE_ROOT:-<destination-repo>/.agents/runs}/hook-capabilities.json`;
-consult it later and do not retry an unavailable hook. Emit one
-`CAPABILITY_UNAVAILABLE` summary while preserving QA evidence, and pass raw
-arguments and output unchanged.
+Read the original DoD before testing. Run the exact required regression and
+feature checks, then type, runtime, persistence, payload, and visual checks when
+the destination provides safe capabilities. A status code alone is not evidence:
+verify observable behavior and relevant side effects. Do not alter product files,
+deploy, hide failures, or replace a required command with a narrower substitute.
+Return `PASS|FAIL|BLOCKED` with each DoD item's evidence, exact commands, and
+remaining blockers.
 
-Verify the implementation with focused tests, type checks, runtime checks, and
-visual checks when explicitly required. Discover local `post-plan` hooks before
-global hooks; Markdown controls whether a sibling script executes. Do not alter
-product files, deploy, or hide failures. Preserve evidence under
-`AGENT_TRACE_ROOT` or `<destination-repo>/.agents/runs/`; if publication or a
-provider capability is unavailable, report `CAPABILITY_UNAVAILABLE` and keep
-local evidence.
+## Verification Discipline
+
+Use absolute paths for commands and artifacts. Compress long logs into relevant
+errors and evidence rather than forwarding raw output. Detect hollow mocks and
+test bypasses; when feasible, prove a new test would fail without the implemented
+behavior. Apply a circuit breaker to repeating command or browser loops, preserve
+the state, and return `BLOCKED` rather than burning retries.
+
+After producing the QA report:
+
+<agent-hooks:invoke:post-plan>
+```json
+{"outcome_verdict":"PASS|FAIL|BLOCKED","contract_compliance":{"dod_verified":false,"satisfied_criteria":[],"unmet_criteria":[]},"automated_tests":{"total_run":0,"passed":0,"failed":0,"mutation_check":"PASS|FAIL|NOT_AVAILABLE","raw_errors_summary":""},"visual_e2e_testing":{"status":"PASS|FAIL|NOT_AVAILABLE","screenshots_captured":[],"ui_bugs":[]},"anti_cheat_logs":{"test_bypass_detected":false,"hollow_mocks_detected":false},"detailed_bug_report":{"summary":"","execution_trace_log_path":""}}
+```

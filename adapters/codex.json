@@ -2,37 +2,37 @@
   "target": "codex",
   "profiles": {
     "readonly": {
-      "model": "gpt-5-codex",
+      "model": "gpt-5.6-terra",
       "effort": "high",
       "sandbox": "read-only"
     },
     "worker": {
-      "model": "gpt-5-codex",
+      "model": "gpt-5.6-terra",
       "effort": "high",
       "sandbox": "workspace"
     },
     "reviewer": {
-      "model": "gpt-5-codex",
+      "model": "gpt-5.6-terra",
       "effort": "high",
       "sandbox": "read-only"
     },
     "supervisor": {
-      "model": "gpt-5-codex",
+      "model": "gpt-5.6-terra",
       "effort": "high",
       "sandbox": "workspace"
     },
     "planner": {
-      "model": "gpt-5-codex",
+      "model": "gpt-5.6-terra-pro",
       "effort": "high",
       "sandbox": "workspace"
     },
     "qa": {
-      "model": "gpt-5-codex",
+      "model": "gpt-5.6-terra",
       "effort": "high",
       "sandbox": "read-only"
     },
     "recursive": {
-      "model": "gpt-5-codex",
+      "model": "gpt-5.6-terra-pro",
       "effort": "max",
       "sandbox": "workspace"
     }

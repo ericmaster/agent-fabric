@@ -60,6 +60,8 @@ outside a checkout.
 
 Global installation is the default. Use `--project` for files inside a specific
 repository. Generated paths are the native agent directories for each target.
+For Antigravity CLI, these are `~/.gemini/config/agents/<agent-id>/agent.md`
+globally and `.agents/agents/<agent-id>/agent.md` per project.
 
 ```sh
 agf install --all --tools opencode,kilo --yes
@@ -146,11 +148,18 @@ visibility, isolation, hooks, and optional dependencies. Provider model IDs live
 only in `adapters/<target>.json`.
 
 The six portable hook events are `load-task`, `pre-plan`, `classify`, `label`,
-`decompose`, and `post-plan`. Hooks are documentation contracts; implementations,
-task systems, credentials, and execution runtimes remain host-owned. Registered
-events are resolved once at session start and cached at
-`${AGENT_TRACE_ROOT}/hook-capabilities.json`. A missing capability is reported
-once as `CAPABILITY_UNAVAILABLE`, and local artifacts are preserved.
+`decompose`, and `post-plan`. Canonical agents use declarative hook placeholders,
+which `install` and `sync` resolve once from the host-global `~/.agent-hooks/`
+directory. Markdown instructions take precedence over an executable script.
+Generated agents receive fixed instructions to follow the Markdown hook or invoke
+the script, and explicitly continue when no hook is installed. Hooks, task
+systems, credentials, caching, logging, and runtime input transport remain
+host-owned.
+
+Canonical definitions contain the complete portable workflow for each role. They
+are not summaries: role boundaries, evidence contracts, failure handling, and
+output schemas live in `agents/`; provider models, harness-specific commands,
+credentials, and private task-system details remain adapter- or host-owned.
 
 ## Release And Maintainer Checks
 
