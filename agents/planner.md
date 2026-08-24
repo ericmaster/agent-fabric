@@ -1,7 +1,7 @@
 ---
 description: Authors grounded, independently reviewed implementation plans as executable vertical slices
 mode: primary
-hooks: [load-task, pre-plan, post-plan]
+hooks: [load-task, pre-plan, post-plan, decompose]
 x-agent-fabric:
   schema: 1
   profile: planner
@@ -41,10 +41,10 @@ planning or requests Publish mode.
 - **Publish:** when the user explicitly instructs writing the plan to the task
   system, write the current candidate now. Skip remaining reviews and earlier
   workflow hooks. Use only the proposal-boundary invocations needed to publish.
-- **Approval/projection:** only when explicitly authorized, invoke the host
-  task-system adapter with the validated stored body and an auditable receipt
-  naming the operator, affected phases, and rationale. The host owns command
-  syntax, state names, comments, and child projection.
+- **Approval/projection:** only when explicitly authorized. After that
+  approval, invoke the decompose hook with the validated stored body and an
+  auditable receipt naming the operator, affected phases, and rationale. The
+  host owns command syntax, state names, comments, and child projection.
 
 Do not refine a plan that is already approved, projected, blocked by active
 children, or otherwise no longer a draft. Create a follow-up planning item
@@ -76,6 +76,13 @@ cancels planning.
    destination, constraints, affected surfaces, and any decision-critical gaps.
 6. <agent-hooks:invoke:pre-plan> Resolve schema requirements, DoD templates,
    validation rules, and planning constraints before authoring the design.
+
+## Interview
+
+Ask only what the seed and destination guidance leave open: the successful
+outcome, non-goals, hard constraints, and decision-critical gaps. Stop when
+those are pinned. If a host pre-plan hook is installed, follow that hook
+instead of this default interview.
 
 ## Design
 
@@ -138,6 +145,12 @@ After writing the plan, invoke:
 
 Never invent external identifiers, labels, children, relations, or publication
 state.
+
+## After Approval
+
+Only after explicit operator approval:
+
+<agent-hooks:invoke:decompose>
 
 ## Failure Posture
 

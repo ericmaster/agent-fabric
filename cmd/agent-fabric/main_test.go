@@ -492,6 +492,324 @@ func TestPlannerPrePlanHookRendering(t *testing.T) {
 	})
 }
 
+func TestResolveHookFollowsSymlinks(t *testing.T) {
+	cases := []struct {
+		name    string
+		agentID string
+		rel     string
+		body    string
+		mode    os.FileMode
+		wantMD  bool
+	}{
+		{name: "per-agent markdown", agentID: "planner", rel: filepath.Join("planner", "pre-plan.md"), body: "per-agent markdown\n", mode: 0o644, wantMD: true},
+		{name: "per-agent script", agentID: "planner", rel: filepath.Join("planner", "pre-plan.sh"), body: "#!/bin/sh\nexit 0\n", mode: 0o755, wantMD: false},
+		{name: "global markdown", agentID: "demo", rel: "pre-plan.md", body: "global markdown\n", mode: 0o644, wantMD: true},
+		{name: "global script", agentID: "demo", rel: "pre-plan.sh", body: "#!/bin/sh\nexit 0\n", mode: 0o755, wantMD: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			target := filepath.Join(root, "target"+filepath.Ext(tc.rel))
+			if err := os.WriteFile(target, []byte(tc.body), tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			hooks := filepath.Join(root, ".agent-hooks")
+			link := filepath.Join(hooks, tc.rel)
+			if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, link); err != nil {
+				t.Fatal(err)
+			}
+			got, err := resolveHook(tc.agentID, "pre-plan", []string{hooks})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantMD {
+				if got.markdown != link || got.script != "" {
+					t.Fatalf("markdown=%q script=%q, want markdown %q", got.markdown, got.script, link)
+				}
+				return
+			}
+			if got.script != link || got.markdown != "" {
+				t.Fatalf("markdown=%q script=%q, want script %q", got.markdown, got.script, link)
+			}
+		})
+	}
+}
+
+func TestResolveHookPrefersPerAgentOverGlobal(t *testing.T) {
+	hooks := filepath.Join(t.TempDir(), ".agent-hooks")
+	if err := os.MkdirAll(filepath.Join(hooks, "planner"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	perAgent := filepath.Join(hooks, "planner", "pre-plan.md")
+	global := filepath.Join(hooks, "pre-plan.md")
+	if err := os.WriteFile(perAgent, []byte("per-agent\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(global, []byte("global\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	planner, err := resolveHook("planner", "pre-plan", []string{hooks})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if planner.markdown != perAgent {
+		t.Fatalf("planner markdown=%q, want %q", planner.markdown, perAgent)
+	}
+	reviewer, err := resolveHook("plan-reviewer", "pre-plan", []string{hooks})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reviewer.markdown != global {
+		t.Fatalf("plan-reviewer markdown=%q, want global %q", reviewer.markdown, global)
+	}
+}
+
+func TestResolveHookPrefersPerAgentSymlinkedScriptOverGlobalMarkdown(t *testing.T) {
+	root := t.TempDir()
+	hooks := filepath.Join(root, ".agent-hooks")
+	target := filepath.Join(root, "pre-plan.sh")
+	if err := os.WriteFile(target, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(hooks, "planner", "pre-plan.sh")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	global := filepath.Join(hooks, "pre-plan.md")
+	if err := os.WriteFile(global, []byte("global markdown\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := resolveHook("planner", "pre-plan", []string{hooks})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.script != link || got.markdown != "" {
+		t.Fatalf("scoped script did not precede global markdown: markdown=%q script=%q", got.markdown, got.script)
+	}
+}
+
+func TestResolveHookRejectsTraversingAgentIDAndKeepsGlobalFallback(t *testing.T) {
+	root := t.TempDir()
+	hooks := filepath.Join(root, ".agent-hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	escaped := filepath.Join(root, "pre-plan.md")
+	global := filepath.Join(hooks, "pre-plan.md")
+	if err := os.WriteFile(escaped, []byte("escaped\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(global, []byte("global\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{"..", ".", filepath.Join("..", "x"), "/tmp", `..\x`, string(os.PathSeparator) + "etc"}
+	for _, id := range ids {
+		got, err := resolveHook(id, "pre-plan", []string{hooks})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.markdown != global || got.script != "" {
+			t.Fatalf("agent ID %q escaped hooks root or skipped global fallback: %+v", id, got)
+		}
+	}
+	if err := os.Remove(global); err != nil {
+		t.Fatal(err)
+	}
+	got, err := resolveHook("..", "pre-plan", []string{hooks})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.markdown != "" || got.script != "" {
+		t.Fatalf("traversing agent ID resolved a path outside hooks: %+v", got)
+	}
+}
+
+func TestRenderHookPlaceholdersFallsBackWhenAgentIDTraverses(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	hooks := filepath.Join(home, ".agent-hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "pre-plan.md"), []byte("escaped outside hooks"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hooks, "pre-plan.md"), []byte("global hook"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d := agent.Definition{
+		ID:     "..",
+		Body:   "<agent-hooks:list-available>\n<agent-hooks:invoke:pre-plan>\n",
+		Fabric: agent.Fabric{Hooks: []string{"pre-plan"}},
+	}
+	rendered, err := renderHookPlaceholders(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered.Body, "escaped outside hooks") {
+		t.Fatal("traversing agent ID read a file outside ~/.agent-hooks")
+	}
+	if !strings.Contains(rendered.Body, "global hook") {
+		t.Fatalf("global fallback failed: %s", rendered.Body)
+	}
+}
+
+func TestPlannerDecomposeInvokeFollowsExplicitApproval(t *testing.T) {
+	d, err := agent.ParseFile(filepath.Join("..", "..", "agents", "planner.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const marker = "<agent-hooks:invoke:decompose>"
+	const approval = "Only after explicit operator approval:"
+	if n := strings.Count(d.Body, marker); n != 1 {
+		t.Fatalf("planner must contain %q exactly once, got %d", marker, n)
+	}
+	approvalAt := strings.Index(d.Body, approval)
+	if approvalAt < 0 {
+		t.Fatal("planner missing explicit approval wording")
+	}
+	if strings.Index(d.Body, marker) < approvalAt {
+		t.Fatal("planner decompose invoke appears before explicit approval wording")
+	}
+}
+
+func TestPlannerInlinesPortableOrPerAgentPrePlanWithoutReviewerGrilling(t *testing.T) {
+	canonicalPlanner, err := agent.ParseFile(filepath.Join("..", "..", "agents", "planner.md"))
+	if err != nil {
+		t.Fatalf("failed to parse canonical planner: %v", err)
+	}
+	canonicalReviewer, err := agent.ParseFile(filepath.Join("..", "..", "agents", "plan-reviewer.md"))
+	if err != nil {
+		t.Fatalf("failed to parse canonical plan-reviewer: %v", err)
+	}
+	portable, err := os.ReadFile(filepath.Join("..", "..", "hooks", "planner", "pre-plan.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	portableBody := strings.TrimSpace(string(portable))
+
+	t.Run("portable fallback from per-agent script symlink", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		script := filepath.Join(home, "pre-plan.sh")
+		if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(home, ".agent-hooks", "planner", "pre-plan.sh")
+		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(script, link); err != nil {
+			t.Fatal(err)
+		}
+		rendered, err := renderHookPlaceholders(canonicalPlanner)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := strings.ReplaceAll(portableBody, "{{.Script}}", link)
+		if !strings.Contains(rendered.Body, want) {
+			t.Fatalf("planner did not inline portable pre-plan fallback:\n%s", rendered.Body)
+		}
+		reviewer, err := renderHookPlaceholders(canonicalReviewer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertNoGrilling(t, reviewer.Body)
+	})
+
+	t.Run("per-agent markdown override symlink", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		fixture, err := filepath.Abs(filepath.Join("testdata", "hooks", "planner-pre-plan.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		override, err := os.ReadFile(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(home, ".agent-hooks", "planner", "pre-plan.md")
+		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(fixture, link); err != nil {
+			t.Fatal(err)
+		}
+		rendered, err := renderHookPlaceholders(canonicalPlanner)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(rendered.Body, strings.TrimSpace(string(override))) {
+			t.Fatalf("planner did not inline per-agent pre-plan override:\n%s", rendered.Body)
+		}
+		if strings.Contains(rendered.Body, portableBody) {
+			t.Fatalf("per-agent override must replace portable fallback:\n%s", rendered.Body)
+		}
+		reviewer, err := renderHookPlaceholders(canonicalReviewer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertNoGrilling(t, reviewer.Body)
+	})
+}
+
+func TestGeneratedPlanReviewerOmitsPlannerGrilling(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	fixture, err := filepath.Abs(filepath.Join("testdata", "hooks", "planner-pre-plan.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(home, ".agent-hooks", "planner", "pre-plan.md")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(fixture, link); err != nil {
+		t.Fatal(err)
+	}
+	fabricSource, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := filepath.Join(t.TempDir(), "proj")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := install(options{source: fabricSource, project: project, agents: "planner,plan-reviewer", tools: "opencode", yes: true}, false); err != nil {
+		t.Fatal(err)
+	}
+	plannerBody, err := os.ReadFile(filepath.Join(project, ".opencode", "agents", "planner.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewerBody, err := os.ReadFile(filepath.Join(project, ".opencode", "agents", "plan-reviewer.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	override, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(plannerBody), strings.TrimSpace(string(override))) {
+		t.Fatalf("generated planner.md missing per-agent pre-plan override:\n%s", plannerBody)
+	}
+	assertNoGrilling(t, string(reviewerBody))
+}
+
+func assertNoGrilling(t *testing.T, body string) {
+	t.Helper()
+	lower := strings.ToLower(body)
+	if strings.Contains(lower, "grilling") || strings.Contains(lower, "auto-grilling") {
+		t.Fatalf("generated plan-reviewer contains grilling content:\n%s", body)
+	}
+}
+
 func TestHubInstallResolvesHubToHubDependency(t *testing.T) {
 	temp := t.TempDir()
 	hubDir := filepath.Join(temp, "hub")

@@ -462,7 +462,7 @@ func renderHookPlaceholders(d agent.Definition) (agent.Definition, error) {
 	}
 	resolved := make(map[string]hookResolution, len(d.Fabric.Hooks))
 	for _, event := range d.Fabric.Hooks {
-		resolution, resolveErr := resolveHook(event, directories)
+		resolution, resolveErr := resolveHook(d.ID, event, directories)
 		if resolveErr != nil {
 			return d, resolveErr
 		}
@@ -499,8 +499,33 @@ func hookDirectories() ([]string, error) {
 	return []string{filepath.Join(home, ".agent-hooks")}, nil
 }
 
-func resolveHook(event string, directories []string) (hookResolution, error) {
+func scopedAgentDir(directory, agentID string) (string, bool) {
+	if agentID == "" || agentID == "." || agentID == ".." || filepath.IsAbs(agentID) || strings.ContainsAny(agentID, `/\`) {
+		return "", false
+	}
+	if filepath.Base(agentID) != agentID {
+		return "", false
+	}
+	scoped := filepath.Join(directory, agentID)
+	rel, err := filepath.Rel(filepath.Clean(directory), filepath.Clean(scoped))
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", false
+	}
+	return scoped, true
+}
+
+func resolveHook(agentID, event string, directories []string) (hookResolution, error) {
 	for _, directory := range directories {
+		if scoped, ok := scopedAgentDir(directory, agentID); ok {
+			markdown := filepath.Join(scoped, event+".md")
+			if regularFile(markdown, false) {
+				return hookResolution{markdown: markdown}, nil
+			}
+			script := filepath.Join(scoped, event+".sh")
+			if regularFile(script, true) {
+				return hookResolution{script: script}, nil
+			}
+		}
 		markdown := filepath.Join(directory, event+".md")
 		if regularFile(markdown, false) {
 			return hookResolution{markdown: markdown}, nil

@@ -57,12 +57,17 @@ flowchart TD
         PPOST["post-plan hook (optional)\nPublish / notify / trigger downstream"]
     end
 
-    PROPOSE --> PPOST --> DONE([Plan ready for approval])
+    PROPOSE --> PPOST --> READY([Plan ready for approval])
+    READY --> AUTH{Explicit approval?}
+    AUTH -- No --> DONE([Stop])
+    AUTH -- Yes --> DEC["decompose hook (optional)\nHost-owned projection"]
+    DEC --> PROJECTED([Host-owned result])
 
     style LT fill:#6366f1,color:#fff,stroke:none
     style PP fill:#a855f7,color:#fff,stroke:none
     style REVIEWER fill:#0ea5e9,color:#fff,stroke:none
     style PPOST fill:#6366f1,color:#fff,stroke:none
+    style DEC fill:#6366f1,color:#fff,stroke:none
 ```
 
 ## Hook Summary
@@ -70,8 +75,9 @@ flowchart TD
 | Hook | Lifecycle Stage | Suggested Usage / Role | Default Behavior (No-op / Agent Decides) |
 |---|---|---|---|
 | `load-task` | Initial Understanding (Step 1) | Enrich or resolve task seed from host issue tracker or custom format | No-op — agent resolves seed directly from prompt context |
-| `pre-plan` | Pre-Design (Step 6) | Inject target plan schema, DoD templates, validation rules, or custom constraints | No-op — agent decides structure using canonical baseline phase blocks |
+| `pre-plan` | Pre-Design (Step 6) | Inject target plan schema, DoD templates, validation rules, constraints, or a host interview that replaces the default interview | No-op — agent uses the short default interview and canonical phase blocks |
 | `post-plan` | Proposal Boundary | Emit plan publication events, notifications, or downstream task projection | No-op — agent completes proposal locally without external events |
+| `decompose` | After explicit approval | Materialize the approved plan through the host task-system adapter | No-op — agent does not invent identifiers or project children |
 
 ## Operating Modes
 
