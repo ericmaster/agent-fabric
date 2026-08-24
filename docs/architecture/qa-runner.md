@@ -34,28 +34,18 @@ flowchart TD
         CIRCUIT["Apply circuit breaker\nto command/browser loops\n(preserve state → return BLOCKED)"]
     end
 
-    ANTICHECK --> MUTATION --> CIRCUIT --> PP
-
-    subgraph "Post Hook"
-        PP["post-plan hook\n(if installed)\nNotify / record QA completion"]
-    end
-
-    PP --> REPORT
+    ANTICHECK --> MUTATION --> CIRCUIT --> REPORT
 
     subgraph "Output"
         REPORT["Return structured evidence report\nCompress logs → relevant errors + evidence\n(no raw output forwarding)"]
     end
 
     REPORT --> DONE([Return to loop-supervisor])
-
-    style PP fill:#6366f1,color:#fff,stroke:none
 ```
 
 ## Hook Summary
 
-| Hook | When | Purpose |
-|---|---|---|
-| `post-plan` | After QA report produced | Notify / signal QA completion to task-system or downstream |
+No registered hooks.
 
 ## Constraints
 

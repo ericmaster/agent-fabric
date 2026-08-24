@@ -40,28 +40,18 @@ flowchart TD
         HANDOFF_BUILD["Build compact handoff artifact:\n• Diagnosis summary\n• Affected symbols\n• Constraints\n• Smallest safe remediation steps\n• Exact verification steps\n• Rollback facts\n• Unresolved risks"]
     end
 
-    HANDOFF_BUILD --> PP
-
-    subgraph "Post Hook"
-        PP["post-plan hook\n(if installed)\nRecord diagnostic completion"]
-    end
-
-    PP --> OUTPUT
+    HANDOFF_BUILD --> OUTPUT
 
     subgraph "Output"
         OUTPUT["Return machine-readable diagnosis"]
     end
 
     OUTPUT --> DONE([Return bounded remediation brief to loop-supervisor])
-
-    style PP fill:#6366f1,color:#fff,stroke:none
 ```
 
 ## Hook Summary
 
-| Hook | When | Purpose |
-|---|---|---|
-| `post-plan` | After diagnostic handoff | Notify / record diagnostic completion |
+No registered hooks.
 
 ## Constraints
 

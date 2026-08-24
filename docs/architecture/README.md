@@ -5,13 +5,13 @@ internal workflow, hook invocations, delegation relationships, and output contra
 
 | Agent | Role | Profile | Hooks |
 |---|---|---|---|
-| [planner](planner.md) | Authors implementation plans | planner | load-task · classify · pre-plan · label · decompose · post-plan |
-| [plan-supervisor](plan-supervisor.md) | Orchestrates multi-phase plan execution | supervisor | load-task · classify · pre-plan · decompose · label · post-plan |
-| [loop-supervisor](loop-supervisor.md) | Drives one atomic task to DoD | supervisor | load-task · post-plan |
+| [planner](planner.md) | Authors implementation plans | planner | load-task · pre-plan · post-plan |
+| [plan-supervisor](plan-supervisor.md) | Orchestrates multi-phase plan execution | supervisor | load-task · pre-plan · label · decompose |
+| [loop-supervisor](loop-supervisor.md) | Drives one atomic task to DoD | supervisor | load-task |
 | [implementor](implementor.md) | Makes bounded code changes | worker | load-task |
 | [code-reviewer](code-reviewer.md) | Adversarial read-only gate | reviewer | load-task |
-| [qa-runner](qa-runner.md) | Deterministic verification | qa | post-plan |
-| [expert-debugger](expert-debugger.md) | Root-cause diagnosis | readonly | post-plan |
+| [qa-runner](qa-runner.md) | Deterministic verification | qa | — |
+| [expert-debugger](expert-debugger.md) | Root-cause diagnosis | readonly | — |
 | [plan-reviewer](plan-reviewer.md) | Independent plan validation | reviewer | pre-plan |
 
 Filing rule: these are structural diagrams — they belong in `docs/architecture/` per §3 of

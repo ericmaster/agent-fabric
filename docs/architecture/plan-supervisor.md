@@ -20,12 +20,12 @@ flowchart TD
     LT --> PREVAL --> DEC
 
     subgraph "Phase Selection Loop"
-        CL["② classify hook\nSelect unblocked phase with\nall predecessor evidence ready"]
+        SEL["② Select unblocked phase\nwith all predecessor evidence ready"]
         BRIEF["Write isolated phase brief\n(objective · scope · artifact paths\nDoD · allowed files · gates · commit owner)"]
         DISPATCH["③ Dispatch loop-supervisor\nin fresh context"]
     end
 
-    DEC --> CL --> BRIEF --> DISPATCH
+    DEC --> SEL --> BRIEF --> DISPATCH
 
     subgraph "Evidence Verification"
         VERIFY["④ Verify phase evidence\n• Every DoD item PASS with\n  inspectable evidence\n• Record VCS revision"]
@@ -52,21 +52,13 @@ flowchart TD
     end
 
     RESULT -- PASS --> LBL --> MORE
-    MORE -- "No — next eligible phase" --> CL
-    MORE -- "Yes (all phases PASS)" --> POSTPLAN
-
-    subgraph "Post-Plan"
-        POSTPLAN["post-plan hook\n(if installed)"]
-    end
-
-    POSTPLAN --> DONE_OK([Plan complete])
+    MORE -- "No — next eligible phase" --> SEL
+    MORE -- "Yes (all phases PASS)" --> DONE_OK([Plan complete])
 
     style LT fill:#6366f1,color:#fff,stroke:none
     style PREVAL fill:#a855f7,color:#fff,stroke:none
     style DEC fill:#6366f1,color:#fff,stroke:none
-    style CL fill:#6366f1,color:#fff,stroke:none
     style LBL fill:#6366f1,color:#fff,stroke:none
-    style POSTPLAN fill:#6366f1,color:#fff,stroke:none
 ```
 
 ## Hook Summary
@@ -76,9 +68,7 @@ flowchart TD
 | `load-task` | 1 | Resolve plan source; build phase DAG |
 | `pre-plan` | Pre-dispatch | Validate source plan before any mutation |
 | `decompose` | Pre-dispatch | Materialize phases into task-system (if needed) |
-| `classify` | Each iteration | Select next unblocked phase |
 | `label` | After each PASS | Record phase state in task-system |
-| `post-plan` | Final | Signal plan completion / notify |
 
 ## Autonomous Boundaries
 

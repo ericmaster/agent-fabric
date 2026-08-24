@@ -51,19 +51,14 @@ flowchart TD
 
     RESULT -- "FAIL / BLOCKED" --> PRESERVE --> DIAG_CTX --> REBR --> BUDGET
     BUDGET -- Yes --> IMPL
-    BUDGET -- No --> ESCALATE_ART --> POST
+    BUDGET -- No --> ESCALATE_ART --> REPORT
 
-    subgraph "Post-Plan Hook"
-        POST["post-plan hook\n(if installed)"]
-    end
+    RESULT -- PASS --> REPORT
 
-    RESULT -- PASS --> POST
-
-    POST --> REPORT["Return machine-readable report\n{status · dod[] · required_gates[]\nremaining_blockers[] · changed_files[]}"]
+    REPORT["Return machine-readable report\n{status · dod[] · required_gates[]\nremaining_blockers[] · changed_files[]}"]
     REPORT --> DONE([Hand off to plan-supervisor])
 
     style LT fill:#6366f1,color:#fff,stroke:none
-    style POST fill:#6366f1,color:#fff,stroke:none
     style IMPL fill:#0ea5e9,color:#fff,stroke:none
     style REV fill:#0ea5e9,color:#fff,stroke:none
     style QA fill:#0ea5e9,color:#fff,stroke:none
@@ -94,7 +89,6 @@ flowchart LR
 | Hook | When | Purpose |
 |---|---|---|
 | `load-task` | Start | Resolve and validate atomic task; block if design gap |
-| `post-plan` | After final report | Notify / signal to plan-supervisor or task-system |
 
 ## Output Contract
 

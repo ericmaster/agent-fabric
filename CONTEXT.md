@@ -29,8 +29,8 @@ _Avoid_: lockfile, statefile, registry, tracking file
 
 **Hook Event**:
 One of the six portable lifecycle extension points (`load-task`, `pre-plan`, `classify`, `label`,
-`decompose`, `post-plan`) defined in canonical bodies and resolved deterministically at install/sync
-time from host-global `~/.agent-hooks/`.
+`decompose`, `post-plan`) supported by Agent Fabric; canonical agents declare their own subset via
+frontmatter, resolved deterministically at install/sync time from host-global `~/.agent-hooks/`.
 _Avoid_: callback, plugin, middleware, interceptor
 
 **Profile Tier**:
