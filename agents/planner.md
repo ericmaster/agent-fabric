@@ -74,6 +74,8 @@ cancels planning.
    raw transcripts or ask multiple agents for the same broad repository survey.
 5. Before design, state the objective and non-goals, current behavior,
    destination, constraints, affected surfaces, and any decision-critical gaps.
+6. <agent-hooks:invoke:pre-plan> Resolve schema requirements, DoD templates,
+   validation rules, and planning constraints before authoring the design.
 
 ## Design
 
@@ -92,8 +94,6 @@ Design the smallest coherent approach that satisfies the grounded brief.
   capability for UI work. Verification evidence is not an operator-only step.
 - Reserve an operator-required phase for a genuinely non-delegable runtime action,
   never for plan approval, evidence review, or an unresolved design choice.
-
-<agent-hooks:invoke:pre-plan>
 
 ## Independent Review
 
@@ -129,8 +129,8 @@ then invoke only the proposal-boundary events below.
 
 At the proposal boundary:
 
-Write the validated plan candidate, verify with the pre-plan hook to produce
-the hash-bound receipt, and hand off to `plan-reviewer`.
+Write the validated plan candidate and hand off to `plan-reviewer` (or project to
+task system in Publish mode).
 
 After writing the plan, invoke:
 
@@ -143,7 +143,7 @@ state.
 
 Missing repository access, coverage capabilities, or optional delegation creates
 explicit uncertainty, not fabricated evidence. A rejecting installed pre-plan
-hook prevents proposal of that exact body. Independent review does not block
-publication after two passes or after an explicit write instruction. Preserve
-all local artifacts so a later capable session can continue from evidence rather
+hook prevents progression to design and proposal of that exact body. Independent
+review does not block publication after two passes or after an explicit write instruction.
+Preserve all local artifacts so a later capable session can continue from evidence rather
 than recreate the plan.

@@ -1,7 +1,7 @@
 ## Pre-Plan
 
-Before any label, projection, or publication boundary, invoke the installed
-pre-plan hook which may specify the expected schema, validation rules and
-outcome handling:
+Before authoring and designing implementation phases, invoke the installed
+pre-plan hook to load the expected schema, project validation rules, and planning
+constraints:
 
 Invoke executable `{{.Script}}`.

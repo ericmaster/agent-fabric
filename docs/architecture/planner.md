@@ -19,25 +19,21 @@ flowchart TD
     START([User / Task Seed]) --> LT
 
     subgraph "Initial Understanding"
-        LT["① load-task hook\nResolve seed from request,\nexplicit file, or task-system item"]
-        CL["② classify hook\nResolve destination from brief\nand repository ownership evidence"]
-        READ["③ Read destination guidance\nSpecs · ADRs · tests · patterns"]
-        MAP["④ Map affected surfaces\nEntry points · contracts · data flow\npersistence · UI/API · rollback seams"]
-        GAPS["⑤ Delegate bounded discovery\nor design questions (if needed)"]
-        BRIEF["⑥ State objective, non-goals,\ncurrent behavior, destination,\nconstraints, and decision-critical gaps"]
+        LT["① load-task hook (optional)\nResolve seed from request,\nexplicit file, or task-system item"]
+        READ["② Read destination guidance\nSpecs · ADRs · tests · patterns"]
+        MAP["③ Map affected surfaces\nEntry points · contracts · data flow\npersistence · UI/API · rollback seams"]
+        GAPS["④ Delegate bounded discovery\nor design questions (if needed)"]
+        BRIEF["⑤ State objective, non-goals,\ncurrent behavior, destination,\nconstraints, and decision-critical gaps"]
+        PP["⑥ pre-plan hook (optional)\nLoad schema, DoD templates,\nvalidation rules & constraints"]
     end
 
-    LT --> CL --> READ --> MAP --> GAPS --> BRIEF
+    LT --> READ --> MAP --> GAPS --> BRIEF --> PP
 
     subgraph "Design"
         DESIGN["Design smallest coherent approach\n• Vertical slices (not horizontal layers)\n• Prefactor only when needed for safety\n• Minimal, acyclic dependencies\n• Each phase independently delegable\n• Visual acceptance criteria for UI"]
     end
 
-    BRIEF --> DESIGN
-
-    subgraph "Pre-Plan Hook (optional)"
-        PP["pre-plan hook\nValidation / enrichment rules\n(skip if not installed)"]
-    end
+    PP --> DESIGN
 
     subgraph "Independent Review"
         WRITE{Explicit write?}
@@ -49,8 +45,8 @@ flowchart TD
 
     DESIGN --> WRITE
     WRITE -- Yes --> PROPOSE
-    WRITE -- No --> PP
-    PP --> REVIEWER --> VERDICT
+    WRITE -- No --> REVIEWER
+    REVIEWER --> VERDICT
     VERDICT -- PASS --> PROPOSE
     VERDICT -- REVISE --> REVISE --> CAP
     CAP -- No --> REVIEWER
@@ -58,32 +54,24 @@ flowchart TD
 
     subgraph "Proposal Boundary"
         PROPOSE["Write canonical plan body\n(Phase-block form)"]
-        LBL["label hook\nApply labels / state"]
-        DEC["decompose hook\nProject child tasks into\ntask-system (if installed)"]
-        PPOST["post-plan hook\nPublish / notify (if installed)"]
+        PPOST["post-plan hook (optional)\nPublish / notify / trigger downstream"]
     end
 
-    PROPOSE --> LBL --> DEC --> PPOST --> DONE([Plan ready for approval])
+    PROPOSE --> PPOST --> DONE([Plan ready for approval])
 
     style LT fill:#6366f1,color:#fff,stroke:none
-    style CL fill:#6366f1,color:#fff,stroke:none
     style PP fill:#a855f7,color:#fff,stroke:none
     style REVIEWER fill:#0ea5e9,color:#fff,stroke:none
-    style LBL fill:#6366f1,color:#fff,stroke:none
-    style DEC fill:#6366f1,color:#fff,stroke:none
     style PPOST fill:#6366f1,color:#fff,stroke:none
 ```
 
 ## Hook Summary
 
-| Hook | When | Installed behaviour | Not installed |
+| Hook | Lifecycle Stage | Suggested Usage / Role | Default Behavior (No-op / Agent Decides) |
 |---|---|---|---|
-| `load-task` | Step 1 | Custom task resolution / enrichment | Agent resolves seed from context |
-| `classify` | Step 2 | Route to project · team · service catalog | Agent infers destination from evidence |
-| `pre-plan` | Before proposal | Validation gate (blocks on reject) | Continue without validation |
-| `label` | Proposal boundary | Apply task-system labels | No-op |
-| `decompose` | Proposal boundary | Project phases as child tasks | No-op |
-| `post-plan` | After proposal | Publish · notify · trigger downstream | No-op |
+| `load-task` | Initial Understanding (Step 1) | Enrich or resolve task seed from host issue tracker or custom format | No-op — agent resolves seed directly from prompt context |
+| `pre-plan` | Pre-Design (Step 6) | Inject target plan schema, DoD templates, validation rules, or custom constraints | No-op — agent decides structure using canonical baseline phase blocks |
+| `post-plan` | Proposal Boundary | Emit plan publication events, notifications, or downstream task projection | No-op — agent completes proposal locally without external events |
 
 ## Operating Modes
 

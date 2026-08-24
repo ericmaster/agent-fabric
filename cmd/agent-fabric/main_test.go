@@ -464,7 +464,7 @@ func TestPlannerPrePlanHookRendering(t *testing.T) {
 		if !strings.Contains(rendered.Body, "## Pre-Plan") {
 			t.Fatalf("expected ## Pre-Plan heading, got:\n%s", rendered.Body)
 		}
-		if !strings.Contains(rendered.Body, "pre-plan hook which may specify the expected schema, validation rules and\noutcome handling:") {
+		if !strings.Contains(rendered.Body, "pre-plan hook to load the expected schema, project validation rules, and planning\nconstraints:") {
 			t.Fatalf("expected schema/rules note, got:\n%s", rendered.Body)
 		}
 		if strings.Contains(rendered.Body, "## Optional Pre-Plan Hook") {
