@@ -93,15 +93,7 @@ Design the smallest coherent approach that satisfies the grounded brief.
 - Reserve an operator-required phase for a genuinely non-delegable runtime action,
   never for plan approval, evidence review, or an unresolved design choice.
 
-## Optional Pre-Plan Hook
-
-Before any label, projection, or publication boundary, optionally invoke the
-installed pre-plan hook:
-
 <agent-hooks:invoke:pre-plan>
-
-The hook defines any validation rules and outcome handling. When it is not
-installed, continue planning without defining its own validation.
 
 ## Independent Review
 

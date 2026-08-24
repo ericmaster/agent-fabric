@@ -165,11 +165,7 @@ credentials, and private task-system details remain adapter- or host-owned.
 
 ```sh
 scripts/release.sh 1.0.0 dist
-./scripts/release-gate.sh
 ```
 
 The release script builds static Linux amd64/arm64, macOS amd64/arm64, and
-Windows amd64 archives, `sha256sums.txt`, and `release-manifest.json`. The release
-gate fails closed unless an explicitly approved disposable Proxmox target is
-configured, and it destroys only the claimed validation container after proving
-cleanup.
+Windows amd64 archives, `sha256sums.txt`, and `release-manifest.json`.

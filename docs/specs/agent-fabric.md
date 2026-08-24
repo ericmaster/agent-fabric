@@ -49,25 +49,18 @@ environment variables; adapters and hosts own those integrations.
 Canonical bodies declare registered hooks with `<agent-hooks:list-available>` and
 `<agent-hooks:invoke:<event>>` placeholders. During install or sync, the CLI
 resolves each registered event once from host-global `~/.agent-hooks/`; Markdown
-precedes an executable script. The generated agent receives either instructions
-to follow the Markdown file, an executable script path, or an explicit no-hook
-continuation. The generated file is therefore deterministic until its next
-install or sync. Hooks own their own caching, logging, input transport, and
-failure semantics; canonical agents only follow the rendered invocation
-instruction.
+precedes an executable script. The generated agent receives either inlined
+Markdown instructions, an executable script path, or an explicit no-hook
+continuation (or section omission for optional lifecycle blocks). The generated
+file is therefore deterministic until its next install or sync. Hooks own their
+own caching, logging, input transport, and failure semantics; canonical agents
+only follow the rendered invocation instruction.
 
 Release archives are static cross-platform builds accompanied by
 `sha256sums.txt` and a machine-readable `release-manifest.json`. Bootstrap verifies
 archive member paths and types before extraction, installs `agent-fabric` and a
 copied `agf` alias, removes only its bundled source directories, and never edits
 shell profiles.
-
-The disposable Proxmox release gate may install its own `curl`, CA certificates,
-`tar`, and coreutils prerequisites inside the temporary Debian validation
-container before exercising the public bootstrap. Its bootstrap fetch uses IPv4
-with bounded retries because the validation network may advertise unreachable
-IPv6. The container is stopped and destroyed only after its claimed VMID and
-hostname are verified.
 
 `AGF_INSTALL_DIR` is a bootstrap setting for the executable location; the CLI
 does not expose a no-op self-install flag.

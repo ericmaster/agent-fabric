@@ -21,13 +21,14 @@ canonical workflows into native configurations for OpenCode, Kilo, Antigravity C
 ```
 agents/                  Canonical portable agent definitions (schema v1)
 adapters/                Target harness adapter JSON mappings
+hooks/                   Default hook templates and fallback instructions
 cmd/agent-fabric/        CLI commands (install, sync, validate, doctor, hub, uninstall)
 internal/agent/          Agent definition parsing, validation, and hook schema checking
 internal/adapter/        Multi-harness rendering engine and format converters
 internal/manifest/       Atomic state tracking (.agent-fabric-manifest.json)
 docs/                    Versioned wiki (docs-organization-blueprint.md, specs/, adr/)
 fixtures/                Golden test fixtures for adapter rendering
-scripts/                 Release packaging and disposable Proxmox gate verification
+scripts/                 Release packaging and bootstrap tooling
 ```
 
 ## First-time setup
@@ -44,7 +45,6 @@ go build -o agent-fabric ./cmd/agent-fabric
 | `go test ./...` | Runs all unit and golden fixture tests |
 | `go build ./cmd/agent-fabric` | Compiles the `agent-fabric` CLI binary |
 | `scripts/release.sh <version> dist` | Builds cross-platform release archives, checksums, and manifest |
-| `./scripts/release-gate.sh` | Runs end-to-end bootstrap validation in disposable Proxmox container |
 
 ## Architecture at a glance
 

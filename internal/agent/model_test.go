@@ -26,7 +26,7 @@ func TestParseFrontmatterHooksAndRootKeysAfterFabricBlock(t *testing.T) {
 
 func TestCanonicalAgentsRetainWorkflowContracts(t *testing.T) {
 	anchors := map[string][]string{
-		"planner":         {"## Initial Understanding", "## Optional Pre-Plan Hook", "## Independent Review", "## Final Plan And Proposal"},
+		"planner":         {"## Initial Understanding", "## Design", "## Independent Review", "## Final Plan And Proposal"},
 		"plan-supervisor": {"## Execution Model", "## Evidence Contract", "## Failure And Recovery"},
 		"loop-supervisor": {"## Outcome Contract", "## Atomic Execution Loop", "## Bounded Recovery"},
 		"implementor":     {"Before editing", "Run the exact required checks", "## Execution And Handoff"},

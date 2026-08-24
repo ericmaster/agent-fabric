@@ -12,8 +12,8 @@ for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; d
   name="agent-fabric_${version}_${os}_${arch}"
   work="$(mktemp -d)"
   GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$work/agent-fabric${suffix}" "$root/cmd/agent-fabric"
-  cp -R "$root/agents" "$root/adapters" "$work/"
-  tar -C "$work" -czf "$out/${name}.tar.gz" "agent-fabric${suffix}" agents adapters
+  cp -R "$root/agents" "$root/adapters" "$root/hooks" "$work/"
+  tar -C "$work" -czf "$out/${name}.tar.gz" "agent-fabric${suffix}" agents adapters hooks
   rm -rf "$work"
 done
 if command -v sha256sum >/dev/null; then

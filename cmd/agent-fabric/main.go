@@ -471,7 +471,14 @@ func renderHookPlaceholders(d agent.Definition) (agent.Definition, error) {
 		if strings.Count(d.Body, marker) != 1 {
 			return d, fmt.Errorf("%s must contain %q exactly once", d.ID, marker)
 		}
-		d.Body = strings.ReplaceAll(d.Body, marker, hookInvocation(event, resolution))
+		inv := hookInvocation(d.ID, event, resolution)
+		if inv == "" {
+			d.Body = strings.ReplaceAll(d.Body, marker+"\n\n", "")
+			d.Body = strings.ReplaceAll(d.Body, marker+"\n", "")
+			d.Body = strings.ReplaceAll(d.Body, marker, "")
+		} else {
+			d.Body = strings.ReplaceAll(d.Body, marker, inv)
+		}
 	}
 	const listMarker = "<agent-hooks:list-available>"
 	if strings.Count(d.Body, listMarker) != 1 {
@@ -514,14 +521,50 @@ func regularFile(path string, executable bool) bool {
 	return !executable || info.Mode().Perm()&0o111 != 0
 }
 
-func hookInvocation(event string, resolution hookResolution) string {
+func hookInvocation(agentID, event string, resolution hookResolution) string {
 	if resolution.markdown != "" {
+		content, err := os.ReadFile(resolution.markdown)
+		if err == nil && len(strings.TrimSpace(string(content))) > 0 {
+			return strings.TrimSpace(string(content))
+		}
 		return fmt.Sprintf("Execute `%s` hook instructions in `%s`.", event, resolution.markdown)
 	}
 	if resolution.script != "" {
+		tmpl := defaultHookTemplate(agentID, event)
+		if tmpl != "" {
+			return strings.ReplaceAll(tmpl, "{{.Script}}", resolution.script)
+		}
 		return fmt.Sprintf("Invoke executable `%s`.", resolution.script)
 	}
+	if agentID == "planner" && event == "pre-plan" {
+		return ""
+	}
 	return fmt.Sprintf("No `%s` hook is installed; continue without it.", event)
+}
+
+func defaultHookTemplate(agentID, event string) string {
+	candidates := []string{
+		filepath.Join("hooks", agentID, event+".md"),
+		filepath.Join("hooks", event+".md"),
+		filepath.Join("..", "..", "hooks", agentID, event+".md"),
+		filepath.Join("..", "..", "hooks", event+".md"),
+	}
+	if executable, err := os.Executable(); err == nil {
+		if resolved, evalErr := filepath.EvalSymlinks(executable); evalErr == nil {
+			executable = resolved
+		}
+		root := filepath.Dir(executable)
+		candidates = append(candidates,
+			filepath.Join(root, "hooks", agentID, event+".md"),
+			filepath.Join(root, "hooks", event+".md"),
+		)
+	}
+	for _, path := range candidates {
+		if content, err := os.ReadFile(path); err == nil && len(strings.TrimSpace(string(content))) > 0 {
+			return strings.TrimSpace(string(content))
+		}
+	}
+	return ""
 }
 
 func hookList(events []string, resolved map[string]hookResolution) string {

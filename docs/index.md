@@ -33,7 +33,7 @@ document's home is ambiguous, and apply the frontmatter from §4.
 
 ## Specs
 
-- [`specs/agent-fabric.md`](specs/agent-fabric.md) — Portable agent schema, multi-harness adapter rendering, manifest tracking, and disposable release gate verification.
+- [`specs/agent-fabric.md`](specs/agent-fabric.md) — Portable agent schema, multi-harness adapter rendering, and manifest tracking.
 
 ## Runbooks
 

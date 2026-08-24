@@ -405,12 +405,91 @@ func TestRenderHookPlaceholdersUsesGlobalHooksOnly(t *testing.T) {
 	if !strings.Contains(rendered.Body, filepath.Join(globalHooks, "pre-plan.md")) || strings.Contains(rendered.Body, projectHooks) || strings.Contains(rendered.Body, filepath.Join(globalHooks, "pre-plan.sh")) {
 		t.Fatalf("global Markdown was not selected exclusively: %s", rendered.Body)
 	}
+	if !strings.Contains(rendered.Body, "validate the candidate") {
+		t.Fatalf("global Markdown instructions were not inlined: %s", rendered.Body)
+	}
 	if !strings.Contains(rendered.Body, "Invoke executable `"+filepath.Join(globalHooks, "classify.sh")+"`.") {
 		t.Fatalf("global executable was not rendered: %s", rendered.Body)
 	}
 	if !strings.Contains(rendered.Body, "No `post-plan` hook is installed; continue without it.") {
 		t.Fatalf("missing hook continuation was not rendered: %s", rendered.Body)
 	}
+}
+
+func TestPlannerPrePlanHookRendering(t *testing.T) {
+	canonicalPlanner, err := agent.ParseFile(filepath.Join("..", "..", "agents", "planner.md"))
+	if err != nil {
+		t.Fatalf("failed to parse canonical planner: %v", err)
+	}
+
+	// 1. When pre-plan has backing .md instructions file
+	t.Run("with backing markdown", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		globalHooks := filepath.Join(home, ".agent-hooks")
+		if err := os.MkdirAll(globalHooks, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		instructions := "## Custom Pre-Plan Instructions\n\nFollow these custom schema and validation steps."
+		if err := os.WriteFile(filepath.Join(globalHooks, "pre-plan.md"), []byte(instructions), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		rendered, err := renderHookPlaceholders(canonicalPlanner)
+		if err != nil {
+			t.Fatalf("render error: %v", err)
+		}
+		if !strings.Contains(rendered.Body, instructions) {
+			t.Fatalf("expected inlined instructions, got:\n%s", rendered.Body)
+		}
+		if strings.Contains(rendered.Body, "## Optional Pre-Plan Hook") {
+			t.Fatalf("must not contain obsolete Optional Pre-Plan Hook heading")
+		}
+	})
+
+	// 2. When pre-plan is a script with no backing .md
+	t.Run("with script only", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		globalHooks := filepath.Join(home, ".agent-hooks")
+		if err := os.MkdirAll(globalHooks, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(globalHooks, "pre-plan.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		rendered, err := renderHookPlaceholders(canonicalPlanner)
+		if err != nil {
+			t.Fatalf("render error: %v", err)
+		}
+		if !strings.Contains(rendered.Body, "## Pre-Plan") {
+			t.Fatalf("expected ## Pre-Plan heading, got:\n%s", rendered.Body)
+		}
+		if !strings.Contains(rendered.Body, "pre-plan hook which may specify the expected schema, validation rules and\noutcome handling:") {
+			t.Fatalf("expected schema/rules note, got:\n%s", rendered.Body)
+		}
+		if strings.Contains(rendered.Body, "## Optional Pre-Plan Hook") {
+			t.Fatalf("must not contain obsolete Optional Pre-Plan Hook heading")
+		}
+	})
+
+	// 3. When no pre-plan hook is installed
+	t.Run("with no hook installed", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		rendered, err := renderHookPlaceholders(canonicalPlanner)
+		if err != nil {
+			t.Fatalf("render error: %v", err)
+		}
+		if strings.Contains(rendered.Body, "## Pre-Plan") {
+			t.Fatalf("must not contain ## Pre-Plan when no hook exists, got:\n%s", rendered.Body)
+		}
+		if strings.Contains(rendered.Body, "## Optional Pre-Plan Hook") {
+			t.Fatalf("must not contain ## Optional Pre-Plan Hook when no hook exists")
+		}
+		if strings.Contains(rendered.Body, "<agent-hooks:") {
+			t.Fatalf("leaked placeholder in rendered body")
+		}
+	})
 }
 
 func TestHubInstallResolvesHubToHubDependency(t *testing.T) {
