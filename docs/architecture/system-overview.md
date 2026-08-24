@@ -100,7 +100,7 @@ flowchart TD
 | [Planner](planner.md) | `planner` | primary | sandbox | load-task · classify · pre-plan · label · decompose · post-plan |
 | [Plan Reviewer](plan-reviewer.md) | `reviewer` | subagent | sandbox | pre-plan |
 | [Plan Supervisor](plan-supervisor.md) | `supervisor` | primary | workspace | load-task · classify · pre-plan · decompose · label · post-plan |
-| [Loop Supervisor](loop-supervisor.md) | `supervisor` | primary | workspace | load-task · post-plan |
+| [Loop Supervisor](loop-supervisor.md) | `supervisor` | all | workspace | load-task · post-plan |
 | [Implementor](implementor.md) | `worker` | subagent | sandbox | load-task |
 | [Code Reviewer](code-reviewer.md) | `reviewer` | subagent | sandbox | load-task |
 | [QA Runner](qa-runner.md) | `qa` | subagent | sandbox | post-plan |

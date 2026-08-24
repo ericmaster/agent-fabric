@@ -1,6 +1,6 @@
 # Loop Supervisor — Workflow Diagram
 
-`agents/loop-supervisor.md` · profile: `supervisor` · mode: `primary` · isolation: `workspace`
+`agents/loop-supervisor.md` · profile: `supervisor` · mode: `all` · isolation: `workspace`
 
 The Loop Supervisor drives one atomic task through implementation, review, testing, and
 DoD validation. It owns the control loop and evidence integrity; it never self-certifies work.

@@ -120,6 +120,6 @@ sequenceDiagram
         P->>P: Verify each finding<br/>Incorporate supported corrections<br/>Rebuild affected phase boundaries
         P->>R: Updated candidate (fresh context)
         R-->>P: PASS or final REVISE
-        Note over P,R: Max 2 review passes.<br/>Persistent blocker → Planner stops.
+        Note over P,R: Max 2 review passes.<br/>Persistent REVISE → Planner publishes.
     end
 ```

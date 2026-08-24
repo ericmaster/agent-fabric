@@ -5,6 +5,13 @@
 The Planner authors grounded, independently reviewed implementation plans as executable vertical
 slices. It never executes phases or treats a proposal as approval.
 
+A concurrently loaded host skill (interview, artifact, or documentation skill) augments a single
+workflow step but never replaces the plan deliverable: the workflow stays incomplete until the
+canonical plan body is written at the proposal boundary or a Publish-mode write completes.
+
+The canonical body also includes a planner-mode system reminder that reinforces this boundary and
+prevents companion skill artifacts from being mistaken for implementation.
+
 ## Full Workflow
 
 ```mermaid
@@ -32,17 +39,22 @@ flowchart TD
         PP["pre-plan hook\nValidation / enrichment rules\n(skip if not installed)"]
     end
 
-    DESIGN --> PP
-
     subgraph "Independent Review"
-        REVIEWER["Spawn plan-reviewer\nin fresh context\n(required for multi-phase plans)"]
+        WRITE{Explicit write?}
+        REVIEWER["Spawn plan-reviewer\nin fresh context\n(default cap: two passes)"]
         VERDICT{Reviewer verdict?}
         REVISE["Incorporate supported\ncorrections · rebuild\naffected phase boundaries"]
+        CAP{Second pass done?}
     end
 
+    DESIGN --> WRITE
+    WRITE -- Yes --> PROPOSE
+    WRITE -- No --> PP
     PP --> REVIEWER --> VERDICT
-    VERDICT -- REVISE --> REVISE --> REVIEWER
     VERDICT -- PASS --> PROPOSE
+    VERDICT -- REVISE --> REVISE --> CAP
+    CAP -- No --> REVIEWER
+    CAP -- Yes --> PROPOSE
 
     subgraph "Proposal Boundary"
         PROPOSE["Write canonical plan body\n(Phase-block form)"]
@@ -79,4 +91,5 @@ flowchart TD
 |---|---|---|
 | **Author** | New goal, brief, file, or task seed | — |
 | **Refine** | Eligible draft plan exists | Must still be a draft; not approved, projected, or blocked by children |
+| **Publish** | User instructs writing the plan to the task system | Write the current candidate; skip remaining reviews and earlier hooks |
 | **Approval / projection** | Explicit operator authorization | Requires stored body + auditable receipt |

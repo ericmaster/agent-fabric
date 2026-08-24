@@ -81,6 +81,31 @@ func TestPlannerDelegatesOptionalValidationToPrePlanHook(t *testing.T) {
 	}
 }
 
+func TestPlannerCapsReviewAndHonorsPublishInstruction(t *testing.T) {
+	d, err := ParseFile(filepath.Join("..", "..", "agents", "planner.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"**Publish:**",
+		"two `plan-reviewer` passes",
+		"explicit write instruction",
+		"Skip remaining reviews",
+	} {
+		if !strings.Contains(d.Body, want) {
+			t.Errorf("planner missing %q", want)
+		}
+	}
+	for _, forbidden := range []string{
+		"Proceed only when review passes",
+		"independent review prevents proposal",
+	} {
+		if strings.Contains(d.Body, forbidden) {
+			t.Errorf("planner still blocks on review: %q", forbidden)
+		}
+	}
+}
+
 func TestParseFrontmatterRejectsInvalidSchema(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "invalid-schema.md")

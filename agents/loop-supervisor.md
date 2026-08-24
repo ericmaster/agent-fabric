@@ -1,6 +1,6 @@
 ---
 description: Supervises one atomic task through implementation, review, testing, and definition-of-done validation
-mode: primary
+mode: all
 hooks: [load-task, post-plan]
 x-agent-fabric:
   schema: 1
