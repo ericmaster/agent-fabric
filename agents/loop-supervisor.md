@@ -1,7 +1,7 @@
 ---
 description: Supervises one atomic task through implementation, review, testing, and definition-of-done validation
 mode: all
-hooks: [load-task, post-plan]
+hooks: [load-task]
 x-agent-fabric:
   schema: 1
   profile: supervisor
@@ -77,10 +77,6 @@ and make bounded remediation attempts. Stop and produce an escalation artifact
 when the budget is exhausted, an operator-only action is required, or no
 reversible option remains. Do not advance a dependent task while this task lacks
 verified `PASS` evidence.
-
-After producing the final report:
-
-<agent-hooks:invoke:post-plan>
 
 Return a machine-readable report:
 

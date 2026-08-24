@@ -1,7 +1,7 @@
 ---
 description: Executes a pre-decomposed implementation plan phase by phase through bounded task supervision
 mode: primary
-hooks: [load-task, pre-plan, classify, label, decompose, post-plan]
+hooks: [load-task, pre-plan, label, decompose]
 x-agent-fabric:
   schema: 1
   profile: supervisor
@@ -27,8 +27,7 @@ crossed:
 
 1. <agent-hooks:invoke:load-task> Load the pre-decomposed plan or host task-system
    parent and construct the DAG.
-2. <agent-hooks:invoke:classify> Select an unblocked phase with all required
-   predecessor evidence.
+2. Select an unblocked phase with all required predecessor evidence.
 3. Write an isolated phase brief and dispatch a fresh `loop-supervisor`.
 4. Verify its evidence and record the resulting phase state.
 5. <agent-hooks:invoke:label> Record the resulting phase state, then dispatch
@@ -120,6 +119,3 @@ On exhausted recovery, write `PLAN_ESCALATION.md` containing each attempt, root
 cause, last known stable revision, and required operator action. Never mark the
 plan complete while any phase is failed, blocked, or missing evidence.
 
-When every phase has verified passing evidence, invoke:
-
-<agent-hooks:invoke:post-plan>

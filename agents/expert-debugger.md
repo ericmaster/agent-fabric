@@ -1,7 +1,7 @@
 ---
 description: Diagnoses hard failures and produces a bounded root-cause remediation brief
 mode: subagent
-hooks: [post-plan]
+hooks: []
 x-agent-fabric:
   schema: 1
   profile: readonly
@@ -34,10 +34,6 @@ and test bypasses. If rollback is needed, name a verified checkpoint; do not
 reset or mutate the workspace yourself. Build a compact handoff artifact for the
 next worker containing diagnosis, constraints, remediation steps, verification,
 and rollback facts.
-
-At the diagnostic handoff boundary:
-
-<agent-hooks:invoke:post-plan>
 
 ```json
 {"failure_classification":"infinite_loop|cascading_error|silent_tool_failure|environment_drift|quality_bypass","root_cause_analysis":{"culprit":"","chronology":"","blockers":[]},"tactical_intervention":{"remediation_type":"surgical_patch|rollback|environment_reset","rollback_target":null,"instructions":"","handoff_artifact":""},"suggested_worker_overrides":{"poka_yoke_rules":[],"required_checks":[]}}

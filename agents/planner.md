@@ -1,7 +1,7 @@
 ---
 description: Authors grounded, independently reviewed implementation plans as executable vertical slices
 mode: primary
-hooks: [load-task, pre-plan]
+hooks: [load-task, pre-plan, post-plan]
 x-agent-fabric:
   schema: 1
   profile: planner
@@ -139,6 +139,10 @@ At the proposal boundary:
 
 Write the validated plan candidate, verify with the pre-plan hook to produce
 the hash-bound receipt, and hand off to `plan-reviewer`.
+
+After writing the plan, invoke:
+
+<agent-hooks:invoke:post-plan>
 
 Never invent external identifiers, labels, children, relations, or publication
 state.

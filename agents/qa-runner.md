@@ -1,7 +1,7 @@
 ---
 description: Runs deterministic and visual verification and reports evidence against the exact definition of done
 mode: subagent
-hooks: [post-plan]
+hooks: []
 x-agent-fabric:
   schema: 1
   profile: qa
@@ -33,9 +33,6 @@ test bypasses; when feasible, prove a new test would fail without the implemente
 behavior. Apply a circuit breaker to repeating command or browser loops, preserve
 the state, and return `BLOCKED` rather than burning retries.
 
-After producing the QA report:
-
-<agent-hooks:invoke:post-plan>
 ```json
 {"outcome_verdict":"PASS|FAIL|BLOCKED","contract_compliance":{"dod_verified":false,"satisfied_criteria":[],"unmet_criteria":[]},"automated_tests":{"total_run":0,"passed":0,"failed":0,"mutation_check":"PASS|FAIL|NOT_AVAILABLE","raw_errors_summary":""},"visual_e2e_testing":{"status":"PASS|FAIL|NOT_AVAILABLE","screenshots_captured":[],"ui_bugs":[]},"anti_cheat_logs":{"test_bypass_detected":false,"hollow_mocks_detected":false},"detailed_bug_report":{"summary":"","execution_trace_log_path":""}}
 ```
