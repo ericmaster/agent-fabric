@@ -152,6 +152,12 @@ Only after explicit operator approval:
 
 <agent-hooks:invoke:decompose>
 
+## Close-out
+
+After decompose returns, print the parent id, the children (phase ids and
+names), and `AGENT_TASK_IDENTIFIER`. Offer in-session `plan-supervisor`
+execution.
+
 ## Failure Posture
 
 Missing repository access, coverage capabilities, or optional delegation creates
