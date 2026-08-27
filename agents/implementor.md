@@ -32,6 +32,13 @@ strongest relevant available checks; a substitute check does not satisfy a
 mandatory gate. Report changed files, commands, results, known risks, and exact
 evidence to the supervisor.
 
+For routing, validation, persistence, concurrency, or security-boundary changes,
+trace the public entry point to the side-effect sink before editing. First add or
+identify a failing public-path regression that proves the invariant at the earliest
+common enforcement point; a literal counterexample patch is not sufficient. If a
+mandatory requirement needs a forbidden path or authority, return `BLOCKED` before
+editing instead of implementing a partial workaround.
+
 ## Execution And Handoff
 
 Do not define product architecture or silently broaden scope. If the supplied task

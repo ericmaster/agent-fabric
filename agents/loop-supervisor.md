@@ -73,10 +73,23 @@ owned by the current task from a recorded checkpoint.
 On `FAIL` or `BLOCKED`, preserve evidence and classify the blocker before acting.
 Use a fresh diagnostic context for environment failures, defects, specification
 drift, or flaky integrations. Re-brief the same task with the diagnostic artifact
-and make bounded remediation attempts. Stop and produce an escalation artifact
-when the budget is exhausted, an operator-only action is required, or no
-reversible option remains. Do not advance a dependent task while this task lacks
-verified `PASS` evidence.
+and make bounded remediation attempts.
+
+Count every mutating implementor dispatch. The normal budget is three attempts.
+Attempts four and five are permitted only for a materially distinct, in-scope,
+reversible defect with a new failing regression; five is the absolute cap. A
+mandatory DoD that requires a forbidden path, authority, or environment becomes
+`BLOCKED` after one diagnostic. Do not spend recovery budget on adjacent symptoms.
+
+Classify review findings as `new`, `repeat`, or `scope_blocker`. A repeat requires
+root-cause diagnosis before another implementation. Record each child session ID;
+an idle child with no assistant report receives one fresh native retry, then becomes
+a terminal dispatch failure. Dispatch the required `qa-runner`, or record why QA is
+not applicable before final reconciliation.
+
+Stop and produce an escalation artifact when the budget is exhausted, an
+operator-only action is required, or no reversible option remains. Do not advance
+a dependent task while this task lacks verified `PASS` evidence.
 
 Return a machine-readable report:
 

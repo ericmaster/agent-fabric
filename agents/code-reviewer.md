@@ -28,6 +28,12 @@ leave new tests green, the tests do not prove the change. Return findings ordere
 by severity with file/symbol references, verification gaps, and a `PASS` only
 when no material defect remains.
 
+Classify every rejection finding as `new`, `repeat`, or `scope_blocker`. For a
+security, routing, or persistence finding, identify the earliest common enforcement
+point and test an exploit matrix through the public path to the side-effect sink.
+A repeated finding must explain why the prior remediation missed the invariant;
+a scope blocker must name the required path or authority so the supervisor can stop.
+
 ## Review Protocol
 
 Run deterministic static analysis before semantic judgment. Syntax, import, or
