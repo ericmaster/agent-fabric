@@ -122,7 +122,7 @@ func TestSupervisionRecoveryContracts(t *testing.T) {
 		{"loop-supervisor", []string{
 			"Rebriefing, resuming, and fresh sessions never reset",
 			"a `scope_blocker` immediately returns `BLOCKED`",
-			"second substantive code or specification rejection",
+			"second substantive code review rejection or QA failure",
 			"earliest shared enforcement boundary",
 			"\"attempts\":",
 		}, nil},
@@ -150,6 +150,71 @@ func TestSupervisionRecoveryContracts(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestReviewerAndQARunnerScopeBoundaries(t *testing.T) {
+	cr, err := ParseFile(filepath.Join("..", "..", "agents", "code-reviewer.md"))
+	if err != nil {
+		t.Fatalf("parse code-reviewer: %v", err)
+	}
+
+	// Code reviewer must statically trace (not dynamically test) exploits and focus on code-level evidence.
+	crWants := []string{
+		"statically trace the exploit matrix through\nthe call path",
+		"Reject missing code-level evidence",
+		"dynamic verification and live command\nexecution are the exclusive authority of `qa-runner`",
+		"dynamic DoD\nitems must be omitted from reviewer rejections and deferred to QA",
+		"compilation_status: NOT_AVAILABLE",
+		"Syntax, import, or type failures",
+		"untrusted input",
+		"unsafe file paths",
+		"hollow tests",
+		"swallowed errors",
+		"scope drift",
+		"unsupported scope expansion",
+	}
+	for _, want := range crWants {
+		if !strings.Contains(cr.Body, want) {
+			t.Errorf("code-reviewer missing scope boundary assertion: %q", want)
+		}
+	}
+
+	// Code reviewer must not instruct dynamic testing.
+	if strings.Contains(cr.Body, "test an exploit matrix") {
+		t.Errorf("code-reviewer contains dynamic exploit testing instruction")
+	}
+
+	qa, err := ParseFile(filepath.Join("..", "..", "agents", "qa-runner.md"))
+	if err != nil {
+		t.Fatalf("parse qa-runner: %v", err)
+	}
+	qaWants := []string{
+		"without offering code-quality judgments",
+		"deployment evidence is evaluated against\nthe DoD during supervisor reconciliation",
+		"runtime, persistence, payload, and visual checks",
+	}
+	for _, want := range qaWants {
+		if !strings.Contains(qa.Body, want) {
+			t.Errorf("qa-runner missing symmetric boundary assertion: %q", want)
+		}
+	}
+
+	ls, err := ParseFile(filepath.Join("..", "..", "agents", "loop-supervisor.md"))
+	if err != nil {
+		t.Fatalf("parse loop-supervisor: %v", err)
+	}
+	lsWants := []string{
+		"Reclassify review findings grounded solely on absent dynamic evidence",
+		"out-of-authority",
+		"authoritative for runtime and visual claims",
+		"authoritative for code-level contracts",
+		"qa-runner` `FAIL` counts equivalently toward the two-rejection diagnostic trigger",
+	}
+	for _, want := range lsWants {
+		if !strings.Contains(ls.Body, want) {
+			t.Errorf("loop-supervisor missing authority filtering or precedence assertion: %q", want)
+		}
 	}
 }
 

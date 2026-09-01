@@ -26,11 +26,11 @@ flowchart TD
 
         IMPL["② Dispatch implementor\nin fresh context\n(bounded change only)"]
 
-        REV["③ Dispatch code-reviewer\nin fresh context\n(brief + diff · findings are evidence)"]
+        REV["③ Dispatch code-reviewer\nin fresh context\n(brief + diff · static findings only\nauthority-filtered by supervisor)"]
 
-        QA["④ Dispatch qa-runner\n(original DoD · exact required commands\nruntime + visual evidence)"]
+        QA["④ Dispatch qa-runner\n(original DoD · exact required commands\nruntime, persistence, payload + visual evidence)"]
 
-        RECONCILE["⑤ Reconcile all reports\nagainst original task\nRecord final state · update host task"]
+        RECONCILE["⑤ Reconcile all reports\nagainst original task\n(runtime facts authoritative for behavior;\nstatic analysis for code contracts)"]
     end
 
     BRIEF --> IMPL --> REV --> QA --> RECONCILE
@@ -77,9 +77,9 @@ flowchart LR
     LS -->|"bounded brief\n+ workspace state"| IMP
     IMP -->|"changed files\n+ evidence"| LS
     LS -->|"brief + diff"| CR
-    CR -->|"findings JSON"| LS
+    CR -->|"static findings JSON"| LS
     LS -->|"DoD + commands"| QAR
-    QAR -->|"QA report"| LS
+    QAR -->|"runtime/visual QA report"| LS
     LS -.->|"failure artifacts\n(recovery path)"| DBG
     DBG -.->|"remediation brief"| LS
 ```

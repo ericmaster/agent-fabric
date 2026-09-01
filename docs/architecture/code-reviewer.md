@@ -30,7 +30,7 @@ flowchart TD
     subgraph "Semantic Review"
         SEMANTIC["Review diff against DoD\nand supplied specification"]
 
-        CHECK_LIST["Check for:\n• Missing evidence / hollow tests\n• Security boundary violations\n  (untrusted input → exec sinks)\n• Unsafe type escapes\n• Shotgun / duplicated edits\n• Scope drift beyond supplied DoD\n• Swallowed errors"]
+        CHECK_LIST["Check for:\n• Missing code-level evidence\n  (unit test coverage of touched paths)\n• Hollow tests (mutation check)\n• Security boundary violations\n  (untrusted input → exec sinks)\n• Unsafe file paths & type escapes\n• Shotgun / duplicated edits\n• Scope drift beyond supplied DoD\n• Swallowed errors\n• Note: Dynamic QA/screenshots deferred to qa-runner"]
 
         MUTATION["Apply mental mutation test:\nWould reverting the behaviour\nleave new tests green?\nIf yes → tests don't prove the change"]
     end
@@ -99,3 +99,6 @@ flowchart TD
 | Swallowed error | `high` |
 | Scope drift beyond supplied DoD | `high` |
 | Unsupported scope expansion | Reject as finding |
+
+> [!NOTE]
+> **Dynamic Gate Separation**: The Code Reviewer evaluates code diffs, types, and unit test validity. It must never reject tasks for missing runtime execution, persistence/payload checks, visual screenshots, or deployment validation; dynamic gates are deferred exclusively to `qa-runner`.

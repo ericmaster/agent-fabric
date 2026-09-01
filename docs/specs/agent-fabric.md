@@ -65,7 +65,11 @@ force.
 Reviewer rejections are grounded records. Each finding classifies itself as
 `new`, `repeat`, or `scope_blocker` and names the breached DoD item,
 specification clause, mandatory gate, or invariant plus verifiable source or
-command evidence. Ungrounded findings cannot produce rejection.
+command evidence. Ungrounded findings cannot produce rejection. Reviewer findings
+gate exclusively on code-level proof (diff quality, static types, security invariants,
+mental mutation test); rejections citing absent dynamic evidence (runtime execution,
+persistence checks, browser screenshots, or deployment validation) are out-of-authority
+and filtered by the supervisor to QA delegation.
 
 Canonical bodies declare registered hooks with `<agent-hooks:list-available>` and
 `<agent-hooks:invoke:<event>>` placeholders. During install or sync, the CLI

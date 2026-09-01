@@ -50,10 +50,17 @@ status, or unresolved blocker is never `PASS`.
 <agent-hooks:invoke:pre-delegate-implementor>2. Dispatch `implementor` in a fresh context. It owns only the bounded change.
 <agent-hooks:invoke:post-delegate-implementor><agent-hooks:invoke:pre-delegate-code-reviewer>3. Dispatch `code-reviewer` in a separate fresh context with the brief and diff.
    Findings are evidence, not implementation instructions to blindly follow.
+   Reclassify review findings grounded solely on absent dynamic evidence (runtime
+   output, persistence, screenshots, deployment logs) as out-of-authority; route them
+   to `qa-runner` dispatch without triggering implementor remediation or incrementing
+   `review_rejections`.
 <agent-hooks:invoke:post-delegate-code-reviewer><agent-hooks:invoke:pre-delegate-qa-runner>4. Dispatch `qa-runner` with original DoD and exact required commands. Preserve
-   its command output, runtime checks, and visual evidence when applicable.
-<agent-hooks:invoke:post-delegate-qa-runner>5. Independently reconcile all reports against the original task. Record the
-   final state and host task update when available; otherwise retain local trace.
+   its command output, runtime, persistence, payload, and visual evidence when applicable.
+<agent-hooks:invoke:post-delegate-qa-runner>5. Independently reconcile all reports against the original task. Concrete
+   executed behavior facts are authoritative for runtime and visual claims; static analysis
+   is authoritative for code-level contracts. Directly conflicting evidence triggers
+   `expert-debugger` diagnosis rather than silent resolution. Record the final state
+   and host task update when available; otherwise retain local trace.
 
 Native delegation is preferred. A configured fallback dispatcher may be used only
 after a confirmed native quota or rate-limit failure; record both the native
@@ -87,14 +94,15 @@ Carry task-scoped `mutating_attempts`, `review_rejections`, and
 `infrastructure_failures` from the supplied brief and return their cumulative
 values. Rebriefing, resuming, and fresh sessions never reset them. Infrastructure
 and harness failures before mutation increment only `infrastructure_failures`.
-Increment `review_rejections` after each substantive `REJECT`.
+Increment `review_rejections` after each substantive `REJECT`. A substantive non-infrastructure
+`qa-runner` `FAIL` counts equivalently toward the two-rejection diagnostic trigger.
 
 Classify review findings as `new`, `repeat`, or `scope_blocker`. After validating
 its evidence, a `scope_blocker` immediately returns `BLOCKED`; do not dispatch
 another implementor. A repeat requires root-cause diagnosis before another
 implementation.
 
-After the second substantive code or specification rejection, stop remediation
+After the second substantive code review rejection or QA failure, stop remediation
 and dispatch one fresh diagnostic. Before mutation resumes, it must identify the
 violated DoD or invariant, trace the relevant producer-to-consumer path, name the
 earliest shared enforcement boundary, and specify the smallest root-cause fix plus

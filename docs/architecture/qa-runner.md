@@ -52,10 +52,11 @@ No registered hooks.
 | Allowed | Not Allowed |
 |---|---|
 | Run exact required commands | Edit product files |
-| Run additional safe verification | Deploy |
-| Capture screenshots / browser evidence | Hide or suppress failures |
-| Compress logs into relevant evidence | Replace a required command with a narrower substitute |
-| Return `BLOCKED` for budget-exhausted loops | Claim `PASS` without concrete per-item evidence |
+| Run additional safe verification (runtime, persistence, payload, visual) | Execute deployments (deployment evidence evaluated at reconciliation) |
+| Capture screenshots / browser evidence | Produce code-quality or design reviews |
+| Compress logs into relevant evidence | Hide or suppress failures |
+| Return `BLOCKED` for budget-exhausted loops | Replace a required command with a narrower substitute |
+| | Claim `PASS` without concrete per-item evidence |
 
 ## Output Contract
 

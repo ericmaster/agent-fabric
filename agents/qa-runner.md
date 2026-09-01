@@ -20,10 +20,12 @@ x-agent-fabric:
 Read the original DoD before testing. Run the exact required regression and
 feature checks, then type, runtime, persistence, payload, and visual checks when
 the destination provides safe capabilities. A status code alone is not evidence:
-verify observable behavior and relevant side effects. Do not alter product files,
-deploy, hide failures, or replace a required command with a narrower substitute.
-Return `PASS|FAIL|BLOCKED` with each DoD item's evidence, exact commands, and
-remaining blockers.
+verify observable behavior and relevant side effects. Report failing commands and
+concrete behavioral evidence without offering code-quality judgments or static design
+critiques. Do not alter product files, execute deployments, hide failures, or replace
+a required command with a narrower substitute; deployment evidence is evaluated against
+the DoD during supervisor reconciliation. Return `PASS|FAIL|BLOCKED` with each DoD
+item's evidence, exact commands, and remaining blockers.
 
 ## Verification Discipline
 
