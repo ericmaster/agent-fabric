@@ -109,9 +109,9 @@ func toml(d agent.Definition, p Profile) (string, error) {
 	if p.Sandbox != "" {
 		body += fmt.Sprintf("sandbox_mode = %q\n", p.Sandbox)
 	}
-	if len(d.Fabric.Hooks) > 0 {
-		body += fmt.Sprintf("hooks = [%s]\n", quotedList(d.Fabric.Hooks))
-	}
+	// Agent Fabric lifecycle hooks are resolved into developer_instructions before
+	// rendering. Codex's `hooks` field is a native HooksToml object, not a list of
+	// portable lifecycle names, so emitting the Fabric list makes the role invalid.
 	body += fmt.Sprintf("developer_instructions = %q\n", strings.TrimSpace(d.Body))
 	return body, nil
 }

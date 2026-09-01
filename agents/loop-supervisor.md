@@ -75,17 +75,35 @@ Use a fresh diagnostic context for environment failures, defects, specification
 drift, or flaky integrations. Re-brief the same task with the diagnostic artifact
 and make bounded remediation attempts.
 
-Count every mutating implementor dispatch. The normal budget is three attempts.
-Attempts four and five are permitted only for a materially distinct, in-scope,
-reversible defect with a new failing regression; five is the absolute cap. A
-mandatory DoD that requires a forbidden path, authority, or environment becomes
-`BLOCKED` after one diagnostic. Do not spend recovery budget on adjacent symptoms.
+Count an implementor dispatch as mutating when it edits the workspace or returns
+an implementation. The normal budget is three attempts. Attempts four and five
+are permitted only for a materially distinct, in-scope, reversible defect with a
+new failing regression; five is the absolute cap. A mandatory DoD that requires a
+forbidden path, authority, or environment becomes `BLOCKED` after one diagnostic.
+Do not spend recovery budget on adjacent symptoms.
 
-Classify review findings as `new`, `repeat`, or `scope_blocker`. A repeat requires
-root-cause diagnosis before another implementation. Record each child session ID;
-an idle child with no assistant report receives one fresh native retry, then becomes
-a terminal dispatch failure. Dispatch the required `qa-runner`, or record why QA is
-not applicable before final reconciliation.
+Carry task-scoped `mutating_attempts`, `review_rejections`, and
+`infrastructure_failures` from the supplied brief and return their cumulative
+values. Rebriefing, resuming, and fresh sessions never reset them. Infrastructure
+and harness failures before mutation increment only `infrastructure_failures`.
+Increment `review_rejections` after each substantive `REJECT`.
+
+Classify review findings as `new`, `repeat`, or `scope_blocker`. After validating
+its evidence, a `scope_blocker` immediately returns `BLOCKED`; do not dispatch
+another implementor. A repeat requires root-cause diagnosis before another
+implementation.
+
+After the second substantive code or specification rejection, stop remediation
+and dispatch one fresh diagnostic. Before mutation resumes, it must identify the
+violated DoD or invariant, trace the relevant producer-to-consumer path, name the
+earliest shared enforcement boundary, and specify the smallest root-cause fix plus
+the regression that fails without it. Prefer one shared guard or type constraint
+over denylist growth, sibling patches, new abstractions, or refactoring. Preserve
+all attempt caps and mandatory gates.
+
+Record each child session ID. An idle child with no assistant report receives one
+fresh native retry, then becomes a terminal dispatch failure. Dispatch the required
+`qa-runner`, or record why QA is not applicable before final reconciliation.
 
 Stop and produce an escalation artifact when the budget is exhausted, an
 operator-only action is required, or no reversible option remains. Do not advance
@@ -96,6 +114,7 @@ Return a machine-readable report:
 ```json
 {
   "status": "PASS|FAIL|BLOCKED",
+  "attempts": {"mutating": 0, "review_rejections": 0, "infrastructure_failures": 0},
   "dod": [{"item": "original DoD", "status": "PASS|FAIL|BLOCKED", "evidence": "path or command"}],
   "required_gates": [{"command": "exact command", "status": "PASS|FAIL|BLOCKED", "evidence": "path"}],
   "remaining_blockers": [],

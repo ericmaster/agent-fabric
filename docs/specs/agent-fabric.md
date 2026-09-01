@@ -46,6 +46,27 @@ failure handling, and output schemas. They must not contain provider model IDs,
 private Company OS paths, named task-system commands, credentials, or trace/cache
 environment variables; adapters and hosts own those integrations.
 
+Supervisors carry cumulative phase counters for mutating attempts, substantive
+review rejections, and infrastructure failures through rebriefs and fresh
+sessions. A dispatch counts as mutating when it edits the workspace or returns an
+implementation; infrastructure failures before mutation are recorded separately
+and do not consume the mutation budget. A blocked phase is eligible for redispatch only when new scope,
+authority, specification, or environment evidence resolves its blocker; a
+validated `scope_blocker` terminates the local repair loop.
+
+After a phase's second substantive code or specification rejection, supervision
+requires a fresh diagnostic before another mutation. It identifies the violated
+DoD or invariant, relevant producer-to-consumer path, earliest shared enforcement
+boundary, smallest root-cause fix, and regression that fails without it. The fix
+prefers one shared guard or type constraint over denylist growth, sibling patches,
+new abstractions, or refactoring. Recovery caps and mandatory gates remain in
+force.
+
+Reviewer rejections are grounded records. Each finding classifies itself as
+`new`, `repeat`, or `scope_blocker` and names the breached DoD item,
+specification clause, mandatory gate, or invariant plus verifiable source or
+command evidence. Ungrounded findings cannot produce rejection.
+
 Canonical bodies declare registered hooks with `<agent-hooks:list-available>` and
 `<agent-hooks:invoke:<event>>` placeholders. During install or sync, the CLI
 resolves each registered event once from host-global `~/.agent-hooks/`; Markdown
@@ -55,6 +76,11 @@ continuation (or section omission for optional lifecycle blocks). The generated
 file is therefore deterministic until its next install or sync. Hooks own their
 own caching, logging, input transport, and failure semantics; canonical agents
 only follow the rendered invocation instruction.
+
+The Codex adapter emits valid role-config values (`workspace-write` for writable
+roles) and keeps resolved Agent Fabric hook instructions inside
+`developer_instructions`. It does not serialize portable lifecycle names into
+Codex's native `hooks` field, which has a different object schema.
 
 Release archives are static cross-platform builds accompanied by
 `sha256sums.txt` and a machine-readable `release-manifest.json`. Bootstrap verifies

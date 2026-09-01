@@ -2,5 +2,4 @@ name = "representative"
 description = "Representative adapter fixture"
 model = "provider/test"
 sandbox_mode = "read-only"
-hooks = ["load-task"]
 developer_instructions = "Fixture body."

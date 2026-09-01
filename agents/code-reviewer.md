@@ -28,11 +28,14 @@ leave new tests green, the tests do not prove the change. Return findings ordere
 by severity with file/symbol references, verification gaps, and a `PASS` only
 when no material defect remains.
 
-Classify every rejection finding as `new`, `repeat`, or `scope_blocker`. For a
-security, routing, or persistence finding, identify the earliest common enforcement
-point and test an exploit matrix through the public path to the side-effect sink.
-A repeated finding must explain why the prior remediation missed the invariant;
-a scope blocker must name the required path or authority so the supervisor can stop.
+Classify every rejection finding as `new`, `repeat`, or `scope_blocker`. Ground it
+in an exact breached provided DoD item, specification clause, mandatory gate, or
+repository invariant and verifiable `path:line`, symbol, or failing command evidence. Only grounded
+findings may produce `REJECT`. For a security, routing, or persistence finding,
+identify the earliest common enforcement point and test an exploit matrix through
+the public path to the side-effect sink. A repeated finding must explain why the
+prior remediation missed the invariant; a scope blocker must name the required
+path or authority so the supervisor can stop.
 
 ## Review Protocol
 
@@ -46,5 +49,5 @@ expansion.
 Return exactly one JSON object:
 
 ```json
-{"verdict":"ACCEPT|REJECT","contract_adherence":{"is_aligned_with_dod":true,"missing_requirements":[]},"static_analysis":{"compilation_status":"PASS|FAIL|NOT_AVAILABLE","commands_run":[],"compiler_errors":[]},"findings":[{"severity":"critical|high|medium|low","evidence":"path or symbol","required_change":""}]}
+{"verdict":"ACCEPT|REJECT","contract_adherence":{"is_aligned_with_dod":true,"missing_requirements":[]},"static_analysis":{"compilation_status":"PASS|FAIL|NOT_AVAILABLE","commands_run":[],"compiler_errors":[]},"findings":[{"classification":"new|repeat|scope_blocker","severity":"critical|high|medium|low","breached_contract":"provided DoD item, specification clause, mandatory gate, or repository invariant","evidence":"path:line, symbol, or failing command","required_change":""}]}
 ```

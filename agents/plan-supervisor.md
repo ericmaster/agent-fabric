@@ -88,6 +88,7 @@ Require each phase supervisor to return exactly this shape:
 ```json
 {
   "status": "PASS|FAIL|BLOCKED",
+  "attempts": {"mutating": 0, "review_rejections": 0, "infrastructure_failures": 0},
   "dod": [{"item": "original DoD text", "status": "PASS|FAIL|BLOCKED", "evidence": "path or command"}],
   "required_gates": [{"command": "exact command", "status": "PASS|FAIL|BLOCKED", "evidence": "artifact path"}],
   "remaining_blockers": [],
@@ -112,10 +113,23 @@ dependent phase.
    artifacts.
 3. Do not waive the original gate. Repair the phase when authorized, otherwise
    return `BLOCKED` with the required decision or capability.
-4. Re-brief the same phase with the diagnostic artifact, increment its attempt
-   count, and dispatch again in fresh context.
+4. For a non-blocked phase, re-brief the same phase with the diagnostic artifact
+   and cumulative counters, then dispatch again in fresh context. For a `BLOCKED`
+   phase, retain its status and do not rebrief or redispatch until new resolving
+   evidence is supplied.
+
+Carry each phase's cumulative mutating-attempt, review-rejection, and
+infrastructure-failure counters through every rebrief and fresh session. A
+`BLOCKED` phase is eligible for redispatch only when new scope, authority,
+specification, or environment evidence explicitly resolves its blocker.
+
+After a phase's second substantive code or specification rejection, require the
+phase supervisor's fresh diagnostic before another mutation. The diagnostic must
+name the violated DoD or invariant, relevant producer-to-consumer path, earliest
+shared enforcement boundary, smallest root-cause fix, and regression that fails
+without it. Environment and harness failures do not count as review rejections.
+Preserve recovery caps and mandatory gate and evidence rules.
 
 On exhausted recovery, write `PLAN_ESCALATION.md` containing each attempt, root
 cause, last known stable revision, and required operator action. Never mark the
 plan complete while any phase is failed, blocked, or missing evidence.
-

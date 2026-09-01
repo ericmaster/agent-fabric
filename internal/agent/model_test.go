@@ -106,6 +106,53 @@ func TestPlannerCapsReviewAndHonorsPublishInstruction(t *testing.T) {
 	}
 }
 
+func TestSupervisionRecoveryContracts(t *testing.T) {
+	tests := []struct {
+		agent   string
+		wants   []string
+		forbids []string
+	}{
+		{"plan-supervisor", []string{
+			"cumulative mutating-attempt",
+			"`BLOCKED` phase is eligible for redispatch only when new",
+			"For a `BLOCKED`\n   phase, retain its status and do not rebrief or redispatch",
+			"second substantive code or specification rejection",
+			"Environment and harness failures do not count",
+		}, []string{"Re-brief the same phase with the diagnostic artifact and cumulative counters,\n   then dispatch again in fresh context."}},
+		{"loop-supervisor", []string{
+			"Rebriefing, resuming, and fresh sessions never reset",
+			"a `scope_blocker` immediately returns `BLOCKED`",
+			"second substantive code or specification rejection",
+			"earliest shared enforcement boundary",
+			"\"attempts\":",
+		}, nil},
+		{"code-reviewer", []string{
+			"findings may produce `REJECT`",
+			"\"classification\":\"new|repeat|scope_blocker\"",
+			"\"breached_contract\"",
+		}, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.agent, func(t *testing.T) {
+			d, err := ParseFile(filepath.Join("..", "..", "agents", tt.agent+".md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range tt.wants {
+				if !strings.Contains(d.Body, want) {
+					t.Errorf("%s missing recovery contract %q", tt.agent, want)
+				}
+			}
+			for _, forbidden := range tt.forbids {
+				if strings.Contains(d.Body, forbidden) {
+					t.Errorf("%s has unconditional recovery dispatch %q", tt.agent, forbidden)
+				}
+			}
+		})
+	}
+}
+
 func TestParseFrontmatterRejectsInvalidSchema(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "invalid-schema.md")

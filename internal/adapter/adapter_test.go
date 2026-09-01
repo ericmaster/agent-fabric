@@ -12,7 +12,7 @@ import (
 
 func TestRenderTargets(t *testing.T) {
 	d := agent.Definition{ID: "demo", Description: "Demo", Mode: "subagent", Body: "hello\n", Fabric: agent.Fabric{Profile: "worker", Effort: "high", Hooks: []string{"pre-plan"}, Visibility: "hidden", Isolation: "sandbox", Requires: []string{"planner"}, Permissions: map[string]string{"edit": "deny"}}}
-	m := Mapping{Profiles: map[string]Profile{"worker": {Model: "openai/test", Effort: "high", Sandbox: "workspace", Permissions: map[string]string{"network": "deny"}}}}
+	m := Mapping{Profiles: map[string]Profile{"worker": {Model: "openai/test", Effort: "high", Sandbox: "workspace-write", Permissions: map[string]string{"network": "deny"}}}}
 	for _, target := range []string{"opencode", "kilo", "antigravity", "claude", "codex"} {
 		body, path, _, err := Render(target, d, m, false)
 		if err != nil {
@@ -32,8 +32,11 @@ func TestRenderTargets(t *testing.T) {
 		if target == "opencode" && strings.Contains(body, "x-agent-fabric") {
 			t.Fatal("extension leaked")
 		}
-		if !strings.Contains(body, "pre-plan") {
+		if target != "codex" && !strings.Contains(body, "pre-plan") {
 			t.Fatal("hook registration missing")
+		}
+		if target == "codex" && strings.Contains(body, "hooks =") {
+			t.Fatal("portable hook names must not be emitted as native Codex hooks")
 		}
 		if !strings.Contains(body, "sandbox") {
 			t.Fatal("sandbox mapping missing")
