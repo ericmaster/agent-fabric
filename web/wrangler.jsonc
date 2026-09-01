@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agent-fabric-site",
+  "main": "worker.js",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "."
+  },
+  "routes": [
+    {
+      "pattern": "agent-fabric.ericmaster.ninja",
+      "custom_domain": true
+    }
+  ]
+}
