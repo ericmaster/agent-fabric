@@ -147,12 +147,14 @@ block. The block carries logical `profile`, `effort`, tool-neutral permissions,
 visibility, isolation, hooks, and optional dependencies. Provider model IDs live
 only in `adapters/<target>.json`.
 
-The six portable hook events are `load-task`, `pre-plan`, `classify`, `label`,
-`decompose`, and `post-plan`. Canonical agents use declarative hook placeholders,
+The portable hook events are `load-task`, `pre-plan`, `classify`, `label`,
+`decompose`, `post-plan`, plus loop-supervisor's `pre-delegate-<agent>` and
+`post-delegate-<agent>` lifecycle events. Canonical agents use declarative hook placeholders,
 which `install` and `sync` resolve once from the host-global `~/.agent-hooks/`
 directory. Markdown instructions take precedence over an executable script.
 Generated agents receive fixed instructions to follow the Markdown hook or invoke
-the script, and explicitly continue when no hook is installed. Hooks, task
+the script, and explicitly continue when no hook is installed; optional lifecycle
+hooks are omitted. Hooks, task
 systems, credentials, caching, logging, and runtime input transport remain
 host-owned.
 

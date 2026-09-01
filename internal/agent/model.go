@@ -30,7 +30,22 @@ type Fabric struct {
 
 var allowedProfiles = map[string]bool{"readonly": true, "worker": true, "reviewer": true, "supervisor": true, "recursive": true, "planner": true, "qa": true}
 var allowedEffort = map[string]bool{"low": true, "medium": true, "high": true, "max": true}
-var allowedHooks = map[string]bool{"load-task": true, "pre-plan": true, "classify": true, "label": true, "decompose": true, "post-plan": true}
+var allowedHooks = map[string]bool{
+	"load-task":                     true,
+	"pre-plan":                      true,
+	"classify":                      true,
+	"label":                         true,
+	"decompose":                     true,
+	"post-plan":                     true,
+	"pre-delegate-implementor":      true,
+	"post-delegate-implementor":     true,
+	"pre-delegate-code-reviewer":    true,
+	"post-delegate-code-reviewer":   true,
+	"pre-delegate-qa-runner":        true,
+	"post-delegate-qa-runner":       true,
+	"pre-delegate-expert-debugger":  true,
+	"post-delegate-expert-debugger": true,
+}
 
 func ParseFile(path string) (Definition, error) {
 	b, err := os.ReadFile(path)

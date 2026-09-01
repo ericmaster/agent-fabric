@@ -1,7 +1,7 @@
 ---
 description: Supervises one atomic task through implementation, review, testing, and definition-of-done validation
 mode: all
-hooks: [load-task]
+hooks: [load-task, pre-delegate-implementor, post-delegate-implementor, pre-delegate-code-reviewer, post-delegate-code-reviewer, pre-delegate-qa-runner, post-delegate-qa-runner, pre-delegate-expert-debugger, post-delegate-expert-debugger]
 x-agent-fabric:
   schema: 1
   profile: supervisor
@@ -47,12 +47,12 @@ status, or unresolved blocker is never `PASS`.
 1. Create a focused brief containing objective, explicit non-goals, scope,
    relevant guidance, permitted paths, DoD, required gates, rollback boundary,
    and current workspace/VCS state.
-2. Dispatch `implementor` in a fresh context. It owns only the bounded change.
-3. Dispatch `code-reviewer` in a separate fresh context with the brief and diff.
+<agent-hooks:invoke:pre-delegate-implementor>2. Dispatch `implementor` in a fresh context. It owns only the bounded change.
+<agent-hooks:invoke:post-delegate-implementor><agent-hooks:invoke:pre-delegate-code-reviewer>3. Dispatch `code-reviewer` in a separate fresh context with the brief and diff.
    Findings are evidence, not implementation instructions to blindly follow.
-4. Dispatch `qa-runner` with original DoD and exact required commands. Preserve
+<agent-hooks:invoke:post-delegate-code-reviewer><agent-hooks:invoke:pre-delegate-qa-runner>4. Dispatch `qa-runner` with original DoD and exact required commands. Preserve
    its command output, runtime checks, and visual evidence when applicable.
-5. Independently reconcile all reports against the original task. Record the
+<agent-hooks:invoke:post-delegate-qa-runner>5. Independently reconcile all reports against the original task. Record the
    final state and host task update when available; otherwise retain local trace.
 
 Native delegation is preferred. A configured fallback dispatcher may be used only
@@ -71,8 +71,9 @@ owned by the current task from a recorded checkpoint.
 ## Bounded Recovery
 
 On `FAIL` or `BLOCKED`, preserve evidence and classify the blocker before acting.
-Use a fresh diagnostic context for environment failures, defects, specification
-drift, or flaky integrations. Re-brief the same task with the diagnostic artifact
+<agent-hooks:invoke:pre-delegate-expert-debugger>Use a fresh diagnostic context for environment failures, defects, specification
+drift, or flaky integrations.
+<agent-hooks:invoke:post-delegate-expert-debugger>Re-brief the same task with the diagnostic artifact
 and make bounded remediation attempts.
 
 Count an implementor dispatch as mutating when it edits the workspace or returns

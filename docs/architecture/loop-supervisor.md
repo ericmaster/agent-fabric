@@ -89,6 +89,17 @@ flowchart LR
 | Hook | When | Purpose |
 |---|---|---|
 | `load-task` | Start | Resolve and validate atomic task; block if design gap |
+| `pre-delegate-implementor` | Before implementor | Optional task-specific preparation |
+| `post-delegate-implementor` | After implementor | Optional result handling before review |
+| `pre-delegate-code-reviewer` | Before code review | Optional task-specific preparation |
+| `post-delegate-code-reviewer` | After code review | Optional finding handling before QA |
+| `pre-delegate-qa-runner` | Before QA | Optional task-specific preparation |
+| `post-delegate-qa-runner` | After QA | Optional evidence handling before reconciliation |
+| `pre-delegate-expert-debugger` | Before diagnostic | Optional recovery preparation |
+| `post-delegate-expert-debugger` | After diagnostic | Optional remediation-brief handling |
+
+The delegation lifecycle hooks are no-ops unless installed. Their placeholders
+are removed during rendering, so a default generated agent is unchanged.
 
 ## Output Contract
 

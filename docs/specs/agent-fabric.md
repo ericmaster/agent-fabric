@@ -72,7 +72,9 @@ Canonical bodies declare registered hooks with `<agent-hooks:list-available>` an
 resolves each registered event once from host-global `~/.agent-hooks/`; Markdown
 precedes an executable script. The generated agent receives either inlined
 Markdown instructions, an executable script path, or an explicit no-hook
-continuation (or section omission for optional lifecycle blocks). The generated
+continuation (or section omission for optional lifecycle blocks). Loop-supervisor
+ delegation hooks use `pre-delegate-<agent>` and `post-delegate-<agent>` events;
+ absent hooks are omitted so its default generated output is unchanged. The generated
 file is therefore deterministic until its next install or sync. Hooks own their
 own caching, logging, input transport, and failure semantics; canonical agents
 only follow the rendered invocation instruction.

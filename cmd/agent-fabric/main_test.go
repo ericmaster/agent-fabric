@@ -492,6 +492,55 @@ func TestPlannerPrePlanHookRendering(t *testing.T) {
 	})
 }
 
+func TestLoopSupervisorDelegationHooksAreNoopsByDefault(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	current, err := agent.ParseFile(filepath.Join("..", "..", "agents", "loop-supervisor.md"))
+	if err != nil {
+		t.Fatalf("failed to parse canonical loop supervisor: %v", err)
+	}
+	legacy := current
+	legacy.Fabric.Hooks = []string{"load-task"}
+	for _, event := range current.Fabric.Hooks[1:] {
+		legacy.Body = strings.ReplaceAll(legacy.Body, "<agent-hooks:invoke:"+event+">", "")
+	}
+
+	rendered, err := renderHookPlaceholders(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous, err := renderHookPlaceholders(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rendered.Body != previous.Body {
+		t.Fatalf("uninstalled delegation hooks changed generated output:\ncurrent:\n%s\nprevious:\n%s", rendered.Body, previous.Body)
+	}
+}
+
+func TestLoopSupervisorDelegationHooksRenderBeforeDelegation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	hooks := filepath.Join(home, ".agent-hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hooks, "pre-delegate-implementor.md"), []byte("Check the task context."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	current, err := agent.ParseFile(filepath.Join("..", "..", "agents", "loop-supervisor.md"))
+	if err != nil {
+		t.Fatalf("failed to parse canonical loop supervisor: %v", err)
+	}
+	rendered, err := renderHookPlaceholders(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rendered.Body, "Check the task context.\n\n2. Dispatch `implementor`") {
+		t.Fatalf("delegation hook was not rendered before implementor dispatch:\n%s", rendered.Body)
+	}
+}
+
 func TestResolveHookFollowsSymlinks(t *testing.T) {
 	cases := []struct {
 		name    string

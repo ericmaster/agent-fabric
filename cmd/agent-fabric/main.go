@@ -477,6 +477,9 @@ func renderHookPlaceholders(d agent.Definition) (agent.Definition, error) {
 			d.Body = strings.ReplaceAll(d.Body, marker+"\n", "")
 			d.Body = strings.ReplaceAll(d.Body, marker, "")
 		} else {
+			if isDelegationLifecycleHook(event) {
+				inv = strings.TrimSpace(inv) + "\n\n"
+			}
 			d.Body = strings.ReplaceAll(d.Body, marker, inv)
 		}
 	}
@@ -564,7 +567,14 @@ func hookInvocation(agentID, event string, resolution hookResolution) string {
 	if agentID == "planner" && event == "pre-plan" {
 		return ""
 	}
+	if isDelegationLifecycleHook(event) {
+		return ""
+	}
 	return fmt.Sprintf("No `%s` hook is installed; continue without it.", event)
+}
+
+func isDelegationLifecycleHook(event string) bool {
+	return strings.HasPrefix(event, "pre-delegate-") || strings.HasPrefix(event, "post-delegate-")
 }
 
 func defaultHookTemplate(agentID, event string) string {
