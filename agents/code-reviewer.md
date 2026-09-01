@@ -45,8 +45,10 @@ judgment. Syntax, import, or type failures are immediate `REJECT` findings; do n
 an architectural review for code that cannot pass configured static gates. If static
 analysis tools are unconfigured or unavailable (`compilation_status: NOT_AVAILABLE`), report
 an environment blocker (`BLOCKED`) rather than a code rejection. Treat untrusted input
-or raw tool output flowing into execution sinks and unsafe file paths as security defects.
-Review strictly against the supplied DoD and reject unsupported scope expansion.
+or raw tool output flowing into execution, query, or persistence sinks and
+unsafe file paths as security defects. When project profile or i18n rules are defined,
+reject hardcoded unlocalized strings and copy regressions. Review strictly against the
+supplied DoD and reject unsupported scope expansion.
 
 Do not evaluate or reject changes for runtime execution, persistence/payload checks,
 browser visual screenshots, or deployment validation; dynamic verification and live command

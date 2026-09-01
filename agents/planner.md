@@ -64,9 +64,11 @@ cancels planning.
 
 1. <agent-hooks:invoke:load-task> Resolve the seed from the current request, an
    explicit file, or a task-system item.
-2. Read destination guidance, specifications, architecture decisions, tests, and
-   established implementation patterns. Use structured repository discovery when
-   available and direct file inspection for contracts and configuration.
+2. Read destination guidance, specifications, architecture decisions, tests,
+   established implementation patterns, and project profiles (`.agent-fabric/profile.yaml` or
+   `FABRIC.md`) to ground repo topology and deployment constraints.
+   Use structured repository discovery when available and direct file inspection for
+   contracts and configuration.
 3. Map current behavior and affected surfaces: entry points, data flow, public
    contracts, persistence, UI/API boundaries, deployment constraints, consumers,
    tests, and rollback seams. Separate evidence from assumptions and cite paths.

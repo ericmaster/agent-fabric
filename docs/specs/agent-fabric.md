@@ -69,7 +69,15 @@ command evidence. Ungrounded findings cannot produce rejection. Reviewer finding
 gate exclusively on code-level proof (diff quality, static types, security invariants,
 mental mutation test); rejections citing absent dynamic evidence (runtime execution,
 persistence checks, browser screenshots, or deployment validation) are out-of-authority
-and filtered by the supervisor to QA delegation.
+and filtered by the supervisor to QA delegation. QA Runner executes dynamic regression,
+runtime, persistence, payload, and visual checks; accessibility auditing (WCAG 2.2) is
+executed strictly when verifying end-user UI surfaces, evaluating to NOT_APPLICABLE for
+backend, CLI, or library code.
+
+The Deploy Supervisor coordinates post-merge deployment, database migration verification,
+live endpoint smoke testing, and empirical release evidence collection. Deployments are
+gated actions executed only under explicit human operator authorization, generating an
+auditable RELEASE_EVIDENCE.md artifact.
 
 Canonical bodies declare registered hooks with `<agent-hooks:list-available>` and
 `<agent-hooks:invoke:<event>>` placeholders. During install or sync, the CLI

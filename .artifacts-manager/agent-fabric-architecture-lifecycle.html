@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Fabric — Architecture & Extended Lifecycle</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card: #131b2e;
+      --card-hover: #18223a;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(99, 102, 241, 0.3);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --indigo: #6366f1;
+      --cyan: #06b6d4;
+      --emerald: #10b981;
+      --amber: #f59e0b;
+      --rose: #f43f5e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+    .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 3px; }
+    .custom-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
+
+    .tab-btn {
+      transition: all 0.2s ease;
+    }
+    .tab-btn.active {
+      background: rgba(99, 102, 241, 0.15);
+      border-color: var(--indigo);
+      color: #a5b4fc;
+    }
+
+    .agent-card {
+      background: rgba(19, 27, 46, 0.8);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+    }
+    .agent-card:hover {
+      border-color: var(--border-accent);
+      background: var(--card-hover);
+      transform: translateY(-2px);
+    }
+    .agent-card.selected {
+      border-color: var(--cyan);
+      box-shadow: 0 0 20px -3px rgba(6, 182, 212, 0.25);
+    }
+
+    .mermaid-container {
+      overflow: auto;
+      border-radius: 8px;
+      padding: 1rem;
+      background: rgba(10, 15, 29, 0.6);
+      border: 1px solid var(--border);
+    }
+    .mermaid[data-mermaid-state="error"] {
+      white-space: pre-wrap;
+      color: #fecdd3;
+      font-family: ui-monospace, monospace;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body class="p-4 md:p-8 flex flex-col items-center">
+  <div class="max-w-7xl w-full">
+    
+    <!-- Top Header -->
+    <header class="mb-8 border-b border-white/10 pb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2 mb-2">
+          <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            Agent Fabric v1.2
+          </span>
+          <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            Deterministic Orchestration
+          </span>
+          <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+            Human-Gated Release
+          </span>
+        </div>
+        <h1 class="text-2xl md:text-3xl font-bold tracking-tight text-white">
+          Agent Fabric Architecture & Extended Lifecycle
+        </h1>
+        <p class="text-slate-400 text-sm mt-1">
+          Interactive topology, execution state machines, deploy gating, conditional UI A11y verification, and multi-harness compiler model.
+        </p>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="flex flex-wrap gap-2 bg-slate-900/80 p-1.5 rounded-xl border border-white/10 self-start md:self-auto">
+        <button onclick="switchTab('lifecycle')" id="tab-btn-lifecycle" class="tab-btn active px-3.5 py-1.5 rounded-lg text-xs font-medium border border-transparent text-slate-300 hover:text-white">
+          Lifecycle & Topology
+        </button>
+        <button onclick="switchTab('agents')" id="tab-btn-agents" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-medium border border-transparent text-slate-300 hover:text-white">
+          Agent Inspector (9)
+        </button>
+        <button onclick="switchTab('deploy')" id="tab-btn-deploy" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-medium border border-transparent text-slate-300 hover:text-white">
+          Deploy Gating & A11y
+        </button>
+        <button onclick="switchTab('benchmark')" id="tab-btn-benchmark" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-medium border border-transparent text-slate-300 hover:text-white">
+          Fabric vs ShipFrame vs Research
+        </button>
+      </div>
+    </header>
+
+    <!-- TAB 1: Lifecycle & Topology -->
+    <main id="tab-lifecycle" class="space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Left: Interactive Mermaid Diagram -->
+        <div class="lg:col-span-2 bg-[#131b2e]/80 border border-white/10 rounded-xl p-5 flex flex-col">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h2 class="text-base font-semibold text-white">End-to-End Orchestration Topology</h2>
+              <p class="text-xs text-slate-400">Interactive DAG execution from interactive discovery to post-merge release gating.</p>
+            </div>
+            <div class="flex items-center gap-2 text-xs">
+              <span class="inline-flex items-center gap-1 text-slate-400"><span class="w-2 h-2 rounded-full bg-indigo-400"></span> Primary</span>
+              <span class="inline-flex items-center gap-1 text-slate-400"><span class="w-2 h-2 rounded-full bg-cyan-400"></span> Supervisor</span>
+              <span class="inline-flex items-center gap-1 text-slate-400"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> Subagent</span>
+              <span class="inline-flex items-center gap-1 text-slate-400"><span class="w-2 h-2 rounded-full bg-amber-400"></span> Gated Release</span>
+            </div>
+          </div>
+
+          <div class="mermaid-container custom-scroll flex-1 focus:outline-none" tabindex="0">
+            <pre class="mermaid" data-mermaid-source="flowchart TD
+    %% Entry & Interactive Planning
+    USER([Developer Request / Idea]) --> PROFILE[Read Project Profile\n.agent-fabric/profile.yaml]
+    PROFILE --> PLANNER[① Planner\nInteractive Grilling + Socratic Discovery]
+    
+    PLANNER -->|Draft Phase-DAG| PREV[② Plan Reviewer\nIndependent Pre-Approval Gate]
+    PREV -->|REVISE max 2| PLANNER
+    PREV -->|PASS / Approved| DECOMPOSE[Decompose Hook\nTask System Projection]
+    
+    %% Multi-Phase Plan Supervision
+    DECOMPOSE --> PSUP[③ Plan Supervisor\nPhase-by-Phase State Coordinator]
+    
+    subgraph S_PHASE [Atomic Phase Execution]
+        PSUP -->|Isolated Brief| LSUP[④ Loop Supervisor\nAtomic Task Control Loop]
+        
+        LSUP -->|Mutating Context| IMPL[⑤ Implementor\nAtomic Vertical Slice]
+        IMPL -->|Diff + Artifacts| CREV[⑥ Code Reviewer\nStatic, Security Sinks, Copy/i18n]
+        
+        CREV -->|Static PASS| QA[⑦ QA Runner\nDynamic Tests, Mutation Anti-Cheat, UI A11y]
+        
+        CREV -->|REJECT| RECOVERY{2 Strikes?}
+        QA -->|FAIL| RECOVERY
+        
+        RECOVERY -->|Strike 1| LSUP
+        RECOVERY -->|Strike 2| EBUG[⑧ Expert Debugger\nProducer->Consumer Trace & Invariant Fix]
+        EBUG --> LSUP
+        
+        QA -->|Concrete PASS| RECONCILE[Supervisor Reconciliation]
+        RECONCILE -->|Phase PASS| PSUP
+    end
+    
+    %% Post-Merge Gated Deployment
+    PSUP -->|All Phases PASS| GATE{User Deploy Sign-Off\nExplicit Approval}
+    GATE -->|Rejected / Local Only| COMPLETE([Work Complete\nPre-Merge Validated])
+    GATE -->|Approved| DSUP[⑨ Deploy Supervisor\nPost-Merge Release & Verification]
+    
+    subgraph S_DEPLOY [Gated Release & Deploy Verification]
+        DSUP --> D_EXEC[Execute Deploy Script / Cloudflare Pages / Container]
+        D_EXEC --> D_SMOKE[Run Route Smoke Tests & Health Checks]
+        D_SMOKE --> D_MIG[Validate Database Migration Status]
+        D_MIG --> D_TAG[Assert Git Tag & Version Parity]
+        D_TAG --> D_EV[Generate RELEASE_EVIDENCE.md]
+    end
+    
+    D_EV --> SHIPPED([Production Release Verified])
+
+    style PLANNER fill:#1e1b4b,stroke:#6366f1,stroke-width:2px,color:#fff
+    style PSUP fill:#0c4a6e,stroke:#06b6d4,stroke-width:2px,color:#fff
+    style LSUP fill:#0c4a6e,stroke:#06b6d4,stroke-width:2px,color:#fff
+    style IMPL fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff
+    style CREV fill:#4c1d95,stroke:#a855f7,stroke-width:2px,color:#fff
+    style QA fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff
+    style EBUG fill:#701a75,stroke:#ec4899,stroke-width:2px,color:#fff
+    style DSUP fill:#78350f,stroke:#f59e0b,stroke-width:2px,color:#fff
+    style GATE fill:#451a03,stroke:#d97706,stroke-width:2px,color:#fef3c7">flowchart TD
+    %% Entry & Interactive Planning
+    USER([Developer Request / Idea]) --> PROFILE[Read Project Profile\n.agent-fabric/profile.yaml]
+    PROFILE --> PLANNER[① Planner\nInteractive Grilling + Socratic Discovery]
+    
+    PLANNER -->|Draft Phase-DAG| PREV[② Plan Reviewer\nIndependent Pre-Approval Gate]
+    PREV -->|REVISE max 2| PLANNER
+    PREV -->|PASS / Approved| DECOMPOSE[Decompose Hook\nTask System Projection]
+    
+    %% Multi-Phase Plan Supervision
+    DECOMPOSE --> PSUP[③ Plan Supervisor\nPhase-by-Phase State Coordinator]
+    
+    subgraph S_PHASE [Atomic Phase Execution]
+        PSUP -->|Isolated Brief| LSUP[④ Loop Supervisor\nAtomic Task Control Loop]
+        
+        LSUP -->|Mutating Context| IMPL[⑤ Implementor\nAtomic Vertical Slice]
+        IMPL -->|Diff + Artifacts| CREV[⑥ Code Reviewer\nStatic, Security Sinks, Copy/i18n]
+        
+        CREV -->|Static PASS| QA[⑦ QA Runner\nDynamic Tests, Mutation Anti-Cheat, UI A11y]
+        
+        CREV -->|REJECT| RECOVERY{2 Strikes?}
+        QA -->|FAIL| RECOVERY
+        
+        RECOVERY -->|Strike 1| LSUP
+        RECOVERY -->|Strike 2| EBUG[⑧ Expert Debugger\nProducer->Consumer Trace & Invariant Fix]
+        EBUG --> LSUP
+        
+        QA -->|Concrete PASS| RECONCILE[Supervisor Reconciliation]
+        RECONCILE -->|Phase PASS| PSUP
+    end
+    
+    %% Post-Merge Gated Deployment
+    PSUP -->|All Phases PASS| GATE{User Deploy Sign-Off\nExplicit Approval}
+    GATE -->|Rejected / Local Only| COMPLETE([Work Complete\nPre-Merge Validated])
+    GATE -->|Approved| DSUP[⑨ Deploy Supervisor\nPost-Merge Release & Verification]
+    
+    subgraph S_DEPLOY [Gated Release & Deploy Verification]
+        DSUP --> D_EXEC[Execute Deploy Script / Cloudflare Pages / Container]
+        D_EXEC --> D_SMOKE[Run Route Smoke Tests & Health Checks]
+        D_SMOKE --> D_MIG[Validate Database Migration Status]
+        D_MIG --> D_TAG[Assert Git Tag & Version Parity]
+        D_TAG --> D_EV[Generate RELEASE_EVIDENCE.md]
+    end
+    
+    D_EV --> SHIPPED([Production Release Verified])</pre>
+          </div>
+        </div>
+
+        <!-- Right: Lifecycle Deep-Dive Card -->
+        <div class="space-y-4">
+          <div class="bg-[#131b2e]/80 border border-white/10 rounded-xl p-5">
+            <h3 class="text-sm font-semibold text-cyan-400 uppercase tracking-wider mb-2">Key Lifecycle Decisions</h3>
+            <ul class="space-y-3 text-xs text-slate-300">
+              <li class="p-2.5 rounded-lg bg-slate-900/60 border border-white/5">
+                <strong class="text-white block mb-1">1. Unified Interactive Discovery in Planner</strong>
+                Unlike separate skill chains, Agent Fabric's primary Planner interrogates the user directly, grounds assumptions, and ingests project profiles before authoring the DAG.
+              </li>
+              <li class="p-2.5 rounded-lg bg-slate-900/60 border border-white/5">
+                <strong class="text-white block mb-1">2. Two-Strike Design Reset</strong>
+                After 2 substantive review rejections or QA failures, ordinary mutation stops. Expert Debugger must trace producer-to-consumer and name the invariant fix before mutation resumes.
+              </li>
+              <li class="p-2.5 rounded-lg bg-slate-900/60 border border-white/5">
+                <strong class="text-white block mb-1">3. Human-Gated Release Gate</strong>
+                Deployment is an irreversible, high-risk boundary. The system never deploys autonomously without explicit user confirmation, delegating post-approval to Deploy Supervisor.
+              </li>
+              <li class="p-2.5 rounded-lg bg-slate-900/60 border border-white/5">
+                <strong class="text-white block mb-1">4. Context Firewalls</strong>
+                Zero transcript forwarding between subagents. Every delegate receives an isolated brief with exact paths and returns structured machine-readable JSON.
+              </li>
+            </ul>
+          </div>
+
+          <div class="bg-indigo-950/30 border border-indigo-500/20 rounded-xl p-5">
+            <h4 class="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-1">Anti-Multi-Agent Trap</h4>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Google DeepMind research proved unstructured multi-agent meshes cause <strong>17.2× error amplification</strong>. Agent Fabric uses strict centralized supervisor-worker DAGs with deterministic state machines.
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- TAB 2: Agent Inspector -->
+    <main id="tab-agents" class="hidden space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        
+        <!-- Agent List -->
+        <div class="md:col-span-1 space-y-2 max-h-[700px] overflow-y-auto custom-scroll pr-1">
+          <div class="agent-card selected p-3" onclick="showAgent('planner')">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-sm text-white">planner</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono">primary</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 line-clamp-1">Authors grounded implementation plans</p>
+          </div>
+
+          <div class="agent-card p-3" onclick="showAgent('plan-reviewer')">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-sm text-white">plan-reviewer</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">reviewer</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 line-clamp-1">Validates plan completeness & DAG</p>
+          </div>
+
+          <div class="agent-card p-3" onclick="showAgent('plan-supervisor')">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-sm text-white">plan-supervisor</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono">supervisor</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 line-clamp-1">Coordinates multi-phase plan execution</p>
+          </div>
+
+          <div class="agent-card p-3" onclick="showAgent('loop-supervisor')">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-sm text-white">loop-supervisor</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono">supervisor</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 line-clamp-1">Drives atomic implementation control loop</p>
+          </div>
+
+          <div class="agent-card p-3" onclick="showAgent('implementor')">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-sm text-white">implementor</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">worker</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 line-clamp-1">Implements bounded atomic vertical slices</p>
+          </div>
+
+          <div class="agent-card p-3" onclick="showAgent('code-reviewer')">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-sm text-white">code-reviewer</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">reviewer</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 line-clamp-1">Static checks, security sinks, copy/i18n</p>
+          </div>
+
+          <div class="agent-card p-3" onclick="showAgent('qa-runner')">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-sm text-white">qa-runner</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">qa</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 line-clamp-1">Dynamic test execution, mutation anti-cheat, UI A11y</p>
+          </div>
+
+          <div class="agent-card p-3" onclick="showAgent('expert-debugger')">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-sm text-white">expert-debugger</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-pink-500/20 text-pink-300 font-mono">readonly</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 line-clamp-1">Root-cause diagnosis & invariant recovery</p>
+          </div>
+
+          <div class="agent-card p-3" onclick="showAgent('deploy-supervisor')">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-sm text-white">deploy-supervisor</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">release</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 line-clamp-1">Gated deployment & empirical release verification</p>
+          </div>
+        </div>
+
+        <!-- Detail Pane -->
+        <div class="md:col-span-2 lg:col-span-3 bg-[#131b2e]/90 border border-white/10 rounded-xl p-6 flex flex-col space-y-5">
+          <div class="flex items-center justify-between border-b border-white/10 pb-4">
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 id="inspector-name" class="text-xl font-bold text-white">planner</h3>
+                <span id="inspector-profile" class="text-xs px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">profile: planner</span>
+                <span id="inspector-mode" class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">mode: primary</span>
+              </div>
+              <p id="inspector-desc" class="text-xs text-slate-400 mt-1">Authors grounded, independently reviewed implementation plans as executable vertical slices.</p>
+            </div>
+            <div class="text-right">
+              <span class="text-[11px] text-slate-400 uppercase tracking-wider block">Isolation</span>
+              <span id="inspector-isolation" class="text-xs font-semibold text-emerald-400">sandbox</span>
+            </div>
+          </div>
+
+          <!-- Attributes Grid -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div class="p-3.5 rounded-lg bg-slate-900/60 border border-white/5 space-y-2">
+              <h4 class="font-semibold text-slate-300">Hooks Declared</h4>
+              <p id="inspector-hooks" class="font-mono text-cyan-300 text-[11px]">load-task, pre-plan, post-plan, decompose</p>
+            </div>
+            <div class="p-3.5 rounded-lg bg-slate-900/60 border border-white/5 space-y-2">
+              <h4 class="font-semibold text-slate-300">Permissions</h4>
+              <p id="inspector-permissions" class="font-mono text-emerald-300 text-[11px]">edit: allow, bash: allow, task: allow</p>
+            </div>
+          </div>
+
+          <!-- Responsibilities & Contracts -->
+          <div class="space-y-2">
+            <h4 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Responsibilities & Key Invariants</h4>
+            <div id="inspector-responsibilities" class="text-xs text-slate-300 leading-relaxed space-y-2 bg-slate-900/40 p-4 rounded-lg border border-white/5">
+              <!-- Injected by JS -->
+            </div>
+          </div>
+
+          <!-- Output Schema Contract -->
+          <div class="space-y-2">
+            <h4 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Output / Result Contract</h4>
+            <pre id="inspector-schema" class="bg-black/60 p-3.5 rounded-lg text-emerald-300 font-mono text-[11px] overflow-x-auto border border-white/5">
+              <!-- Injected by JS -->
+            </pre>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- TAB 3: Deploy Gating & A11y Logic -->
+    <main id="tab-deploy" class="hidden space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- Sub-Gate 1: Deploy Supervisor Gating -->
+        <div class="bg-[#131b2e]/80 border border-white/10 rounded-xl p-5 space-y-4">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+            <h3 class="text-base font-semibold text-white">Deploy Supervisor — Human Gate Protocol</h3>
+          </div>
+          <p class="text-xs text-slate-400">
+            Deployment constitutes an irreversible, high-risk side effect. The supervisor pauses execution before running external deployment pipelines.
+          </p>
+
+          <div class="mermaid-container custom-scroll">
+            <pre class="mermaid" data-mermaid-source="sequenceDiagram
+    autonumber
+    actor User as Human Operator
+    participant PS as Plan Supervisor
+    participant DS as Deploy Supervisor
+    participant Live as Staging / Prod Target
+
+    PS->>User: All code phases PASS. Ready for Release?
+    alt User Rejects or Defers
+        User-->>PS: Not now / Local tests only
+        PS->>PS: Mark task completed (Local Merged)
+    else User Confirms
+        User->>DS: Authorize Deploy ($ deploy-supervisor)
+        DS->>Live: Execute Deploy Pipeline (Pages / Cloudflare / K8s)
+        DS->>Live: Run Smoke Test Endpoints
+        DS->>Live: Check DB Migrations & Health Endpoint
+        DS->>DS: Assert Version Tag & Commit SHA Parity
+        DS->>DS: Generate RELEASE_EVIDENCE.md
+        DS-->>User: Deployment PASS with concrete URLs & logs
+    end">sequenceDiagram
+    autonumber
+    actor User as Human Operator
+    participant PS as Plan Supervisor
+    participant DS as Deploy Supervisor
+    participant Live as Staging / Prod Target
+
+    PS->>User: All code phases PASS. Ready for Release?
+    alt User Rejects or Defers
+        User-->>PS: Not now / Local tests only
+        PS->>PS: Mark task completed (Local Merged)
+    else User Confirms
+        User->>DS: Authorize Deploy ($ deploy-supervisor)
+        DS->>Live: Execute Deploy Pipeline (Pages / Cloudflare / K8s)
+        DS->>Live: Run Smoke Test Endpoints
+        DS->>Live: Check DB Migrations & Health Endpoint
+        DS->>DS: Assert Version Tag & Commit SHA Parity
+        DS->>DS: Generate RELEASE_EVIDENCE.md
+        DS-->>User: Deployment PASS with concrete URLs & logs
+    end</pre>
+          </div>
+
+          <div class="p-3 bg-amber-950/20 border border-amber-500/20 rounded-lg text-xs text-slate-300">
+            <strong class="text-amber-300">Gating Principle:</strong> Pre-merge verification proves code correctness locally; Deploy Supervisor proves production operational viability.
+          </div>
+        </div>
+
+        <!-- Sub-Gate 2: Conditional A11y Gate in QA Runner -->
+        <div class="bg-[#131b2e]/80 border border-white/10 rounded-xl p-5 space-y-4">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+            <h3 class="text-base font-semibold text-white">QA Runner — Conditional A11y Gate (WCAG 2.2)</h3>
+          </div>
+          <p class="text-xs text-slate-400">
+            Accessibility auditing is applied strictly to end-user UI surfaces. Backend, CLI, and library code evaluate to <code class="text-cyan-300 font-mono">NOT_APPLICABLE</code>.
+          </p>
+
+          <div class="mermaid-container custom-scroll">
+            <pre class="mermaid" data-mermaid-source="flowchart TD
+    QA_START([QA Runner Dispatched]) --> CHECK_SURFACE{Touched files include\nEnd-User UI / Web DOM?}
+    
+    CHECK_SURFACE -->|NO: Backend, CLI, Library, API| SKIP_A11Y[A11y Status = NOT_APPLICABLE\nZero false blocker overhead]
+    
+    CHECK_SURFACE -->|YES: HTML, Svelte, React, Vue, CSS| RUN_A11Y[Execute A11y Audit\nWCAG 2.2 AA Criteria]
+    
+    RUN_A11Y --> A11Y_EVAL{Contrast, Labels, Roles,\nFocus & Keyboard valid?}
+    
+    A11Y_EVAL -->|PASS| A11Y_PASS[A11y Status = PASS\nAttach Axe / Lighthouse log]
+    A11Y_EVAL -->|FAIL| A11Y_FAIL[A11y Status = FAIL\nAttach violated WCAG rule & selector]
+    
+    SKIP_A11Y --> FINAL_REPORT[Compile QA Evidence JSON]
+    A11Y_PASS --> FINAL_REPORT
+    A11Y_FAIL --> FINAL_REPORT">flowchart TD
+    QA_START([QA Runner Dispatched]) --> CHECK_SURFACE{Touched files include\nEnd-User UI / Web DOM?}
+    
+    CHECK_SURFACE -->|NO: Backend, CLI, Library, API| SKIP_A11Y[A11y Status = NOT_APPLICABLE\nZero false blocker overhead]
+    
+    CHECK_SURFACE -->|YES: HTML, Svelte, React, Vue, CSS| RUN_A11Y[Execute A11y Audit\nWCAG 2.2 AA Criteria]
+    
+    RUN_A11Y --> A11Y_EVAL{Contrast, Labels, Roles,\nFocus & Keyboard valid?}
+    
+    A11Y_EVAL -->|PASS| A11Y_PASS[A11y Status = PASS\nAttach Axe / Lighthouse log]
+    A11Y_EVAL -->|FAIL| A11Y_FAIL[A11y Status = FAIL\nAttach violated WCAG rule & selector]
+    
+    SKIP_A11Y --> FINAL_REPORT[Compile QA Evidence JSON]
+    A11Y_PASS --> FINAL_REPORT
+    A11Y_FAIL --> FINAL_REPORT</pre>
+          </div>
+
+          <div class="p-3 bg-cyan-950/20 border border-cyan-500/20 rounded-lg text-xs text-slate-300">
+            <strong class="text-cyan-300">Pragmatic Invariant:</strong> UI features must respect screen readers, contrast, and keyboard navigation; backend services must not fail on irrelevant DOM criteria.
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- TAB 4: Comparison & Benchmark Matrix -->
+    <main id="tab-benchmark" class="hidden space-y-6">
+      <div class="bg-[#131b2e]/80 border border-white/10 rounded-xl p-6 space-y-6">
+        <div>
+          <h2 class="text-lg font-bold text-white">Comparative Architecture Matrix</h2>
+          <p class="text-xs text-slate-400">How Agent Fabric compares against ShipFrame and NotebookLM agentic engineering research.</p>
+        </div>
+
+        <div class="overflow-x-auto custom-scroll">
+          <table class="w-full text-left text-xs text-slate-300 border-collapse">
+            <thead>
+              <tr class="border-b border-white/10 text-slate-400 uppercase tracking-wider bg-slate-900/40">
+                <th class="py-3 px-4">Dimension</th>
+                <th class="py-3 px-4 text-indigo-400">Agent Fabric</th>
+                <th class="py-3 px-4 text-cyan-400">ShipFrame</th>
+                <th class="py-3 px-4 text-emerald-400">NotebookLM Research SSOT</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+              <tr>
+                <td class="py-3 px-4 font-semibold text-white">Control Topology</td>
+                <td class="py-3 px-4">Centralized Supervisor DAG (<code class="text-indigo-300">plan-supervisor</code> & <code class="text-indigo-300">loop-supervisor</code>)</td>
+                <td class="py-3 px-4">Sequential flat skill chains via routing tables</td>
+                <td class="py-3 px-4 text-emerald-300">Strict supervisor-worker to prevent 17.2× error amplification</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4 font-semibold text-white">Requirements Discovery</td>
+                <td class="py-3 px-4">Interactive Socratic Grilling in primary Planner</td>
+                <td class="py-3 px-4">Separate <code class="text-cyan-300">feature-discovery</code> CLI skill</td>
+                <td class="py-3 px-4">Negotiate explicit DoD / Sprint contract before code generation</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4 font-semibold text-white">Harness Portability</td>
+                <td class="py-3 px-4">Go multi-harness compiler (OpenCode, Kilo, Antigravity, Codex, Claude)</td>
+                <td class="py-3 px-4">Symlinks & Claude plugin wrapper</td>
+                <td class="py-3 px-4">Model & harness agnostic canonical definitions</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4 font-semibold text-white">Context & Caching</td>
+                <td class="py-3 px-4">Prefix-first stability, zero transcript forwarding, brief contracts</td>
+                <td class="py-3 px-4">Project memory refresh + Engram integration</td>
+                <td class="py-3 px-4 text-emerald-300">Prefix-first byte freezing for 75–95% KV cache hits</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4 font-semibold text-white">Failure Recovery</td>
+                <td class="py-3 px-4">Two-Strike Design Reset (Expert Debugger producer-to-consumer trace)</td>
+                <td class="py-3 px-4"><code class="text-cyan-300">bug-diagnosis</code> reproduction loop</td>
+                <td class="py-3 px-4 text-emerald-300">Bounded remediation (3–5 max) + context reset over compaction</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4 font-semibold text-white">Verification & Anti-Cheat</td>
+                <td class="py-3 px-4">Pre-patch mutation test (QA Runner), hollow-mock rejector, UI A11y gate</td>
+                <td class="py-3 px-4">Two-phase review + SOLID audit</td>
+                <td class="py-3 px-4 text-emerald-300">Grader Trinity (Deterministic code -> Model judge -> Human)</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4 font-semibold text-white">Deployment & Release</td>
+                <td class="py-3 px-4">Gated <code class="text-indigo-300">deploy-supervisor</code> with empirical evidence</td>
+                <td class="py-3 px-4"><code class="text-cyan-300">deploy-evidence</code> + release checklist</td>
+                <td class="py-3 px-4 text-emerald-300">Observable side-effects & human sign-off checkpoint</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- Client-side Interactive Data & Scripts -->
+  <script>
+    const agentData = {
+      'planner': {
+        name: 'planner',
+        profile: 'profile: planner',
+        mode: 'mode: primary',
+        isolation: 'sandbox',
+        desc: 'Authors grounded, independently reviewed implementation plans as executable vertical slices.',
+        hooks: 'load-task, pre-plan, post-plan, decompose',
+        permissions: 'edit: allow, bash: allow, task: allow',
+        responsibilities: [
+          '• Interactively grills user to clarify ambiguous requirements and discover non-goals.',
+          '• Ingests project profile (.agent-fabric/profile.yaml) for repo topology and smoke test paths.',
+          '• Decomposes work into independently delegable vertical slices (not horizontal layers).',
+          '• Enforces pre-plan and plan-reviewer approval before decompose projection.'
+        ],
+        schema: 'Phase-block canonical plan:\n- Objective & ROI\n- Context & Constraints\n- Phase blocks with concrete paths, DoD, and rollback boundaries\n- Completion criteria'
+      },
+      'plan-reviewer': {
+        name: 'plan-reviewer',
+        profile: 'profile: reviewer',
+        mode: 'mode: subagent',
+        isolation: 'sandbox',
+        desc: 'Independently validates implementation plans for completeness, acyclic dependencies, safety, and testable DoD.',
+        hooks: 'pre-plan',
+        permissions: 'edit: deny, bash: allow',
+        responsibilities: [
+          '• Adversarial review in fresh context using only seed and candidate plan.',
+          '• Rejects horizontal slices, hidden implementor decisions, and untestable criteria.',
+          '• Maximum 2 review passes before proposal boundary to prevent infinite review churn.'
+        ],
+        schema: '{\n  "verdict": "PASS|REVISE",\n  "summary": "",\n  "coverage": {"status": "PASS|FAIL|NOT_AVAILABLE", "gaps": []},\n  "phase_assessments": [{"phase": "", "vertical_slice": "PASS|FAIL", "dod_testable": "PASS|FAIL"}],\n  "findings": [{"severity": "critical|high|medium|low", "defect": "", "required_change": ""}]\n}'
+      },
+      'plan-supervisor': {
+        name: 'plan-supervisor',
+        profile: 'profile: supervisor',
+        mode: 'mode: primary',
+        isolation: 'workspace',
+        desc: 'Coordinates multi-phase plan execution phase-by-phase through bounded task supervision.',
+        hooks: 'load-task, pre-plan, label, decompose',
+        permissions: 'edit: allow, bash: allow, task: allow',
+        responsibilities: [
+          '• Orchestrates DAG state machine; selects unblocked phases with verified predecessor evidence.',
+          '• Dispatches fresh loop-supervisor per phase with zero transcript leakage.',
+          '• Halts on blocker, manages shared workspace locks, and triggers Two-Strike reset on repeated failure.'
+        ],
+        schema: '{\n  "status": "PASS|FAIL|BLOCKED",\n  "attempts": {"mutating": 0, "review_rejections": 0, "infrastructure_failures": 0},\n  "dod": [{"item": "text", "status": "PASS|FAIL|BLOCKED", "evidence": "path"}],\n  "remaining_blockers": []\n}'
+      },
+      'loop-supervisor': {
+        name: 'loop-supervisor',
+        profile: 'profile: supervisor',
+        mode: 'mode: all',
+        isolation: 'workspace',
+        desc: 'Supervises one atomic task through implementation, static review, dynamic QA testing, and DoD validation.',
+        hooks: 'load-task, pre/post-delegate-(implementor|code-reviewer|qa-runner|expert-debugger)',
+        permissions: 'edit: allow, bash: allow, task: allow',
+        responsibilities: [
+          '• Owns atomic control loop: implementor -> code-reviewer -> qa-runner -> reconciliation.',
+          '• Filters static review findings from dynamic QA evidence.',
+          '• Tracks recovery counters (mutating attempts <= 5, review rejections <= 2).',
+          '• Dispatches expert-debugger on second strike to enforce root-cause invariant fix.'
+        ],
+        schema: '{\n  "status": "PASS|FAIL|BLOCKED",\n  "attempts": {"mutating": 0, "review_rejections": 0, "infrastructure_failures": 0},\n  "dod": [{"item": "criterion", "status": "PASS|FAIL|BLOCKED", "evidence": "path"}],\n  "required_gates": [{"command": "cmd", "status": "PASS|FAIL|BLOCKED", "evidence": "path"}],\n  "remaining_blockers": []\n}'
+      },
+      'implementor': {
+        name: 'implementor',
+        profile: 'profile: worker',
+        mode: 'mode: subagent',
+        isolation: 'sandbox',
+        desc: 'Implements one atomic task or phase and returns concrete evidence against its exact DoD.',
+        hooks: 'load-task',
+        permissions: 'edit: allow, bash: allow, network: deny',
+        responsibilities: [
+          '• Implements only the bounded brief using absolute paths.',
+          '• For routing/persistence/security, traces entry point to sink and adds failing regression first.',
+          '• Hands off exclusively to loop-supervisor; never self-certifies or deploys.'
+        ],
+        schema: 'Summary report to loop-supervisor:\n- Changed files and line diffs\n- Executed test commands and exit codes\n- Disclosed risks and unhandled edge cases'
+      },
+      'code-reviewer': {
+        name: 'code-reviewer',
+        profile: 'profile: reviewer',
+        mode: 'mode: subagent',
+        isolation: 'sandbox',
+        desc: 'Executes static analysis and reviews code for correctness, security sink boundaries, and copy/i18n.',
+        hooks: 'load-task',
+        permissions: 'edit: deny, bash: allow, network: deny',
+        responsibilities: [
+          '• Adversarial, read-only static gate (types, linters, compilation).',
+          '• Checks untrusted input flow into execution sinks and SQL/command injection boundaries.',
+          '• Audits unlocalized hardcoded strings and copy regressions.',
+          '• Defers dynamic runtime/visual claims strictly to qa-runner.'
+        ],
+        schema: '{\n  "verdict": "ACCEPT|REJECT",\n  "contract_adherence": {"is_aligned_with_dod": true, "missing_requirements": []},\n  "static_analysis": {"compilation_status": "PASS|FAIL|NOT_AVAILABLE", "commands_run": [], "compiler_errors": []},\n  "findings": [{"classification": "new|repeat|scope_blocker", "severity": "critical|high|medium|low", "breached_contract": "", "evidence": "path:line", "required_change": ""}]\n}'
+      },
+      'qa-runner': {
+        name: 'qa-runner',
+        profile: 'profile: qa',
+        mode: 'mode: subagent',
+        isolation: 'sandbox',
+        desc: 'Executes dynamic verification, mutation anti-cheat tests, observable side-effects, and UI A11y audits.',
+        hooks: 'None (dispatched with required commands)',
+        permissions: 'edit: deny, bash: allow, network: allow (sandbox)',
+        responsibilities: [
+          '• Runs exact required regression and runtime test commands.',
+          '• Anti-cheat mutation test: verifies new tests fail when patch is stripped from pre-patch code.',
+          '• Detects hollow mocks and skipped assertions.',
+          '• Conditional A11y Gate: runs WCAG 2.2 audit for end-user UI; returns NOT_APPLICABLE for backend/CLI.'
+        ],
+        schema: '{\n  "outcome_verdict": "PASS|FAIL|BLOCKED",\n  "contract_compliance": {"dod_verified": true, "satisfied_criteria": [], "unmet_criteria": []},\n  "automated_tests": {"total_run": 0, "passed": 0, "failed": 0, "mutation_check": "PASS|FAIL|NOT_AVAILABLE"},\n  "visual_e2e_testing": {"status": "PASS|FAIL|NOT_AVAILABLE", "screenshots_captured": []},\n  "accessibility_audit": {"status": "PASS|FAIL|NOT_APPLICABLE", "wcag_violations": []},\n  "anti_cheat_logs": {"test_bypass_detected": false, "hollow_mocks_detected": false}\n}'
+      },
+      'expert-debugger': {
+        name: 'expert-debugger',
+        profile: 'profile: readonly',
+        mode: 'mode: subagent',
+        isolation: 'sandbox',
+        desc: 'Diagnoses hard failures and produces a bounded root-cause remediation brief.',
+        hooks: 'None',
+        permissions: 'edit: deny, bash: allow, network: deny',
+        responsibilities: [
+          '• Dispatched after second review rejection or test failure strike.',
+          '• Forms at least 3 distinct hypotheses and eliminates them against execution traces.',
+          '• Traces producer -> validation -> persistence -> consumer path.',
+          '• Delivers Ponytail invariant fix (earliest shared boundary) to unblock loop-supervisor.'
+        ],
+        schema: '{\n  "failure_classification": "infinite_loop|cascading_error|silent_tool_failure|environment_drift|quality_bypass",\n  "root_cause_analysis": {"culprit": "", "chronology": "", "blockers": []},\n  "tactical_intervention": {"remediation_type": "surgical_patch|rollback|environment_reset", "instructions": "", "handoff_artifact": ""}\n}'
+      },
+      'deploy-supervisor': {
+        name: 'deploy-supervisor',
+        profile: 'profile: supervisor',
+        mode: 'mode: primary',
+        isolation: 'workspace',
+        desc: 'Supervises post-merge deployment, smoke testing, migration validation, and release evidence collection under explicit user approval.',
+        hooks: 'load-task, pre-deploy, post-deploy',
+        permissions: 'edit: allow, bash: allow, task: allow',
+        responsibilities: [
+          '• Triggered ONLY after explicit human confirmation checkpoint.',
+          '• Ingests deploy scripts and smoke test routes from project profile.',
+          '• Executes staging / production deployments and health checks.',
+          '• Validates database migrations and asserts Git commit SHA / tag alignment.',
+          '• Generates auditable RELEASE_EVIDENCE.md artifact.'
+        ],
+        schema: '{\n  "release_status": "DEPLOYED|VERIFIED|FAILED|ROLLED_BACK",\n  "target_environment": "staging|production",\n  "git_ref": "v1.2.0 (sha1)",\n  "smoke_tests": [{"route": "/health", "status_code": 200, "latency_ms": 42}],\n  "migrations_applied": [],\n  "release_evidence_artifact": ".agent-fabric/releases/RELEASE_EVIDENCE_v1.2.0.md"\n}'
+      }
+    };
+
+    function showAgent(id) {
+      document.querySelectorAll('.agent-card').forEach(el => el.classList.remove('selected'));
+      event.currentTarget.classList.add('selected');
+      const a = agentData[id];
+      if (!a) return;
+
+      document.getElementById('inspector-name').innerText = a.name;
+      document.getElementById('inspector-profile').innerText = a.profile;
+      document.getElementById('inspector-mode').innerText = a.mode;
+      document.getElementById('inspector-isolation').innerText = a.isolation;
+      document.getElementById('inspector-desc').innerText = a.desc;
+      document.getElementById('inspector-hooks').innerText = a.hooks;
+      document.getElementById('inspector-permissions').innerText = a.permissions;
+
+      const respContainer = document.getElementById('inspector-responsibilities');
+      respContainer.innerHTML = a.responsibilities.map(r => `<p>${r}</p>`).join('');
+
+      document.getElementById('inspector-schema').innerText = a.schema;
+    }
+
+    function switchTab(tabId) {
+      ['lifecycle', 'agents', 'deploy', 'benchmark'].forEach(t => {
+        const el = document.getElementById('tab-' + t);
+        const btn = document.getElementById('tab-btn-' + t);
+        if (t === tabId) {
+          el.classList.remove('hidden');
+          btn.classList.add('active');
+        } else {
+          el.classList.add('hidden');
+          btn.classList.remove('active');
+        }
+      });
+    }
+
+    // Initialize first agent
+    document.addEventListener('DOMContentLoaded', () => {
+      const respContainer = document.getElementById('inspector-responsibilities');
+      respContainer.innerHTML = agentData['planner'].responsibilities.map(r => `<p>${r}</p>`).join('');
+      document.getElementById('inspector-schema').innerText = agentData['planner'].schema;
+    });
+  </script>
+
+  <!-- Mermaid Initialization ESM -->
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.17.1/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict',
+      theme: 'dark',
+      themeVariables: {
+        darkTheme: true,
+        background: '#0a0f1d',
+        primaryColor: '#1e1b4b',
+        primaryBorderColor: '#6366f1',
+        primaryTextColor: '#f8fafc',
+        lineColor: '#64748b',
+        secondaryColor: '#0c4a6e',
+        tertiaryColor: '#131b2e'
+      }
+    });
+
+    let diagramSequence = 0;
+    for (const element of document.querySelectorAll('.mermaid[data-mermaid-source]')) {
+      const source = element.dataset.mermaidSource ?? element.textContent.trim();
+      try {
+        await mermaid.parse(source);
+        const { svg, bindFunctions } = await mermaid.render(`fabric-diagram-${diagramSequence += 1}`, source);
+        element.innerHTML = svg;
+        element.dataset.mermaidState = 'rendered';
+        bindFunctions?.(element);
+      } catch (error) {
+        element.textContent = source;
+        element.dataset.mermaidState = 'error';
+        console.error('Mermaid rendering error:', error);
+      }
+    }
+  </script>
+</body>
+</html>

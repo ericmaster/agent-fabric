@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "projectName": "agent-fabric",
+  "artifacts": [
+    {
+      "id": "agent-fabric-architecture-lifecycle",
+      "title": "Agent Fabric Architecture & Extended Lifecycle",
+      "type": "html",
+      "file": "agent-fabric-architecture-lifecycle.html",
+      "description": "Interactive topology, 9-agent inspector, gated deploy-supervisor, and conditional UI A11y workflow",
+      "tags": [
+        "architecture",
+        "lifecycle",
+        "agents",
+        "deploy",
+        "a11y",
+        "orchestration"
+      ],
+      "createdAt": "2026-09-01T16:16:44.484Z",
+      "updatedAt": "2026-09-01T16:16:44.484Z"
+    }
+  ]
+}

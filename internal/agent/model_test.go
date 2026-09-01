@@ -34,6 +34,7 @@ func TestCanonicalAgentsRetainWorkflowContracts(t *testing.T) {
 		"expert-debugger": {"at least three distinct hypotheses", "bounded remediation brief", "## Recovery Protocol", "failure_classification"},
 		"plan-reviewer":   {"vertical-slice shape", "## Review Rubric And Output", "PASS|REVISE"},
 		"qa-runner":       {"Read the original DoD", "## Verification Discipline", "PASS|FAIL|BLOCKED"},
+		"deploy-supervisor": {"## Operating Invariant & Human Gate", "## Release Execution Sequence", "## Output Contract"},
 	}
 	for id, required := range anchors {
 		d, err := ParseFile(filepath.Join("..", "..", "agents", id+".md"))
@@ -49,7 +50,7 @@ func TestCanonicalAgentsRetainWorkflowContracts(t *testing.T) {
 }
 
 func TestCanonicalAgentsUseInstallTimeHookPlaceholders(t *testing.T) {
-	for _, id := range []string{"planner", "plan-supervisor", "loop-supervisor", "implementor", "code-reviewer", "expert-debugger", "plan-reviewer", "qa-runner"} {
+	for _, id := range []string{"planner", "plan-supervisor", "loop-supervisor", "implementor", "code-reviewer", "expert-debugger", "plan-reviewer", "qa-runner", "deploy-supervisor"} {
 		d, err := ParseFile(filepath.Join("..", "..", "agents", id+".md"))
 		if err != nil {
 			t.Fatalf("parse %s: %v", id, err)

@@ -13,6 +13,7 @@ internal workflow, hook invocations, delegation relationships, and output contra
 | [qa-runner](qa-runner.md) | Deterministic verification | qa | — |
 | [expert-debugger](expert-debugger.md) | Root-cause diagnosis | readonly | — |
 | [plan-reviewer](plan-reviewer.md) | Independent plan validation | reviewer | pre-plan |
+| [deploy-supervisor](deploy-supervisor.md) | Gated release & deploy verification | supervisor | load-task · pre-deploy · post-deploy |
 
 Filing rule: these are structural diagrams — they belong in `docs/architecture/` per §3 of
 [`docs-organization-blueprint.md`](../docs-organization-blueprint.md).

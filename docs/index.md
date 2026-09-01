@@ -26,6 +26,7 @@ document's home is ambiguous, and apply the frontmatter from §4.
 - [`architecture/code-reviewer.md`](architecture/code-reviewer.md) — Code Reviewer static + semantic review protocol
 - [`architecture/qa-runner.md`](architecture/qa-runner.md) — QA Runner verification sequence and anti-cheat checks
 - [`architecture/expert-debugger.md`](architecture/expert-debugger.md) — Expert Debugger hypothesis-elimination and remediation brief
+- [`architecture/deploy-supervisor.md`](architecture/deploy-supervisor.md) — Deploy Supervisor gated release execution, smoke testing, and evidence collection
 
 ## Decisions
 

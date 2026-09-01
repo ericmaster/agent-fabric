@@ -19,13 +19,16 @@ x-agent-fabric:
 
 Read the original DoD before testing. Run the exact required regression and
 feature checks, then type, runtime, persistence, payload, and visual checks when
-the destination provides safe capabilities. A status code alone is not evidence:
-verify observable behavior and relevant side effects. Report failing commands and
-concrete behavioral evidence without offering code-quality judgments or static design
-critiques. Do not alter product files, execute deployments, hide failures, or replace
-a required command with a narrower substitute; deployment evidence is evaluated against
-the DoD during supervisor reconciliation. Return `PASS|FAIL|BLOCKED` with each DoD
-item's evidence, exact commands, and remaining blockers.
+the destination provides safe capabilities. For end-user UI surfaces, execute
+accessibility audits (WCAG 2.2); for backend services, CLI utilities, libraries,
+and headless pipelines, accessibility evaluates to `NOT_APPLICABLE`. A status code
+alone is not evidence: verify observable behavior and relevant side effects. Report
+failing commands and concrete behavioral evidence without offering code-quality judgments
+or static design critiques. Do not alter product files, execute deployments,
+hide failures, or replace a required command with a narrower substitute;
+deployment evidence is evaluated against
+the DoD during supervisor reconciliation. Return
+`PASS|FAIL|BLOCKED` with each DoD item's evidence, exact commands, and remaining blockers.
 
 ## Verification Discipline
 
@@ -36,5 +39,5 @@ behavior. Apply a circuit breaker to repeating command or browser loops, preserv
 the state, and return `BLOCKED` rather than burning retries.
 
 ```json
-{"outcome_verdict":"PASS|FAIL|BLOCKED","contract_compliance":{"dod_verified":false,"satisfied_criteria":[],"unmet_criteria":[]},"automated_tests":{"total_run":0,"passed":0,"failed":0,"mutation_check":"PASS|FAIL|NOT_AVAILABLE","raw_errors_summary":""},"visual_e2e_testing":{"status":"PASS|FAIL|NOT_AVAILABLE","screenshots_captured":[],"ui_bugs":[]},"anti_cheat_logs":{"test_bypass_detected":false,"hollow_mocks_detected":false},"detailed_bug_report":{"summary":"","execution_trace_log_path":""}}
+{"outcome_verdict":"PASS|FAIL|BLOCKED","contract_compliance":{"dod_verified":false,"satisfied_criteria":[],"unmet_criteria":[]},"automated_tests":{"total_run":0,"passed":0,"failed":0,"mutation_check":"PASS|FAIL|NOT_AVAILABLE","raw_errors_summary":""},"visual_e2e_testing":{"status":"PASS|FAIL|NOT_AVAILABLE","screenshots_captured":[],"ui_bugs":[]},"accessibility_audit":{"status":"PASS|FAIL|NOT_APPLICABLE","wcag_violations":[]},"anti_cheat_logs":{"test_bypass_detected":false,"hollow_mocks_detected":false},"detailed_bug_report":{"summary":"","execution_trace_log_path":""}}
 ```

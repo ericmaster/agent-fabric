@@ -45,6 +45,8 @@ var allowedHooks = map[string]bool{
 	"post-delegate-qa-runner":       true,
 	"pre-delegate-expert-debugger":  true,
 	"post-delegate-expert-debugger": true,
+	"pre-deploy":                    true,
+	"post-deploy":                   true,
 }
 
 func ParseFile(path string) (Definition, error) {
