@@ -570,6 +570,9 @@ func hookInvocation(agentID, event string, resolution hookResolution) string {
 	if isDelegationLifecycleHook(event) {
 		return ""
 	}
+	if event == "record-ledger" {
+		return "No `record-ledger` hook is installed; continue without it. Canonical supervisors do not hardcode local files, databases, or storage engines; the installed hook determines storage destination and persistence."
+	}
 	return fmt.Sprintf("No `%s` hook is installed; continue without it.", event)
 }
 

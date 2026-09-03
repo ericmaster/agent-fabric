@@ -37,6 +37,7 @@ var allowedHooks = map[string]bool{
 	"label":                         true,
 	"decompose":                     true,
 	"post-plan":                     true,
+	"record-ledger":                 true,
 	"pre-delegate-implementor":      true,
 	"post-delegate-implementor":     true,
 	"pre-delegate-code-reviewer":    true,

@@ -86,8 +86,8 @@ flowchart TD
 |---|---|---|---|---|
 | [Planner](planner.md) | `planner` | primary | sandbox | load-task · pre-plan · post-plan |
 | [Plan Reviewer](plan-reviewer.md) | `reviewer` | subagent | sandbox | pre-plan |
-| [Plan Supervisor](plan-supervisor.md) | `supervisor` | primary | workspace | load-task · pre-plan · label · decompose |
-| [Loop Supervisor](loop-supervisor.md) | `supervisor` | all | workspace | load-task |
+| [Plan Supervisor](plan-supervisor.md) | `supervisor` | primary | workspace | load-task · pre-plan · label · decompose · record-ledger |
+| [Loop Supervisor](loop-supervisor.md) | `supervisor` | all | workspace | load-task · record-ledger |
 | [Implementor](implementor.md) | `worker` | subagent | sandbox | load-task |
 | [Code Reviewer](code-reviewer.md) | `reviewer` | subagent | sandbox | load-task |
 | [QA Runner](qa-runner.md) | `qa` | subagent | sandbox | — |
@@ -103,6 +103,7 @@ flowchart TD
 | `label` | Plan Supervisor | Apply task-system labels or state transitions |
 | `decompose` | Plan Supervisor | Project child phases into task-system |
 | `post-plan` | Planner | Signal completion / publish / notify |
+| `record-ledger` | Plan Supervisor · Loop Supervisor | Record structured macro- or micro-ledger event to host memory or fallback JSONL |
 
 Hooks are resolved once at install/sync time from `~/.agent-hooks/`. Markdown instructions
 take precedence over executable scripts. When no hook is installed, agents continue without it.

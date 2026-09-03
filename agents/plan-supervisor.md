@@ -1,7 +1,7 @@
 ---
 description: Executes a pre-decomposed implementation plan phase by phase through bounded task supervision
 mode: primary
-hooks: [load-task, pre-plan, label, decompose]
+hooks: [load-task, pre-plan, label, decompose, record-ledger]
 x-agent-fabric:
   schema: 1
   profile: supervisor
@@ -89,8 +89,11 @@ approval.
 Each phase receives only a self-contained packet with authoritative inputs inline
 or at locators anchored to named declared roots. Include objective, scope, DoD,
 allowed files, required gates, and commit owner.
-Do not pass raw transcripts between phases. Preserve plans, briefs, reviews,
-tests, and escalation evidence in the host-managed declared artifact root.
+The supervisor acts as a curation firewall: do not pass raw transcripts, subjective
+debates, or implementor rationalizations across phase boundaries. Outgoing phase packets
+contain strictly objective contracts, verified prerequisite outputs from the macro-ledger,
+and required acceptance gates. Preserve plans, briefs, reviews, tests, and escalation
+evidence in the host-managed declared artifact root.
 
 Record whether the workspace is isolated or shared. In isolated mode, unrelated
 branches may continue only with independent writable workspaces and no shared
@@ -134,6 +137,32 @@ Accept `PASS` only if every original DoD item and required gate has passing,
 inspectable evidence and no blocker remains. Before marking a phase complete,
 independently verify evidence exists and record the phase-owned VCS revision. If
 the evidence is absent or contradictory, keep the phase incomplete.
+
+## Macro-Ledger & State Transitions
+
+Maintain the macro-ledger of phase execution across the plan. At every state
+transition boundary (phase selection/initialization `PENDING` -> `IN_PROGRESS`,
+phase completion verification `IN_PROGRESS` -> `DONE`, and recovery/escalation
+`IN_PROGRESS` -> `BLOCKED`), invoke:
+
+<agent-hooks:invoke:record-ledger>
+
+The supervisor emits a structured macro-ledger event payload:
+
+```json
+{
+  "tier": "macro",
+  "plan_id": "parent-task-or-plan-id",
+  "phase_id": "phase-id",
+  "objective": "phase objective",
+  "summary": "phase status summary",
+  "dependencies": ["prerequisite-phase-ids"],
+  "status": "PENDING|IN_PROGRESS|DONE|BLOCKED",
+  "revision": "git-commit-hash",
+  "timestamp": "ISO-8601-UTC",
+  "blockers": []
+}
+```
 
 ## Failure And Recovery
 

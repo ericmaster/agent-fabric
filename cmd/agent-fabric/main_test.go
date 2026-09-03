@@ -501,9 +501,11 @@ func TestLoopSupervisorDelegationHooksAreNoopsByDefault(t *testing.T) {
 		t.Fatalf("failed to parse canonical loop supervisor: %v", err)
 	}
 	legacy := current
-	legacy.Fabric.Hooks = []string{"load-task"}
-	for _, event := range current.Fabric.Hooks[1:] {
-		legacy.Body = strings.ReplaceAll(legacy.Body, "<agent-hooks:invoke:"+event+">", "")
+	legacy.Fabric.Hooks = []string{"load-task", "record-ledger"}
+	for _, event := range current.Fabric.Hooks {
+		if isDelegationLifecycleHook(event) {
+			legacy.Body = strings.ReplaceAll(legacy.Body, "<agent-hooks:invoke:"+event+">", "")
+		}
 	}
 
 	rendered, err := renderHookPlaceholders(current)
@@ -516,6 +518,49 @@ func TestLoopSupervisorDelegationHooksAreNoopsByDefault(t *testing.T) {
 	}
 	if rendered.Body != previous.Body {
 		t.Fatalf("uninstalled delegation hooks changed generated output:\ncurrent:\n%s\nprevious:\n%s", rendered.Body, previous.Body)
+	}
+}
+
+func TestRecordLedgerHookResolvesScriptAndRendersTemplate(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	hooks := filepath.Join(home, ".agent-hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	scriptPath := filepath.Join(hooks, "record-ledger.sh")
+	if err := os.WriteFile(scriptPath, []byte("#!/usr/bin/env bash\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	current, err := agent.ParseFile(filepath.Join("..", "..", "agents", "loop-supervisor.md"))
+	if err != nil {
+		t.Fatalf("failed to parse loop-supervisor: %v", err)
+	}
+	rendered, err := renderHookPlaceholders(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rendered.Body, scriptPath) {
+		t.Fatalf("expected rendered body to invoke resolved script %s, got:\n%s", scriptPath, rendered.Body)
+	}
+}
+
+func TestRecordLedgerHookRendersContinuationWhenUninstalled(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	current, err := agent.ParseFile(filepath.Join("..", "..", "agents", "loop-supervisor.md"))
+	if err != nil {
+		t.Fatalf("failed to parse loop-supervisor: %v", err)
+	}
+	rendered, err := renderHookPlaceholders(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rendered.Body, "No `record-ledger` hook is installed; continue without it.") {
+		t.Fatalf("expected fallback continuation for uninstalled record-ledger, got:\n%s", rendered.Body)
+	}
+	if !strings.Contains(rendered.Body, "Canonical supervisors do not hardcode local files, databases, or storage engines; the installed hook determines storage destination and persistence.") {
+		t.Fatalf("expected decoupling text in default uninstalled record-ledger instruction, got:\n%s", rendered.Body)
 	}
 }
 

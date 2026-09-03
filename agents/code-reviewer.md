@@ -90,6 +90,8 @@ browser visual screenshots, or deployment validation; dynamic verification and l
 execution are the exclusive authority of `qa-runner`. In the JSON result, populate
 `contract_adherence.missing_requirements` only with statically verifiable code defects; dynamic DoD
 items must be omitted from reviewer rejections and deferred to QA.
+Historical state, ledgers, and iteration tracking are managed externally by the supervisor;
+reviewers must never write to or consult local files, databases, or storage engines for history or ledgers.
 
 Return exactly one JSON object:
 

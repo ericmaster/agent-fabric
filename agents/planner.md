@@ -168,8 +168,10 @@ Write the canonical body in Phase-block form:
   local artifact when the optional task-system capability defaults
 
 Keep rationale, alternatives, review decisions, provenance, and exclusions in
-separate decision artifacts rather than the parser-sensitive plan body. Do not
-include unresolved questions.
+separate decision artifacts rather than the parser-sensitive plan body.
+Historical state and ledgers are managed externally by supervisors via declarative
+hooks; planners must never write to or consult local files, databases, or storage engines
+for history or ledgers. Do not include unresolved questions.
 
 When already in Publish mode, skip unused earlier hooks and remaining reviews,
 then invoke only the proposal-boundary events below.

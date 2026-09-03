@@ -124,14 +124,42 @@ live endpoint smoke testing, and empirical release evidence collection. Deployme
 gated actions executed only under explicit human operator authorization, generating an
 auditable RELEASE_EVIDENCE.md artifact.
 
+## Supervisor Ledger Hook Contract & Curation Firewall
+
+Canonical agents remain decoupled from host persistence engines, local files, and databases.
+Storage for execution history is resolved exclusively through the declarative `<agent-hooks:invoke:record-ledger>`
+hook declared in supervisor frontmatter. Canonical workers (`implementor`, `code-reviewer`, `planner`)
+must never write to or consult local ledger files or storage engines.
+
+The architecture enforces a Two-Tier Ledger Model:
+- **Macro-Ledger (`plan-supervisor`):** Tracks phase-level state transitions across the plan DAG.
+  Emits structured events containing `tier: "macro"`, `plan_id`, `phase_id`, `objective`, `summary`,
+  `dependencies`, `status: PENDING|IN_PROGRESS|DONE|BLOCKED`, `revision`, `timestamp`, and `blockers`.
+- **Micro-Ledger (`loop-supervisor`):** Tracks iteration-level transitions within an atomic task.
+  Emits structured events containing `tier: "micro"`, `task_id`, `iteration`, `phase`, `status: PASS|FAIL|BLOCKED`,
+  `mutation_count`, `review_rejections`, structured `findings` (id, classification, severity, breached_contract,
+  evidence path:line, required_change), `remediation_targets`, and `timestamp`.
+
+Supervisors act as an unbiased **Curation Firewall** across child dispatches:
+- **Implementor Dispatches:** Supervisors forward only objective finding definitions (`F1: lease boundary equality in path:line`)
+  and failing test gates from the ledger, stripping out subjective reviewer commentary, rhetorical critiques, or adversarial debate.
+- **Reviewer Dispatches:** Supervisors forward only the remediation diff and the specific objective criteria from the ledger
+  ("Verify whether finding F1 is resolved, without regressions"). Supervisors strictly suppress implementor rationalizations,
+  apologies, or explanations that would soften adversarial review or prompt iterative goalpost-moving.
+- **QA Runner Dispatches:** Supervisors forward strictly original DoD, test commands, and workspace changes, filtering out
+  subjective code-quality opinions or developer commentary.
+- **Expert Debugger Dispatches:** Supervisors forward strictly objective failing gate/test logs, breached contracts, and diffs,
+  filtering out conversational histories.
+
 Canonical bodies declare registered hooks with `<agent-hooks:list-available>` and
 `<agent-hooks:invoke:<event>>` placeholders. During install or sync, the CLI
 resolves each registered event once from host-global `~/.agent-hooks/`; Markdown
-precedes an executable script. The generated agent receives either inlined
-Markdown instructions, an executable script path, or an explicit no-hook
-continuation (or section omission for optional lifecycle blocks). Loop-supervisor
- delegation hooks use `pre-delegate-<agent>` and `post-delegate-<agent>` events;
- absent hooks are omitted so its default generated output is unchanged. The generated
+precedes an executable script. Deterministic hook events include `load-task`, `pre-plan`,
+`classify`, `label`, `decompose`, `post-plan`, `record-ledger`, `pre-deploy`, and `post-deploy`.
+The generated agent receives either inlined Markdown instructions, an executable script path,
+or an explicit no-hook continuation (or section omission for optional lifecycle blocks). Loop-supervisor
+delegation hooks use `pre-delegate-<agent>` and `post-delegate-<agent>` events;
+absent hooks are omitted so its default generated output is unchanged. The generated
 file is therefore deterministic until its next install or sync. Hooks own their
 own caching, logging, input transport, and failure semantics; canonical agents
 only follow the rendered invocation instruction.

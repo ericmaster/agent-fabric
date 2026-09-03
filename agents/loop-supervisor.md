@@ -1,7 +1,7 @@
 ---
 description: Supervises one atomic task through implementation, review, testing, and definition-of-done validation
 mode: all
-hooks: [load-task, pre-delegate-implementor, post-delegate-implementor, pre-delegate-code-reviewer, post-delegate-code-reviewer, pre-delegate-qa-runner, post-delegate-qa-runner, pre-delegate-expert-debugger, post-delegate-expert-debugger]
+hooks: [load-task, record-ledger, pre-delegate-implementor, post-delegate-implementor, pre-delegate-code-reviewer, post-delegate-code-reviewer, pre-delegate-qa-runner, post-delegate-qa-runner, pre-delegate-expert-debugger, post-delegate-expert-debugger]
 x-agent-fabric:
   schema: 1
   profile: supervisor
@@ -87,13 +87,20 @@ the refreshed packet, and stop with `BLOCKED` on any context gap.
    concurrency, lifecycle cascades, error taxonomy, and test completeness. Reconcile repeat findings
    against the remediation diff to ensure no iterative goalpost-moving.
    Findings are evidence, not implementation instructions to blindly follow.
+   The supervisor acts as a curation firewall: in remediation packets to `implementor`, pass only
+   objective finding definitions (`F1: lease boundary equality in file:line`) and failing test gates,
+   stripping subjective reviewer commentary. In subsequent audit packets to `code-reviewer`, pass only
+   the remediation diff and objective verification criteria from the ledger ("Verify whether finding F1
+   is resolved, without regressions"); never forward implementor rationalizations, excuses, or conversational
+   debates that could bias adversarial review or prompt goalpost-moving.
    Reclassify review findings grounded solely on absent dynamic evidence (runtime
    output, persistence, screenshots, deployment logs) as out-of-authority; route them
    to `qa-runner` dispatch without triggering implementor remediation or incrementing
    `review_rejections`.
 <agent-hooks:invoke:post-delegate-code-reviewer><agent-hooks:invoke:pre-delegate-qa-runner>4. Validate the packet, then dispatch `qa-runner` in a fresh context with original
    DoD and exact required commands. Preserve its command output, runtime,
-   persistence, payload, and visual evidence when applicable.
+   persistence, payload, and visual evidence when applicable. QA packets receive strictly original
+   DoD, test commands, and workspace changes, filtering out subjective code-quality judgments or developer commentary.
 <agent-hooks:invoke:post-delegate-qa-runner>5. Independently reconcile all reports against the original task. Concrete
    executed behavior facts are authoritative for runtime and visual claims; static analysis
    is authoritative for code-level contracts. Directly conflicting evidence triggers
@@ -117,7 +124,9 @@ owned by the current task from a recorded checkpoint.
 
 On `FAIL` or `BLOCKED`, preserve evidence and classify the blocker before acting.
 <agent-hooks:invoke:pre-delegate-expert-debugger>Validate the packet, then dispatch `expert-debugger` in a fresh diagnostic context
-for environment failures, defects, specification drift, or flaky integrations.
+for environment failures, defects, specification drift, or flaky integrations. Curation firewall
+rules apply: pass only objective failing gate/test logs, breached contracts, and diffs; filter out
+conversational debates or excuses.
 <agent-hooks:invoke:post-delegate-expert-debugger>Re-brief the same task with diagnostic content inline or at its authoritative
 locator and make bounded remediation attempts.
 
@@ -160,6 +169,40 @@ not applicable before final reconciliation.
 Stop and produce an escalation artifact when the budget is exhausted, an
 operator-only action is required, or no reversible option remains. Do not advance
 a dependent task while this task lacks verified `PASS` evidence.
+
+## Micro-Ledger & Iteration Tracking
+
+Maintain the micro-ledger of atomic task iterations. At every state transition boundary
+(post-implementor return, post-code-reviewer audit, post-qa-runner verification, reconciliation,
+and bounded recovery transitions), invoke:
+
+<agent-hooks:invoke:record-ledger>
+
+The supervisor emits a structured micro-ledger event payload:
+
+```json
+{
+  "tier": "micro",
+  "task_id": "atomic-task-id",
+  "iteration": 1,
+  "phase": "implementation|code_review|qa|diagnostic|reconciliation",
+  "status": "PASS|FAIL|BLOCKED",
+  "mutation_count": 1,
+  "review_rejections": 0,
+  "findings": [
+    {
+      "id": "F1",
+      "classification": "new|repeat|scope_blocker",
+      "severity": "critical|high|medium|low",
+      "breached_contract": "contract-or-dod-item",
+      "evidence": "path:line",
+      "required_change": "objective-fix"
+    }
+  ],
+  "remediation_targets": ["file:line"],
+  "timestamp": "ISO-8601-UTC"
+}
+```
 
 Return a machine-readable report:
 

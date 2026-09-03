@@ -568,3 +568,90 @@ func TestParseFrontmatterIgnoresUnrelatedIndentedSections(t *testing.T) {
 		t.Fatalf("custom-meta contaminated permissions: %q", d.Fabric.Permissions["edit"])
 	}
 }
+
+func TestSupervisorLedgerAndCurationFirewallContracts(t *testing.T) {
+	planSup, err := ParseFile(filepath.Join("..", "..", "agents", "plan-supervisor.md"))
+	if err != nil {
+		t.Fatalf("parse plan-supervisor: %v", err)
+	}
+	loopSup, err := ParseFile(filepath.Join("..", "..", "agents", "loop-supervisor.md"))
+	if err != nil {
+		t.Fatalf("parse loop-supervisor: %v", err)
+	}
+
+	t.Run("supervisors register record-ledger hook and invoke placeholder exactly once", func(t *testing.T) {
+		for _, d := range []Definition{planSup, loopSup} {
+			foundHook := false
+			for _, h := range d.Fabric.Hooks {
+				if h == "record-ledger" {
+					foundHook = true
+					break
+				}
+			}
+			if !foundHook {
+				t.Errorf("%s missing record-ledger hook registration in frontmatter", d.ID)
+			}
+			if got := strings.Count(d.Body, "<agent-hooks:invoke:record-ledger>"); got != 1 {
+				t.Errorf("%s record-ledger invoke placeholder count = %d, want 1", d.ID, got)
+			}
+		}
+	})
+
+	t.Run("plan-supervisor carries normative macro-ledger schema and state transitions", func(t *testing.T) {
+		wants := []string{
+			"## Macro-Ledger & State Transitions",
+			"\"tier\": \"macro\"",
+			"\"plan_id\":",
+			"\"phase_id\":",
+			"\"dependencies\":",
+			"\"status\": \"PENDING|IN_PROGRESS|DONE|BLOCKED\"",
+			"The supervisor acts as a curation firewall",
+			"do not pass raw transcripts, subjective\ndebates, or implementor rationalizations",
+		}
+		for _, want := range wants {
+			if !strings.Contains(planSup.Body, want) {
+				t.Errorf("plan-supervisor missing macro-ledger / firewall contract %q", want)
+			}
+		}
+	})
+
+	t.Run("loop-supervisor carries normative micro-ledger schema and 360-degree curation firewall", func(t *testing.T) {
+		wants := []string{
+			"## Micro-Ledger & Iteration Tracking",
+			"\"tier\": \"micro\"",
+			"\"task_id\":",
+			"\"iteration\":",
+			"\"phase\":",
+			"\"findings\":",
+			"\"remediation_targets\":",
+			"The supervisor acts as a curation firewall",
+			"Verify whether finding F1",
+			"stripping subjective reviewer commentary",
+			"never forward implementor rationalizations, excuses, or conversational\n   debates",
+			"QA packets receive strictly original\n   DoD, test commands, and workspace changes",
+			"pass only objective failing gate/test logs, breached contracts, and diffs; filter out\nconversational debates or excuses",
+		}
+		for _, want := range wants {
+			if !strings.Contains(loopSup.Body, want) {
+				t.Errorf("loop-supervisor missing micro-ledger / firewall contract %q", want)
+			}
+		}
+	})
+}
+
+func TestWorkersDecoupledFromLedgerStorage(t *testing.T) {
+	for _, id := range []string{"implementor", "code-reviewer", "planner"} {
+		d, err := ParseFile(filepath.Join("..", "..", "agents", id+".md"))
+		if err != nil {
+			t.Fatalf("parse %s: %v", id, err)
+		}
+		for _, want := range []string{
+			"managed externally",
+			"never write to or consult local files, databases, or storage engines",
+		} {
+			if !strings.Contains(d.Body, want) && !strings.Contains(d.Body, "managed exclusively by the\nsupervisor") {
+				t.Errorf("%s missing storage decoupling assertion %q", id, want)
+			}
+		}
+	}
+}

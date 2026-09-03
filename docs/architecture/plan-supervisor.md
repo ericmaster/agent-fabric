@@ -81,6 +81,31 @@ flowchart TD
 | `pre-plan` | Pre-dispatch | Validate source plan before any mutation |
 | `decompose` | Pre-dispatch | Materialize phases into task-system (if needed) |
 | `label` | After each PASS | Record phase state in task-system |
+| `record-ledger` | State transitions | Record structured macro-ledger event to host memory or fallback JSONL |
+
+## Macro-Ledger & Phase Curation Firewall
+
+The Plan Supervisor coordinates phase execution across the plan DAG and maintains a macro-ledger
+at all phase transitions (`PENDING` -> `IN_PROGRESS` -> `DONE` or `BLOCKED`).
+
+The Plan Supervisor acts as a curation firewall between phases:
+- Outgoing phase packets contain strictly objective contracts, verified prerequisite outputs from the macro-ledger, and required acceptance gates.
+- Subjective debates, prior phase debugging trails, or implementor rationalizations are strictly suppressed to prevent context pollution and cross-phase bias.
+
+```json
+{
+  "tier": "macro",
+  "plan_id": "<parent-task-or-plan-id>",
+  "phase_id": "<phase-id>",
+  "objective": "<phase-objective>",
+  "summary": "<phase-status-summary>",
+  "dependencies": ["<dep-phase-id>"],
+  "status": "PENDING|IN_PROGRESS|DONE|BLOCKED",
+  "revision": "<git-commit-hash>",
+  "timestamp": "<iso-8601-utc>",
+  "blockers": []
+}
+```
 
 ## Autonomous Boundaries
 

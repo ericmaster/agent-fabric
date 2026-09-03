@@ -80,5 +80,7 @@ update, delete, remap, retry, reset, cascade):
 Do not define product architecture or silently broaden scope. If the supplied task
 lacks a coherent flow, affected-file boundary, or testable DoD, return the gap to
 the supervisor before editing. At handoff, disclose uncertain decisions, exact
-verification evidence, remaining risks, and blocked requirements. Hand off only to
-the supervisor; it owns fresh-context review dispatch and final verdict.
+verification evidence, remaining risks, and blocked requirements. Hand off only to the supervisor; it owns fresh-context review dispatch and final verdict.
+Historical state, ledgers, and iteration tracking are managed exclusively by the
+supervisor; implementors must never write to or consult local files, databases,
+or storage engines for history or ledgers.
