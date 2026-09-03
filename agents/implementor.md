@@ -58,6 +58,23 @@ common enforcement point; a literal counterexample patch is not sufficient. If a
 mandatory requirement needs a forbidden path or authority, return `BLOCKED` before
 editing instead of implementing a partial workaround.
 
+## Whole-System Lifecycle & Proactive Invariants
+
+When implementing or remediating a behavior, state transition, or lifecycle event (e.g. create,
+update, delete, remap, retry, reset, cascade):
+1. **Whole-System Lifecycle Contract:** Never implement narrow, localized, or single-line patches.
+   Proactively audit and close the invariant across ALL application entry points and background
+   mechanisms that touch or cascade that entity (e.g., Tenant APIs, Customer Portals, Staff Admin,
+   Scheduled Cron jobs, hard deletions, demo resets, database foreign-key cascades).
+2. **Defensive Concurrency & Failure Invariants Upfront:** Proactively implement defensive
+   concurrency (CAS, atomic version increments, lease validity boundaries, worker fencing),
+   idempotent error recovery (retries, exponential backoff, ambiguous write recovery on 409/412/404),
+   and tombstone/cascade preservation upfront on the initial pass rather than waiting for reviewer rejection.
+3. **Comprehensive Verification & Clean Packaging:** Write robust tests that model negative paths,
+   fault injection, network timeouts, and multi-step recovery. Ensure all touched, modified, and
+   created files are cleanly staged, typecheck passes, and full test suites pass before signaling
+   completion.
+
 ## Execution And Handoff
 
 Do not define product architecture or silently broaden scope. If the supplied task

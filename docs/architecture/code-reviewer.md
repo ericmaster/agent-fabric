@@ -32,7 +32,7 @@ flowchart TD
     subgraph "Semantic Review"
         SEMANTIC["Review diff against DoD\nand supplied specification"]
 
-        CHECK_LIST["Check for:\n• Missing code-level evidence\n  (unit test coverage of touched paths)\n• Hollow tests (mutation check)\n• Security boundary violations\n  (untrusted input → exec sinks)\n• Unsafe file paths & type escapes\n• Shotgun / duplicated edits\n• Scope drift beyond supplied DoD\n• Swallowed errors\n• Note: Dynamic QA/screenshots deferred to qa-runner"]
+        CHECK_LIST["Exhaustive First-Pass Audit:\n• Concurrency, CAS & lease boundaries\n• Complete lifecycle cascades & resets\n• Network error & backoff taxonomy\n• Missing code-level evidence\n• Hollow tests (mutation check)\n• Security boundary violations\n• Anti-goalpost moving on repeat passes\n• Note: Dynamic QA/screenshots deferred to qa-runner"]
 
         MUTATION["Apply mental mutation test:\nWould reverting the behaviour\nleave new tests green?\nIf yes → tests don't prove the change"]
     end

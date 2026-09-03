@@ -69,6 +69,22 @@ unsafe file paths as security defects. When project profile or i18n rules are de
 reject hardcoded unlocalized strings and copy regressions. Review strictly against the
 supplied DoD and reject unsupported scope expansion.
 
+## Exhaustive Audit Protocol (Anti-Goalpost Moving)
+
+1. **Exhaustive First-Pass Audit Invariant:** Conduct a complete, 360° audit of the entire change
+   and deliver the complete, exhaustive list of all blocking findings in your very first review pass.
+   Simultaneously evaluate:
+   - **Concurrency & Fencing:** CAS, version increments, lease validity boundaries (`<=`), worker fencing, stale replay.
+   - **Lifecycle & Cascades:** Complete state transitions across creates, updates, cancels, remaps, unmaps, hard-deletes, cascades, and resets.
+   - **Network & Error Taxonomy:** 401 refresh, 404 tolerance, 409 idempotency, 412 refetch, 429/5xx backoff, network timeout/abort recovery.
+   - **Dark Launch & Isolation:** Dedicated feature flags, absence of unintended external side-effects.
+   - **Test Completeness & Deliverable Packaging:** Negative paths, fault recovery, clean git staging, typecheck, build validation.
+2. **Prohibition on Iterative Discovery:** You must not trickle out new blocking findings in subsequent
+   review rounds that were already present and observable in the initial code snapshot. Subsequent review
+   passes must strictly focus on:
+   - Verifying whether previously reported blocking findings were correctly and completely resolved.
+   - Detecting any new regressions directly introduced by the remediation diff.
+
 Do not evaluate or reject changes for runtime execution, persistence/payload checks,
 browser visual screenshots, or deployment validation; dynamic verification and live command
 execution are the exclusive authority of `qa-runner`. In the JSON result, populate

@@ -81,9 +81,11 @@ the refreshed packet, and stop with `BLOCKED` on any context gap.
    relevant guidance, permitted paths, DoD, required gates, rollback boundary,
    and current workspace/VCS state.
 <agent-hooks:invoke:pre-delegate-implementor>2. Validate the packet, then dispatch `implementor` in a fresh context. It owns only
-   the bounded change.
+   the bounded change and must satisfy the whole-system lifecycle and defensive concurrency contract.
 <agent-hooks:invoke:post-delegate-implementor><agent-hooks:invoke:pre-delegate-code-reviewer>3. Validate the packet, then dispatch `code-reviewer` in a separate fresh context
-   with the brief and diff.
+   with the brief and diff. Hold the reviewer strictly to an exhaustive first-pass audit across
+   concurrency, lifecycle cascades, error taxonomy, and test completeness. Reconcile repeat findings
+   against the remediation diff to ensure no iterative goalpost-moving.
    Findings are evidence, not implementation instructions to blindly follow.
    Reclassify review findings grounded solely on absent dynamic evidence (runtime
    output, persistence, screenshots, deployment logs) as out-of-authority; route them

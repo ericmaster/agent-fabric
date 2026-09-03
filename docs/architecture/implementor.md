@@ -31,7 +31,7 @@ flowchart TD
     INSPECT --> IMPLEMENT
 
     subgraph "Implementation"
-        IMPLEMENT["Make targeted, bounded changes\n• Packet-declared roots\n• Inspect before editing\n• Preserve unrelated user work\n• Align impl + tests + backing spec"]
+        IMPLEMENT["Make targeted, bounded changes\n• Whole-system lifecycle audit\n• Upfront defensive concurrency & retries\n• Packet-declared roots\n• Inspect before editing\n• Align impl + tests + backing spec"]
         VERIFY["Run exact required checks\n+ strongest available relevant checks\n(substitute ≠ mandatory gate)"]
     end
 
