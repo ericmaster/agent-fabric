@@ -35,6 +35,11 @@
       "model": "openai/gpt-5.6-terra-pro",
       "effort": "max",
       "sandbox": "workspace"
+    },
+    "solver": {
+      "model": "openai/gpt-5.6-sol",
+      "effort": "max",
+      "sandbox": "read-only"
     }
   }
 }

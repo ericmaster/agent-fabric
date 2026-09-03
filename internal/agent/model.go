@@ -28,7 +28,7 @@ type Fabric struct {
 	Hooks       []string
 }
 
-var allowedProfiles = map[string]bool{"readonly": true, "worker": true, "reviewer": true, "supervisor": true, "recursive": true, "planner": true, "qa": true}
+var allowedProfiles = map[string]bool{"readonly": true, "worker": true, "reviewer": true, "supervisor": true, "recursive": true, "planner": true, "qa": true, "solver": true}
 var allowedEffort = map[string]bool{"low": true, "medium": true, "high": true, "max": true}
 var allowedHooks = map[string]bool{
 	"load-task":                     true,

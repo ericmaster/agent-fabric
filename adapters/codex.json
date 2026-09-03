@@ -35,6 +35,11 @@
       "model": "gpt-5.6-sol",
       "effort": "max",
       "sandbox": "workspace-write"
+    },
+    "solver": {
+      "model": "gpt-5.6-sol",
+      "effort": "max",
+      "sandbox": "read-only"
     }
   }
 }

@@ -35,6 +35,11 @@
       "model": "gemini-3.1-pro",
       "effort": "max",
       "sandbox": "workspace"
+    },
+    "solver": {
+      "model": "gemini-3.1-pro",
+      "effort": "max",
+      "sandbox": "read-only"
     }
   }
 }

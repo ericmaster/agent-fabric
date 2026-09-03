@@ -1,6 +1,6 @@
 # Expert Debugger — Workflow Diagram
 
-`agents/expert-debugger.md` · profile: `readonly` · mode: `subagent` · isolation: `sandbox`
+`agents/expert-debugger.md` · profile: `solver` · mode: `subagent` · isolation: `sandbox`
 
 The Expert Debugger diagnoses hard failures and produces a bounded root-cause remediation brief.
 It cannot modify files or invent task-system state. It is invoked by the loop-supervisor

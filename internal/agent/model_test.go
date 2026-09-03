@@ -49,6 +49,19 @@ func TestCanonicalAgentsRetainWorkflowContracts(t *testing.T) {
 	}
 }
 
+func TestExpertDebuggerUsesSolverProfile(t *testing.T) {
+	d, err := ParseFile(filepath.Join("..", "..", "agents", "expert-debugger.md"))
+	if err != nil {
+		t.Fatalf("parse expert-debugger: %v", err)
+	}
+	if d.Fabric.Profile != "solver" {
+		t.Errorf("expert-debugger profile = %q, want solver", d.Fabric.Profile)
+	}
+	if d.Fabric.Effort != "max" {
+		t.Errorf("expert-debugger effort = %q, want max", d.Fabric.Effort)
+	}
+}
+
 func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 	dispatchers := []string{
 		"loop-supervisor",

@@ -35,6 +35,11 @@
       "model": "opus",
       "effort": "max",
       "sandbox": "workspace"
+    },
+    "solver": {
+      "model": "opus",
+      "effort": "max",
+      "sandbox": "read-only"
     }
   }
 }

@@ -58,7 +58,7 @@ flowchart TD
     QAR -->|"QA result"| LSUP
 
     subgraph "Recovery (on FAIL / BLOCKED)"
-        DBG["**Expert Debugger**\nprofile: readonly · subagent"]
+        DBG["**Expert Debugger**\nprofile: solver · subagent"]
     end
 
     LSUP -.->|"validated recovery packet"| DBG
@@ -91,7 +91,7 @@ flowchart TD
 | [Implementor](implementor.md) | `worker` | subagent | sandbox | load-task |
 | [Code Reviewer](code-reviewer.md) | `reviewer` | subagent | sandbox | load-task |
 | [QA Runner](qa-runner.md) | `qa` | subagent | sandbox | — |
-| [Expert Debugger](expert-debugger.md) | `readonly` | subagent | sandbox | — |
+| [Expert Debugger](expert-debugger.md) | `solver` | subagent | sandbox | — |
 
 ## Hook Event Reference
 

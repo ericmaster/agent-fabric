@@ -4,8 +4,8 @@ mode: subagent
 hooks: []
 x-agent-fabric:
   schema: 1
-  profile: readonly
-  effort: high
+  profile: solver
+  effort: max
   visibility: hidden
   isolation: sandbox
   permissions:
