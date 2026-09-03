@@ -4,15 +4,24 @@
 
 The Plan Supervisor executes a pre-decomposed implementation plan phase-by-phase through bounded
 task supervision. It owns phase ordering, evidence integrity, and bounded recovery.
+Fresh-child arrows abbreviate the Delegation Packet contract defined normatively in
+[`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
+Direct user invocation is not a fresh-child handoff, so its intake packet is optional.
 
 ## Full Workflow
 
 ```mermaid
 flowchart TD
-    START([Approved plan / task-system parent]) --> LT
+    DIRECT([Direct user invocation\napproved plan · packet optional])
+    FRESH([Fresh-child handoff])
+    DIRECT --> LT
+    FRESH -->|"intake Delegation Packet"| INTAKE
+    INTAKE{"Intake packet complete and\nrequired locators resolve?"}
+    INTAKE -- No --> BLOCKED_INTAKE([Return BLOCKED\n— exact context gap])
+    INTAKE -- Yes --> LT
 
     subgraph "Load & Validate"
-        LT["① load-task hook\nLoad pre-decomposed plan or\ntask-system parent → build DAG"]
+        LT["① load-task hook\nLoad explicit plan content or locator\noptionally via task system → build DAG"]
         PREVAL["pre-plan hook\nValidate source plan\n(if installed)"]
         DEC["decompose hook\nMaterialize phases if needed\n(if installed)"]
     end
@@ -21,11 +30,12 @@ flowchart TD
 
     subgraph "Phase Selection Loop"
         SEL["② Select unblocked phase\nwith all predecessor evidence ready"]
-        BRIEF["Write isolated phase brief\n(objective · scope · artifact paths\nDoD · allowed files · gates · commit owner)"]
-        DISPATCH["③ Dispatch loop-supervisor\nin fresh context"]
+        BRIEF["Write and validate\nself-locating phase packet"]
+        DISPATCH["③ Dispatch loop-supervisor\nin fresh context with packet"]
     end
 
-    DEC --> SEL --> BRIEF --> DISPATCH
+    DEC --> SEL --> BRIEF
+    BRIEF -->|"validated phase packet"| DISPATCH
 
     subgraph "Evidence Verification"
         VERIFY["④ Verify phase evidence\n• Every DoD item PASS with\n  inspectable evidence\n• Record VCS revision"]
@@ -36,14 +46,16 @@ flowchart TD
 
     subgraph "Recovery"
         FAIL_CLASS["Classify failure\nenvironment · defect · spec-drift · flaky"]
-        DIAG["Delegate bounded\ndiagnostic task"]
-        REBR["Re-brief same phase\n+ diagnostic artifact\nincrement attempt count"]
+        DIAG["Delegate bounded diagnostic\nwith validated recovery packet"]
+        REBR["Refresh same phase packet\n+ diagnostic locator\nincrement attempt count"]
         EXHAUST{Recovery budget\nexhausted?}
         ESCALATE["Write PLAN_ESCALATION.md\n(attempts · root-cause · stable-rev\nrequired operator action)"]
     end
 
-    RESULT -- "FAIL / BLOCKED" --> FAIL_CLASS --> DIAG --> REBR --> EXHAUST
-    EXHAUST -- No --> DISPATCH
+    RESULT -- "FAIL / BLOCKED" --> FAIL_CLASS
+    FAIL_CLASS -->|"validated recovery packet"| DIAG
+    DIAG --> REBR --> EXHAUST
+    EXHAUST -- "No · refreshed phase packet" --> DISPATCH
     EXHAUST -- Yes --> ESCALATE --> DONE_FAIL([Plan blocked / escalated])
 
     subgraph "Phase Completion"
@@ -84,8 +96,8 @@ flowchart TD
 ```json
 {
   "status": "PASS|FAIL|BLOCKED",
-  "dod": [{"item": "...", "status": "PASS|FAIL|BLOCKED", "evidence": "path or command"}],
-  "required_gates": [{"command": "...", "status": "...", "evidence": "..."}],
+  "dod": [{"item": "...", "status": "PASS|FAIL|BLOCKED", "evidence": "authoritative locator or command"}],
+  "required_gates": [{"command": "...", "status": "...", "evidence": "authoritative locator"}],
   "remaining_blockers": [],
   "changed_files": []
 }

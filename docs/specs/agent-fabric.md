@@ -46,6 +46,51 @@ failure handling, and output schemas. They must not contain provider model IDs,
 private Company OS paths, named task-system commands, credentials, or trace/cache
 environment variables; adapters and hosts own those integrations.
 
+## Fresh-Context Delegation Contract
+
+Direct user invocation of a dispatcher-capable primary or all-mode role is not a fresh-child handoff and does not require an intake Delegation Packet.
+It may perform its ordinary workflow and repository inspection in the
+user-selected execution context so it can construct outgoing child packets. If that role is invoked as a fresh child, it validates the intake packet before substantive work.
+Every outgoing fresh-child dispatch requires a separately constructed and validated Delegation Packet.
+
+Every explicit fresh-child handoff is self-locating and fail-closed. Before
+substantive child work, the producer supplies a Delegation Packet containing:
+
+- the declared execution root plus workspace ownership/isolation and VCS revision
+  and working-tree state;
+- the objective, explicit non-goals, and bounded scope;
+- every authoritative input inline or by authoritative locator;
+- permitted source and evidence paths;
+- exact commands, observable DoD, and required evidence;
+- the rollback boundary; and
+- explicit behavior for an unresolved locator.
+
+A **Declared Root** is a packet-named execution, artifact, or evidence base. A
+relative locator explicitly names the Declared Root or base against which it is
+resolved. An **Authoritative Locator** is absolute, Declared-Root-relative,
+URI-like, or harness-supported and is unambiguous in the declared execution
+context. A bare artifact name is insufficient unless the packet explicitly
+declares its base.
+
+For fresh-child intake and outgoing packet validation, required task and evidence artifacts are resolved only from packet content or declared locators.
+Missing, unreadable, or ambiguous required input stops fresh-child intake or the
+affected dispatch before substantive child work with `BLOCKED` or the role's
+schema-compatible context-gap result naming the exact gap; it can never yield
+`PASS` or `ACCEPT`. The producer and child must not broaden discovery into ambient home or temporary
+directories, unrelated workspaces, caches, or harness state to
+repair the packet gap. Normal repository inspection for fresh-child intake begins only after all required packet inputs resolve and remains within the declared and permitted paths.
+A directly invoked dispatcher may inspect only its user-selected execution
+context; before child dispatch, every outgoing packet locator must resolve within
+its declared and permitted paths. These constraints govern packet resolution and do not gate ordinary direct invocation in the user-selected execution context.
+
+Load-task and task-system hooks may only enrich or validate supplied location
+context. Delegation lifecycle hooks may enrich or validate a packet while retaining
+their existing host-owned result handling. No hook can reconstruct a location
+already known to the supervisor or make an otherwise non-self-locating dispatch
+valid. Static structural and rendering tests verify that this contract is present
+and survives adapter mappings; they do not prove model compliance or provide
+runtime transport or filesystem enforcement.
+
 Supervisors carry cumulative phase counters for mutating attempts, substantive
 review rejections, and infrastructure failures through rebriefs and fresh
 sessions. A dispatch counts as mutating when it edits the workspace or returns an

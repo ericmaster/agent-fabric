@@ -5,12 +5,14 @@
 The Plan Reviewer independently validates implementation plans for completeness, dependency
 correctness, safety, and testable completion criteria. It is dispatched by the Planner in a
 **fresh context** with a minimal, sanitised package — no authoring transcripts or rejected drafts.
+That package follows the fail-closed Delegation Packet contract defined normatively
+in [`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
 
 ## Full Workflow
 
 ```mermaid
 flowchart TD
-    START(["Seed + evidence map + contracts\n+ candidate plan\n(from Planner — fresh context)"]) --> PP
+    START(["Validated review packet\n(from Planner — fresh context)"]) --> PP
 
     subgraph "Pre-Review Hook"
         PP["pre-plan hook\n(if installed)\nApply any validation prerequisites\nbefore reviewing the candidate"]
@@ -62,7 +64,7 @@ flowchart TD
 
 ## Input Package (strict)
 
-The Plan Reviewer receives **only**:
+The Plan Reviewer receives these authoritative inputs inline or by packet locator:
 - Normalized brief / seed
 - Evidence map
 - Applicable contracts and coverage findings
@@ -110,7 +112,7 @@ sequenceDiagram
     participant P as Planner
     participant R as Plan Reviewer (fresh context)
 
-    P->>R: Normalized brief + evidence map<br/>+ contracts + candidate plan
+    P->>R: Validated self-locating review packet
     R->>R: pre-plan hook (if installed)
     R->>R: Apply review rubric
     R-->>P: PASS — plan proceeds to proposal
@@ -118,7 +120,7 @@ sequenceDiagram
     alt REVISE returned
         R-->>P: REVISE + findings
         P->>P: Verify each finding<br/>Incorporate supported corrections<br/>Rebuild affected phase boundaries
-        P->>R: Updated candidate (fresh context)
+        P->>R: Updated validated packet (fresh context)
         R-->>P: PASS or final REVISE
         Note over P,R: Max 2 review passes.<br/>Persistent REVISE → Planner publishes.
     end

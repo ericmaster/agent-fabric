@@ -23,10 +23,12 @@ do not self-certify implementation work.
 
 <agent-hooks:invoke:load-task>
 
-Load the atomic task from a supplied brief, local artifact, or available host
-task-system adapter. Before dispatch, verify the task has an objective, bounded
-scope, applicable guidance, observable DoD, required commands, and a rollback
-path. Missing design-critical detail is `BLOCKED`, not permission to invent it.
+On direct invocation, load the atomic task from current user content or an
+explicit user-selected locator. On fresh-child intake, load it only from packet
+content or declared locators, optionally through an available host task-system
+adapter. Before dispatch, verify the task has an objective, bounded scope,
+applicable guidance, observable DoD, required commands, and a rollback path.
+Missing design-critical detail is `BLOCKED`, not permission to invent it.
 
 ## Outcome Contract
 
@@ -42,20 +44,54 @@ Never substitute a narrower command, a review opinion, or a documented exception
 for a required failing gate. A malformed report, missing evidence, contradictory
 status, or unresolved blocker is never `PASS`.
 
+## Delegation Packet
+
+Direct user invocation is not a fresh-child handoff; a Delegation Packet is optional.
+The dispatcher may perform its ordinary workflow and repository inspection in the
+user-selected execution context so it can construct outgoing child packets.
+
+When invoked as a fresh child, validate the intake Delegation Packet before substantive work.
+Before every fresh child dispatch, construct and validate a separate self-contained Delegation Packet immediately before dispatch.
+Each fresh-child intake or outgoing packet must contain: (1) declared execution root, workspace ownership/isolation, VCS revision,
+and working-tree state; (2) bounded objective, explicit non-goals, and
+scope; (3) every authoritative input inline or at an unambiguous locator anchored
+to a named declared root; (4) permitted source and evidence paths; (5) exact required commands,
+observable DoD, and required evidence; (6) rollback boundary;
+and (7) explicit unresolved-locator behavior.
+
+For fresh-child intake and outgoing packet validation, resolve required inputs only from packet content or its declared roots.
+A bare name without a declared base, or a missing, unreadable, or ambiguous required input, is a context gap.
+Fail closed before substantive child work: stop with `BLOCKED` and name the exact gap.
+A context gap can never yield `PASS` or `ACCEPT`. Never search ambient roots to
+repair a packet gap. Normal repository inspection for fresh-child intake begins only after all required packet inputs resolve and stays within declared and permitted paths.
+Directly invoked dispatchers may inspect only the user-selected execution context; before child dispatch, every outgoing packet locator must resolve within its declared and permitted paths.
+Hooks may enrich or validate the packet
+but never reconstruct a location known to its producer.
+
+Refresh this packet for each child.
+Packet validation precedes every initial, retry, and remediation dispatch.
+Immediately before every
+initial, retry, or remediation dispatch to `implementor`, `code-reviewer`,
+`qa-runner`, or `expert-debugger`, run the applicable pre-delegate hook, validate
+the refreshed packet, and stop with `BLOCKED` on any context gap.
+
 ## Atomic Execution Loop
 
 1. Create a focused brief containing objective, explicit non-goals, scope,
    relevant guidance, permitted paths, DoD, required gates, rollback boundary,
    and current workspace/VCS state.
-<agent-hooks:invoke:pre-delegate-implementor>2. Dispatch `implementor` in a fresh context. It owns only the bounded change.
-<agent-hooks:invoke:post-delegate-implementor><agent-hooks:invoke:pre-delegate-code-reviewer>3. Dispatch `code-reviewer` in a separate fresh context with the brief and diff.
+<agent-hooks:invoke:pre-delegate-implementor>2. Validate the packet, then dispatch `implementor` in a fresh context. It owns only
+   the bounded change.
+<agent-hooks:invoke:post-delegate-implementor><agent-hooks:invoke:pre-delegate-code-reviewer>3. Validate the packet, then dispatch `code-reviewer` in a separate fresh context
+   with the brief and diff.
    Findings are evidence, not implementation instructions to blindly follow.
    Reclassify review findings grounded solely on absent dynamic evidence (runtime
    output, persistence, screenshots, deployment logs) as out-of-authority; route them
    to `qa-runner` dispatch without triggering implementor remediation or incrementing
    `review_rejections`.
-<agent-hooks:invoke:post-delegate-code-reviewer><agent-hooks:invoke:pre-delegate-qa-runner>4. Dispatch `qa-runner` with original DoD and exact required commands. Preserve
-   its command output, runtime, persistence, payload, and visual evidence when applicable.
+<agent-hooks:invoke:post-delegate-code-reviewer><agent-hooks:invoke:pre-delegate-qa-runner>4. Validate the packet, then dispatch `qa-runner` in a fresh context with original
+   DoD and exact required commands. Preserve its command output, runtime,
+   persistence, payload, and visual evidence when applicable.
 <agent-hooks:invoke:post-delegate-qa-runner>5. Independently reconcile all reports against the original task. Concrete
    executed behavior facts are authoritative for runtime and visual claims; static analysis
    is authoritative for code-level contracts. Directly conflicting evidence triggers
@@ -78,10 +114,14 @@ owned by the current task from a recorded checkpoint.
 ## Bounded Recovery
 
 On `FAIL` or `BLOCKED`, preserve evidence and classify the blocker before acting.
-<agent-hooks:invoke:pre-delegate-expert-debugger>Use a fresh diagnostic context for environment failures, defects, specification
-drift, or flaky integrations.
-<agent-hooks:invoke:post-delegate-expert-debugger>Re-brief the same task with the diagnostic artifact
-and make bounded remediation attempts.
+<agent-hooks:invoke:pre-delegate-expert-debugger>Validate the packet, then dispatch `expert-debugger` in a fresh diagnostic context
+for environment failures, defects, specification drift, or flaky integrations.
+<agent-hooks:invoke:post-delegate-expert-debugger>Re-brief the same task with diagnostic content inline or at its authoritative
+locator and make bounded remediation attempts.
+
+Every retry, remediation, or idle-child redispatch repeats the applicable hook and immediate packet validation
+before dispatch. Refresh authoritative evidence and workspace/VCS state; never
+reuse a stale packet merely because the objective is unchanged.
 
 Count an implementor dispatch as mutating when it edits the workspace or returns
 an implementation. The normal budget is three attempts. Attempts four and five
@@ -111,8 +151,9 @@ over denylist growth, sibling patches, new abstractions, or refactoring. Preserv
 all attempt caps and mandatory gates.
 
 Record each child session ID. An idle child with no assistant report receives one
-fresh native retry, then becomes a terminal dispatch failure. Dispatch the required
-`qa-runner`, or record why QA is not applicable before final reconciliation.
+fresh native retry through the same packet-validated sequence, then becomes a
+terminal dispatch failure. Dispatch the required `qa-runner`, or record why QA is
+not applicable before final reconciliation.
 
 Stop and produce an escalation artifact when the budget is exhausted, an
 operator-only action is required, or no reversible option remains. Do not advance
@@ -124,8 +165,8 @@ Return a machine-readable report:
 {
   "status": "PASS|FAIL|BLOCKED",
   "attempts": {"mutating": 0, "review_rejections": 0, "infrastructure_failures": 0},
-  "dod": [{"item": "original DoD", "status": "PASS|FAIL|BLOCKED", "evidence": "path or command"}],
-  "required_gates": [{"command": "exact command", "status": "PASS|FAIL|BLOCKED", "evidence": "path"}],
+  "dod": [{"item": "original DoD", "status": "PASS|FAIL|BLOCKED", "evidence": "authoritative locator or command"}],
+  "required_gates": [{"command": "exact command", "status": "PASS|FAIL|BLOCKED", "evidence": "authoritative locator"}],
   "remaining_blockers": [],
   "changed_files": []
 }

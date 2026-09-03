@@ -4,17 +4,20 @@
 
 The Implementor makes bounded, targeted code changes for one atomic task. It is dispatched
 by the loop-supervisor, hands off only to its supervisor, and never self-certifies.
+Its intake follows the fail-closed packet contract defined normatively in
+[`docs/specs/agent-fabric.md`](../specs/agent-fabric.md); the diagram assumes required
+inputs resolved before normal repository inspection.
 
 ## Full Workflow
 
 ```mermaid
 flowchart TD
-    START([Focused brief from loop-supervisor]) --> LT
+    START([Validated Delegation Packet]) --> LT
 
     subgraph "Load Task"
-        LT["load-task hook\nResolve atomic task from brief"]
-        CHECK{"Brief has:\nobjective · non-goals · permitted paths\nobservable DoD · rollback boundary?"}
-        GAP([Return gap to supervisor\n— do not invent design])
+        LT["load-task hook\nEnrich or validate packet only"]
+        CHECK{"Required inline inputs and\npacket locators resolve?"}
+        GAP([Return BLOCKED\nwith exact context gap])
     end
 
     LT --> CHECK
@@ -28,7 +31,7 @@ flowchart TD
     INSPECT --> IMPLEMENT
 
     subgraph "Implementation"
-        IMPLEMENT["Make targeted, bounded changes\n• Absolute paths\n• Inspect before editing\n• Preserve unrelated user work\n• Align impl + tests + backing spec"]
+        IMPLEMENT["Make targeted, bounded changes\n• Packet-declared roots\n• Inspect before editing\n• Preserve unrelated user work\n• Align impl + tests + backing spec"]
         VERIFY["Run exact required checks\n+ strongest available relevant checks\n(substitute ≠ mandatory gate)"]
     end
 
@@ -47,7 +50,7 @@ flowchart TD
 
 | Hook | When | Purpose |
 |---|---|---|
-| `load-task` | Start | Resolve atomic task brief; validate task completeness before editing |
+| `load-task` | Start | Enrich or validate supplied packet context; never reconstruct a known locator |
 
 ## Scope Constraints
 

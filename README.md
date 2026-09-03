@@ -163,6 +163,13 @@ are not summaries: role boundaries, evidence contracts, failure handling, and
 output schemas live in `agents/`; provider models, harness-specific commands,
 credentials, and private task-system details remain adapter- or host-owned.
 
+Every explicit fresh-context handoff is self-locating and fails closed on a
+missing, unreadable, or ambiguous required input. The normative Delegation Packet,
+Declared Root, locator, hook, and inspection boundaries live only in
+[`docs/specs/agent-fabric.md`](docs/specs/agent-fabric.md). Structural tests verify
+that those safeguards render through every adapter; they do not prove model
+compliance or add runtime transport.
+
 ## Release And Maintainer Checks
 
 ```sh

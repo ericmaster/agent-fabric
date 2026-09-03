@@ -43,6 +43,21 @@ A self-contained, independently delegable, testable unit of implementation work 
 plan that cuts across all necessary layers (contracts, implementation, verification) rather than horizontal tiers.
 _Avoid_: horizontal layer, partial phase, subtask, work package
 
+**Delegation Packet**:
+The self-locating fresh-context handoff whose normative fields and fail-closed
+resolution behavior are defined in `docs/specs/agent-fabric.md`.
+_Avoid_: ambient context, implicit workspace, raw transcript
+
+**Declared Root**:
+A packet-named execution, artifact, or evidence base used to interpret explicitly
+based relative locators. Normative resolution rules live in `docs/specs/agent-fabric.md`.
+_Avoid_: current directory assumption, discovered home, implicit base
+
+**Authoritative Locator**:
+An unambiguous reference to authoritative packet input under the declared execution
+context. Accepted forms and failure behavior are defined in `docs/specs/agent-fabric.md`.
+_Avoid_: bare filename, search hint, guessed path
+
 **Hub Catalog**:
 A curated external collection of supplemental agent definitions (`hub.json`) that can be installed
 and verified against existing core Fabric dependencies.

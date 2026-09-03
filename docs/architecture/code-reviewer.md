@@ -4,15 +4,17 @@
 
 The Code Reviewer is an adversarial, read-only gate dispatched by the loop-supervisor in a
 fresh context. It cannot edit files. It returns a single structured JSON verdict.
+Its intake follows the fail-closed packet contract defined normatively in
+[`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
 
 ## Full Workflow
 
 ```mermaid
 flowchart TD
-    START([Brief + diff from loop-supervisor]) --> LT
+    START([Validated packet + diff from loop-supervisor]) --> LT
 
     subgraph "Load Task"
-        LT["load-task hook\nReceive task context\n(task · spec · DoD · diff · static config)"]
+        LT["load-task hook\nEnrich or validate packet only\n(context gap → role-equivalent failure)"]
     end
 
     LT --> STATIC
@@ -62,7 +64,7 @@ flowchart TD
 
 | Hook | When | Purpose |
 |---|---|---|
-| `load-task` | Start | Receive task brief, diff, spec, DoD, and static-analysis configuration |
+| `load-task` | Start | Enrich or validate supplied packet context; never reconstruct a known locator |
 
 ## Output Contract
 

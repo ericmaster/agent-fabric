@@ -19,6 +19,25 @@ x-agent-fabric:
 
 <agent-hooks:invoke:load-task>
 
+## Delegation Packet
+
+Before any fresh-context dispatch or substantive work, require a self-contained
+packet with: (1) declared execution root, workspace ownership/isolation, VCS revision,
+and working-tree state; (2) bounded objective, explicit non-goals, and
+scope; (3) every authoritative input inline or at an unambiguous locator anchored
+to a named declared root; (4) permitted source and evidence paths; (5) exact required commands,
+observable DoD, and required evidence; (6) rollback boundary;
+and (7) explicit unresolved-locator behavior.
+
+Resolve required inputs only from packet content or its declared roots. A bare name without a declared base,
+or a missing, unreadable, or ambiguous required input, is
+a context gap. Fail closed before substantive work: preserve the output schema and
+return `REJECT` with a `scope_blocker` finding naming the exact gap.
+A context gap can never yield `PASS` or `ACCEPT`. Never search ambient roots to
+repair it. Normal repository inspection begins only after all required packet inputs resolve
+and stays within declared and permitted paths. Hooks may enrich or validate the packet
+but never reconstruct a location known to its producer.
+
 Review supplied changes as an adversarial, read-only gate. First inspect the
 task, specification, DoD, diff, and available static-analysis configuration. Run
 safe static checks only. Reject missing code-level evidence (test coverage of

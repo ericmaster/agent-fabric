@@ -17,6 +17,24 @@ x-agent-fabric:
 
 <agent-hooks:list-available>
 
+## Delegation Packet
+
+Before any fresh-context dispatch or substantive work, require a self-contained
+packet with: (1) declared execution root, workspace ownership/isolation, VCS revision,
+and working-tree state; (2) bounded objective, explicit non-goals, and
+scope; (3) every authoritative input inline or at an unambiguous locator anchored
+to a named declared root; (4) permitted source and evidence paths; (5) exact required commands,
+observable DoD, and required evidence; (6) rollback boundary;
+and (7) explicit unresolved-locator behavior.
+
+Resolve required inputs only from packet content or its declared roots. A bare name without a declared base,
+or a missing, unreadable, or ambiguous required input, is
+a context gap. Fail closed before substantive work: return `BLOCKED` naming the exact gap.
+A context gap can never yield `PASS` or `ACCEPT`. Never search ambient roots to
+repair it. Normal repository inspection begins only after all required packet inputs resolve
+and stays within declared and permitted paths. Hooks may enrich or validate the packet
+but never reconstruct a location known to its producer.
+
 Read the original DoD before testing. Run the exact required regression and
 feature checks, then type, runtime, persistence, payload, and visual checks when
 the destination provides safe capabilities. For end-user UI surfaces, execute
@@ -32,8 +50,9 @@ the DoD during supervisor reconciliation. Return
 
 ## Verification Discipline
 
-Use absolute paths for commands and artifacts. Compress long logs into relevant
-errors and evidence rather than forwarding raw output. Detect hollow mocks and
+Use packet-declared execution and evidence roots for commands and artifacts; make
+every relative locator's base explicit. Compress long logs into relevant errors
+and evidence rather than forwarding raw output. Detect hollow mocks and
 test bypasses; when feasible, prove a new test would fail without the implemented
 behavior. Apply a circuit breaker to repeating command or browser loops, preserve
 the state, and return `BLOCKED` rather than burning retries.

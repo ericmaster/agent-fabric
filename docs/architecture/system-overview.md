@@ -2,6 +2,9 @@
 
 This diagram shows how all eight built-in agents collaborate in the full planning → execution
 lifecycle, including hook event fire points and delegation relationships.
+Every fresh-context delegation arrow carries the self-locating packet defined
+normatively in [`docs/specs/agent-fabric.md`](../specs/agent-fabric.md); hooks may
+enrich or validate that packet but never reconstruct known locators.
 
 ## Full System Diagram
 
@@ -17,7 +20,7 @@ flowchart TD
         H_POST1["🪝 post-plan"]
     end
 
-    PLANNER --> H_LT1 --> H_PP1 --> PREV
+    PLANNER --> H_LT1 --> H_PP1 -->|"validated review packet"| PREV
     PREV -- PASS --> H_POST1
 
     H_POST1 --> APPROVED([Approved plan])
@@ -43,19 +46,22 @@ flowchart TD
         QAR["**QA Runner**\nprofile: qa · subagent"]
     end
 
-    H_DEC2 --> LSUP
-    LSUP --> H_LT3 --> IMPL
-    IMPL --> IMPL_H_LT
-    IMPL --> CREV
-    CREV --> CREV_H_LT
-    CREV --> QAR
-    QAR --> LSUP
+    H_DEC2 -->|"validated phase packet"| LSUP
+    LSUP --> H_LT3
+    IMPL_H_LT -.->|"load-task"| IMPL
+    CREV_H_LT -.->|"load-task"| CREV
+    LSUP -->|"validated implementation packet dispatch"| IMPL
+    IMPL -->|"implementation result"| LSUP
+    LSUP -->|"validated review packet dispatch"| CREV
+    CREV -->|"review result"| LSUP
+    LSUP -->|"validated QA packet dispatch"| QAR
+    QAR -->|"QA result"| LSUP
 
     subgraph "Recovery (on FAIL / BLOCKED)"
         DBG["**Expert Debugger**\nprofile: readonly · subagent"]
     end
 
-    LSUP -.->|"failure evidence"| DBG
+    LSUP -.->|"validated recovery packet"| DBG
     DBG -.->|"remediation brief"| LSUP
 
     LSUP --> H_LBL2 --> PHASE_DONE{All phases\ncomplete?}
@@ -91,7 +97,7 @@ flowchart TD
 
 | Event | Registered by | Typical purpose |
 |---|---|---|
-| `load-task` | Planner · Plan Supervisor · Loop Supervisor · Implementor · Code Reviewer | Resolve task / brief from host task-system or context |
+| `load-task` | Planner · Plan Supervisor · Loop Supervisor · Implementor · Code Reviewer | Enrich or validate supplied task packet context |
 | `pre-plan` | Planner · Plan Supervisor · Plan Reviewer | Validation gate and schema/constraint loading before planning or review begins |
 | `classify` | — (reserved; no built-in agent registers it) | Route to destination / select next unblocked phase |
 | `label` | Plan Supervisor | Apply task-system labels or state transitions |

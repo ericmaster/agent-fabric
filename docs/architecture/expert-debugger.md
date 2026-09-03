@@ -5,12 +5,18 @@
 The Expert Debugger diagnoses hard failures and produces a bounded root-cause remediation brief.
 It cannot modify files or invent task-system state. It is invoked by the loop-supervisor
 during bounded recovery.
+Its intake follows the fail-closed packet contract defined normatively in
+[`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
 
 ## Full Workflow
 
 ```mermaid
 flowchart TD
-    START([Failure evidence from loop-supervisor]) --> HYPO
+    START([Validated recovery packet from loop-supervisor]) --> INTAKE
+
+    INTAKE{"Required packet inputs resolve?"}
+    INTAKE -- No --> CONTEXT_GAP([Return schema-compatible context gap])
+    INTAKE -- Yes --> HYPO
 
     subgraph "Hypothesis Construction"
         HYPO["Construct at least 3 distinct hypotheses\nfrom exact evidence\n(logs · call paths · config · reproduction)"]

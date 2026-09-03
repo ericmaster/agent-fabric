@@ -33,6 +33,30 @@ planning or requests Publish mode.
 
 <agent-hooks:list-available>
 
+## Delegation Packet
+
+Direct user invocation is not a fresh-child handoff; a Delegation Packet is optional.
+The dispatcher may perform its ordinary workflow and repository inspection in the
+user-selected execution context so it can construct outgoing child packets.
+
+When invoked as a fresh child, validate the intake Delegation Packet before substantive work.
+Before every fresh child dispatch, construct and validate a separate self-contained Delegation Packet immediately before dispatch.
+Each fresh-child intake or outgoing packet must contain: (1) declared execution root, workspace ownership/isolation, VCS revision,
+and working-tree state; (2) bounded objective, explicit non-goals, and
+scope; (3) every authoritative input inline or at an unambiguous locator anchored
+to a named declared root; (4) permitted source and evidence paths; (5) exact required commands,
+observable DoD, and required evidence; (6) rollback boundary;
+and (7) explicit unresolved-locator behavior.
+
+For fresh-child intake and outgoing packet validation, resolve required inputs only from packet content or its declared roots.
+A bare name without a declared base, or a missing, unreadable, or ambiguous required input, is a context gap.
+Fail closed before substantive child work: stop fresh-child intake or the affected child dispatch and report the exact gap.
+A context gap can never yield `PASS` or `ACCEPT`. Never search ambient roots to
+repair a packet gap. Normal repository inspection for fresh-child intake begins only after all required packet inputs resolve and stays within declared and permitted paths.
+Directly invoked dispatchers may inspect only the user-selected execution context; before child dispatch, every outgoing packet locator must resolve within its declared and permitted paths.
+Hooks may enrich or validate the packet
+but never reconstruct a location known to its producer.
+
 ## Operating Modes
 
 - **Author:** create a new canonical plan from a goal, brief, file, or task seed.
@@ -62,8 +86,10 @@ cancels planning.
 
 ## Initial Understanding
 
-1. <agent-hooks:invoke:load-task> Resolve the seed from the current request, an
-   explicit file, or a task-system item.
+1. <agent-hooks:invoke:load-task> On direct invocation, resolve the seed from
+   current user content or an explicit user-selected locator. On fresh-child
+   intake, resolve it only from validated packet content or declared locators,
+   including a supplied task-system item locator.
 2. Read destination guidance, specifications, architecture decisions, tests,
    established implementation patterns, and project profiles (`.agent-fabric/profile.yaml` or
    `FABRIC.md`) to ground repo topology and deployment constraints.
@@ -72,8 +98,10 @@ cancels planning.
 3. Map current behavior and affected surfaces: entry points, data flow, public
    contracts, persistence, UI/API boundaries, deployment constraints, consumers,
    tests, and rollback seams. Separate evidence from assumptions and cite paths.
-4. Delegate only distinct, bounded discovery or design questions. Do not send
-   raw transcripts or ask multiple agents for the same broad repository survey.
+4. Delegate only distinct, bounded discovery or design questions.
+   Any fresh discovery or design child receives a self-locating Delegation Packet;
+   do not send raw transcripts or ask multiple agents for the same broad repository
+   survey.
 5. Before design, state the objective and non-goals, current behavior,
    destination, constraints, affected surfaces, and any decision-critical gaps.
 6. <agent-hooks:invoke:pre-plan> Resolve schema requirements, DoD templates,
@@ -96,7 +124,7 @@ Design the smallest coherent approach that satisfies the grounded brief.
   requested change safe. For wide mechanical work, use expand, migrate, then
   contract phases that remain green throughout.
 - Keep dependencies minimal and parallel by default. Add one only when a phase
-  consumes a named artifact or contract from another phase.
+  consumes a named authoritative locator or contract from another phase.
 - Make each phase independently delegable in one reviewable change set, with no
   hidden design decisions left to the implementer.
 - Include visual acceptance criteria and a configured browser/visual verification
@@ -109,6 +137,16 @@ Design the smallest coherent approach that satisfies the grounded brief.
 Default cap: two `plan-reviewer` passes for a multi-phase plan. After the second
 pass, write the current candidate at the proposal boundary. Do not start a third
 review unless the user asked for more. A later review is optional.
+
+Every plan-reviewer pass receives a self-locating Delegation Packet.
+This includes every revised-candidate pass. Its review package supplies the normalized seed, evidence
+map, governing contracts, and complete candidate inline or through authoritative
+locators anchored to named declared roots. Validate it immediately before fresh
+dispatch. Missing, unreadable, bare without a declared base, or ambiguous input is
+a context gap: name it, do not search ambient roots, and stop that review dispatch.
+A context gap blocks review dispatch before substantive child work. Hooks may
+enrich or validate the package but cannot reconstruct a locator already known to
+the planner.
 
 On `REVISE` within that cap, verify findings, incorporate supported corrections,
 and rebuild affected phase boundaries instead of patching prose.
@@ -138,8 +176,8 @@ then invoke only the proposal-boundary events below.
 
 At the proposal boundary:
 
-Write the validated plan candidate and hand off to `plan-reviewer` (or project to
-task system in Publish mode).
+Write the validated plan candidate and hand off its validated self-locating packet
+to `plan-reviewer` (or project to task system in Publish mode).
 
 After writing the plan, invoke:
 

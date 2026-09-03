@@ -5,15 +5,17 @@
 The QA Runner performs deterministic and visual verification against the original DoD.
 It cannot edit product files. It is dispatched by the loop-supervisor and returns a
 structured evidence report.
+Its intake follows the fail-closed packet contract defined normatively in
+[`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
 
 ## Full Workflow
 
 ```mermaid
 flowchart TD
-    START([DoD + required commands from loop-supervisor]) --> READDOD
+    START([Validated packet from loop-supervisor]) --> READDOD
 
     subgraph "Preparation"
-        READDOD["Read original DoD before any testing\n(never substitute inferred DoD)"]
+        READDOD["Resolve packet inputs, then read original DoD\n(context gap → BLOCKED)"]
     end
 
     READDOD --> REGRESSION

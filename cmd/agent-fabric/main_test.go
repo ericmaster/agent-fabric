@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -536,8 +537,173 @@ func TestLoopSupervisorDelegationHooksRenderBeforeDelegation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(rendered.Body, "Check the task context.\n\n2. Dispatch `implementor`") {
-		t.Fatalf("delegation hook was not rendered before implementor dispatch:\n%s", rendered.Body)
+	if !strings.Contains(rendered.Body, "Check the task context.\n\n2. Validate the packet, then dispatch `implementor`") {
+		t.Fatalf("delegation hook was not rendered before packet validation and implementor dispatch:\n%s", rendered.Body)
+	}
+}
+
+func TestFreshContextSafeguardsSurviveEmptyHookRenderingAcrossMappings(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root := filepath.Join("..", "..")
+	packetFields := []string{
+		"declared execution root",
+		"workspace ownership/isolation",
+		"VCS revision",
+		"working-tree state",
+		"bounded objective",
+		"explicit non-goals",
+		"authoritative input inline",
+		"unambiguous locator anchored",
+		"named declared root",
+		"permitted source and evidence paths",
+		"exact required commands",
+		"observable DoD",
+		"required evidence",
+		"rollback boundary",
+		"explicit unresolved-locator behavior",
+		"bare name without a declared base",
+		"missing, unreadable, or ambiguous required input",
+		"A context gap can never yield",
+		"Never search ambient roots",
+		"stays within declared and permitted paths",
+		"Hooks may enrich or validate the packet",
+		"never reconstruct a location known to its producer",
+	}
+	const unconditionalOldGuard = "Before any fresh-context dispatch or substantive work"
+	dispatcherAnchors := []string{
+		"Direct user invocation is not a fresh-child handoff; a Delegation Packet is optional",
+		"When invoked as a fresh child, validate the intake Delegation Packet before substantive work",
+		"Before every fresh child dispatch, construct and validate a separate self-contained Delegation Packet immediately before dispatch",
+		"For fresh-child intake and outgoing packet validation, resolve required inputs only from packet content",
+		"Fail closed before substantive child work",
+		"Normal repository inspection for fresh-child intake begins only after all required packet inputs resolve",
+		"before child dispatch, every outgoing packet locator must resolve within its declared and permitted paths",
+	}
+	childAnchors := []string{
+		unconditionalOldGuard,
+		"Fail closed before substantive work",
+		"Normal repository inspection begins only after all required packet inputs resolve",
+	}
+	agents := []struct {
+		id         string
+		dispatcher bool
+		anchors    []string
+	}{
+		{"loop-supervisor", true, []string{
+			"stop with `BLOCKED` and name the exact gap",
+			"Packet validation precedes every initial, retry, and remediation dispatch",
+			"packet, then dispatch `implementor` in a fresh context",
+			"packet, then dispatch `code-reviewer` in a separate fresh context",
+			"packet, then dispatch `qa-runner` in a fresh context",
+			"packet, then dispatch `expert-debugger` in a fresh diagnostic context",
+			"Every retry, remediation, or idle-child redispatch repeats the applicable hook and immediate packet validation",
+		}},
+		{"plan-supervisor", true, []string{
+			"return `BLOCKED` for fresh-child intake, or keep the affected phase `BLOCKED`, and name the exact gap",
+			"Every fresh child dispatch requires a validated self-locating Delegation Packet",
+			"initial phase `loop-supervisor`",
+			"retried phase `loop-supervisor`",
+			"recovery diagnostic",
+			"recovery remediation",
+			"A context gap blocks dispatch before substantive child work",
+		}},
+		{"planner", true, []string{
+			"stop fresh-child intake or the affected child dispatch and report the exact gap",
+			"Any fresh discovery or design child receives a self-locating Delegation Packet",
+			"Every plan-reviewer pass receives a self-locating Delegation Packet",
+			"This includes every revised-candidate pass",
+			"A context gap blocks review dispatch before substantive child work",
+		}},
+		{"implementor", false, []string{"return `BLOCKED` naming the exact gap"}},
+		{"code-reviewer", false, []string{"return `REJECT` with a `scope_blocker` finding naming the exact gap"}},
+		{"qa-runner", false, []string{"return `BLOCKED` naming the exact gap"}},
+		{"expert-debugger", false, []string{"return the existing schema with the exact gap in `root_cause_analysis.blockers`"}},
+		{"plan-reviewer", false, []string{"return `REVISE` with a critical finding naming the exact gap"}},
+	}
+	mappings, err := filepath.Glob(filepath.Join(root, "adapters", "*.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mappings) == 0 {
+		t.Fatal("no adapter mappings discovered")
+	}
+	sort.Strings(mappings)
+
+	for _, tc := range agents {
+		t.Run(tc.id, func(t *testing.T) {
+			definition, err := agent.ParseFile(filepath.Join(root, "agents", tc.id+".md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolved, err := renderHookPlaceholders(definition)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(resolved.Body, "<agent-hooks:") {
+				t.Fatal("empty HOME left an unresolved hook marker")
+			}
+			if strings.Contains(resolved.Body, "docs/specs/agent-fabric.md") {
+				t.Fatal("empty-hook rendering retained a source-checkout packet dependency")
+			}
+			anchors := append([]string{}, packetFields...)
+			if tc.dispatcher {
+				anchors = append(anchors, dispatcherAnchors...)
+				if strings.Contains(resolved.Body, unconditionalOldGuard) {
+					t.Fatalf("empty-hook rendering retained unconditional packet guard %q", unconditionalOldGuard)
+				}
+			} else {
+				anchors = append(anchors, childAnchors...)
+			}
+			anchors = append(anchors, tc.anchors...)
+			for _, anchor := range anchors {
+				if strings.ContainsAny(anchor, "'\"\\") {
+					t.Fatalf("safeguard anchor is not quote/backslash-free: %q", anchor)
+				}
+				if !strings.Contains(resolved.Body, anchor) {
+					t.Errorf("absent hooks removed safeguard %q", anchor)
+				}
+			}
+
+			for _, mappingPath := range mappings {
+				mappingName := filepath.Base(mappingPath)
+				target := strings.TrimSuffix(mappingName, ".json")
+				if target == "" || target == mappingName {
+					t.Fatalf("cannot derive adapter target safely from %q", mappingName)
+				}
+				t.Run(target, func(t *testing.T) {
+					mapping, err := adapter.LoadMapping(mappingPath)
+					if err != nil {
+						t.Fatal(err)
+					}
+					output, _, _, err := adapter.Render(target, resolved, mapping, false)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if strings.Contains(output, "<agent-hooks:") {
+						t.Fatal("rendered output contains an unresolved hook marker")
+					}
+					if strings.Contains(output, "docs/specs/agent-fabric.md") {
+						t.Fatal("rendered output retained a source-checkout packet dependency")
+					}
+					if tc.dispatcher && strings.Contains(output, unconditionalOldGuard) {
+						t.Fatalf("%s mapping retained unconditional packet guard %q", target, unconditionalOldGuard)
+					}
+					if target == "codex" {
+						if !strings.Contains(output, "developer_instructions = ") {
+							t.Fatal("Codex output lost developer instructions")
+						}
+						if strings.Contains(output, "\nhooks = ") {
+							t.Fatal("portable hooks leaked into Codex native hooks")
+						}
+					}
+					for _, anchor := range anchors {
+						if !strings.Contains(output, anchor) {
+							t.Errorf("%s mapping removed safeguard %q", target, anchor)
+						}
+					}
+				})
+			}
+		})
 	}
 }
 

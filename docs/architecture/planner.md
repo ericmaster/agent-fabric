@@ -4,6 +4,9 @@
 
 The Planner authors grounded, independently reviewed implementation plans as executable vertical
 slices. It never executes phases or treats a proposal as approval.
+Fresh discovery and review children receive the self-locating handoff defined
+normatively in [`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
+Direct user invocation is not a fresh-child handoff, so its intake packet is optional.
 
 A concurrently loaded host skill (interview, artifact, or documentation skill) augments a single
 workflow step but never replaces the plan deliverable: the workflow stays incomplete until the
@@ -16,18 +19,26 @@ prevents companion skill artifacts from being mistaken for implementation.
 
 ```mermaid
 flowchart TD
-    START([User / Task Seed]) --> LT
+    DIRECT([Direct user / task seed\npacket optional])
+    FRESH([Fresh-child handoff])
+    DIRECT --> LT
+    FRESH -->|"intake Delegation Packet"| INTAKE
+    INTAKE{"Intake packet complete and\nrequired locators resolve?"}
+    INTAKE -- No --> BLOCKED([Stop — exact context gap])
+    INTAKE -- Yes --> LT
 
     subgraph "Initial Understanding"
-        LT["① load-task hook (optional)\nResolve seed from request,\nexplicit file, or task-system item"]
+        LT["① load-task hook (optional)\nEnrich or validate supplied seed\ncontent or authoritative locator"]
         READ["② Read destination guidance\nSpecs · ADRs · tests · patterns"]
         MAP["③ Map affected surfaces\nEntry points · contracts · data flow\npersistence · UI/API · rollback seams"]
-        GAPS["④ Delegate bounded discovery\nor design questions (if needed)"]
+        GAPS["④ Delegate bounded discovery\nor design questions with packet\n(if needed)"]
         BRIEF["⑤ State objective, non-goals,\ncurrent behavior, destination,\nconstraints, and decision-critical gaps"]
         PP["⑥ pre-plan hook (optional)\nLoad schema, DoD templates,\nvalidation rules & constraints"]
     end
 
-    LT --> READ --> MAP --> GAPS --> BRIEF --> PP
+    LT --> READ --> MAP
+    MAP -->|"validated discovery packet"| GAPS
+    GAPS --> BRIEF --> PP
 
     subgraph "Design"
         DESIGN["Design smallest coherent approach\n• Vertical slices (not horizontal layers)\n• Prefactor only when needed for safety\n• Minimal, acyclic dependencies\n• Each phase independently delegable\n• Visual acceptance criteria for UI"]
@@ -37,7 +48,7 @@ flowchart TD
 
     subgraph "Independent Review"
         WRITE{Explicit write?}
-        REVIEWER["Spawn plan-reviewer\nin fresh context\n(default cap: two passes)"]
+        REVIEWER["Spawn plan-reviewer\nwith validated review packet\n(default cap: two passes)"]
         VERDICT{Reviewer verdict?}
         REVISE["Incorporate supported\ncorrections · rebuild\naffected phase boundaries"]
         CAP{Second pass done?}
@@ -45,11 +56,11 @@ flowchart TD
 
     DESIGN --> WRITE
     WRITE -- Yes --> PROPOSE
-    WRITE -- No --> REVIEWER
+    WRITE -- "No · validated review packet" --> REVIEWER
     REVIEWER --> VERDICT
     VERDICT -- PASS --> PROPOSE
     VERDICT -- REVISE --> REVISE --> CAP
-    CAP -- No --> REVIEWER
+    CAP -- "No · refreshed review packet" --> REVIEWER
     CAP -- Yes --> PROPOSE
 
     subgraph "Proposal Boundary"

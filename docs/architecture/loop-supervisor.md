@@ -4,36 +4,49 @@
 
 The Loop Supervisor drives one atomic task through implementation, review, testing, and
 DoD validation. It owns the control loop and evidence integrity; it never self-certifies work.
+Direct user invocation is not a fresh-child handoff, so its intake packet is optional.
+Every fresh-child arrow below is labelled with its validated self-locating Delegation Packet.
+The normative packet and fail-closed resolution contract lives only in
+[`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
 
 ## Full Workflow
 
 ```mermaid
 flowchart TD
-    START([Phase brief from plan-supervisor]) --> LT
+    DIRECT([Direct user invocation\natomic task · packet optional])
+    FRESH([Fresh child from plan-supervisor])
+    DIRECT --> LT
+    FRESH -->|"intake Delegation Packet"| LT
 
     subgraph "Load Task"
-        LT["load-task hook\nLoad atomic task from supplied brief,\nlocal artifact, or task-system adapter"]
-        VALIDATE{"Task has:\nobjective · bounded scope · guidance\nobservable DoD · required cmds · rollback path?"}
-        BLOCKED_EARLY([Return BLOCKED\n— design gap])
+        LT["load-task hook\nEnrich or validate supplied\ncontent or authoritative locator"]
+        HANDOFF{Fresh-child handoff?}
+        VALIDATE{"Packet is complete and\nrequired locators resolve?"}
+        BLOCKED_EARLY([Return BLOCKED\n— exact context gap])
     end
 
-    LT --> VALIDATE
+    LT --> HANDOFF
+    HANDOFF -- No --> BRIEF
+    HANDOFF -- Yes --> VALIDATE
     VALIDATE -- No --> BLOCKED_EARLY
     VALIDATE -- Yes --> BRIEF
 
     subgraph "Atomic Execution Loop"
-        BRIEF["① Create focused brief\n(objective · non-goals · scope · guidance\npermitted paths · DoD · gates · rollback · VCS state)"]
+        BRIEF["① Create or refresh and validate\noutgoing child Delegation Packet"]
 
-        IMPL["② Dispatch implementor\nin fresh context\n(bounded change only)"]
+        IMPL["② Dispatch implementor\nin fresh context\n(validated packet)"]
 
-        REV["③ Dispatch code-reviewer\nin fresh context\n(brief + diff · static findings only\nauthority-filtered by supervisor)"]
+        REV["③ Dispatch code-reviewer\nin fresh context\n(validated packet · static findings only\nauthority-filtered by supervisor)"]
 
-        QA["④ Dispatch qa-runner\n(original DoD · exact required commands\nruntime, persistence, payload + visual evidence)"]
+        QA["④ Dispatch qa-runner\n(validated packet · runtime, persistence,\npayload + visual evidence)"]
 
         RECONCILE["⑤ Reconcile all reports\nagainst original task\n(runtime facts authoritative for behavior;\nstatic analysis for code contracts)"]
     end
 
-    BRIEF --> IMPL --> REV --> QA --> RECONCILE
+    BRIEF -->|"validated implementor packet"| IMPL
+    IMPL -->|"validated review packet"| REV
+    REV -->|"validated QA packet"| QA
+    QA --> RECONCILE
 
     subgraph "Outcome"
         RESULT{Verdict?}
@@ -44,13 +57,15 @@ flowchart TD
     subgraph "Bounded Recovery"
         PRESERVE["Preserve evidence\nClassify blocker\n(defect · env · spec-drift · flaky)"]
         DIAG_CTX["Fresh diagnostic context\n(expert-debugger if needed)"]
-        REBR["Re-brief same task\n+ diagnostic artifact"]
+        REBR["Refresh same task packet\n+ diagnostic locator"]
         BUDGET{Recovery budget\nremaining?}
         ESCALATE_ART["Produce escalation artifact\nStop"]
     end
 
-    RESULT -- "FAIL / BLOCKED" --> PRESERVE --> DIAG_CTX --> REBR --> BUDGET
-    BUDGET -- Yes --> IMPL
+    RESULT -- "FAIL / BLOCKED" --> PRESERVE
+    PRESERVE -->|"validated recovery packet"| DIAG_CTX
+    DIAG_CTX --> REBR --> BUDGET
+    BUDGET -- "Yes · validated retry packet" --> IMPL
     BUDGET -- No --> ESCALATE_ART --> REPORT
 
     RESULT -- PASS --> REPORT
@@ -74,13 +89,13 @@ flowchart LR
     QAR[qa-runner\nfresh context]
     DBG[expert-debugger\nfresh context\n— recovery only]
 
-    LS -->|"bounded brief\n+ workspace state"| IMP
+    LS -->|"validated packet"| IMP
     IMP -->|"changed files\n+ evidence"| LS
-    LS -->|"brief + diff"| CR
+    LS -->|"validated packet + diff"| CR
     CR -->|"static findings JSON"| LS
-    LS -->|"DoD + commands"| QAR
+    LS -->|"validated packet"| QAR
     QAR -->|"runtime/visual QA report"| LS
-    LS -.->|"failure artifacts\n(recovery path)"| DBG
+    LS -.->|"validated recovery packet"| DBG
     DBG -.->|"remediation brief"| LS
 ```
 
@@ -99,15 +114,17 @@ flowchart LR
 | `post-delegate-expert-debugger` | After diagnostic | Optional remediation-brief handling |
 
 The delegation lifecycle hooks are no-ops unless installed. Their placeholders
-are removed during rendering, so a default generated agent is unchanged.
+are removed during rendering, so a default generated agent is unchanged. Per the
+normative spec, an installed hook may enrich or validate a packet but cannot
+reconstruct a known locator.
 
 ## Output Contract
 
 ```json
 {
   "status": "PASS|FAIL|BLOCKED",
-  "dod": [{"item": "original DoD", "status": "PASS|FAIL|BLOCKED", "evidence": "path or command"}],
-  "required_gates": [{"command": "exact command", "status": "PASS|FAIL|BLOCKED", "evidence": "path"}],
+  "dod": [{"item": "original DoD", "status": "PASS|FAIL|BLOCKED", "evidence": "authoritative locator or command"}],
+  "required_gates": [{"command": "exact command", "status": "PASS|FAIL|BLOCKED", "evidence": "authoritative locator"}],
   "remaining_blockers": [],
   "changed_files": []
 }
