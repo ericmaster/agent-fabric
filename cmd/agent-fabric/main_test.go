@@ -396,7 +396,7 @@ func TestRenderHookPlaceholdersUsesGlobalHooksOnly(t *testing.T) {
 		Body:   "<agent-hooks:list-available>\n<agent-hooks:invoke:pre-plan>\n<agent-hooks:invoke:classify>\n<agent-hooks:invoke:post-plan>\n",
 		Fabric: agent.Fabric{Hooks: []string{"pre-plan", "classify", "post-plan"}},
 	}
-	rendered, err := renderHookPlaceholders(d)
+	rendered, err := renderHookPlaceholders(d, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +435,7 @@ func TestPlannerPrePlanHookRendering(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(globalHooks, "pre-plan.md"), []byte(instructions), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		rendered, err := renderHookPlaceholders(canonicalPlanner)
+		rendered, err := renderHookPlaceholders(canonicalPlanner, "")
 		if err != nil {
 			t.Fatalf("render error: %v", err)
 		}
@@ -458,7 +458,7 @@ func TestPlannerPrePlanHookRendering(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(globalHooks, "pre-plan.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		rendered, err := renderHookPlaceholders(canonicalPlanner)
+		rendered, err := renderHookPlaceholders(canonicalPlanner, "")
 		if err != nil {
 			t.Fatalf("render error: %v", err)
 		}
@@ -477,7 +477,7 @@ func TestPlannerPrePlanHookRendering(t *testing.T) {
 	t.Run("with no hook installed", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
-		rendered, err := renderHookPlaceholders(canonicalPlanner)
+		rendered, err := renderHookPlaceholders(canonicalPlanner, "")
 		if err != nil {
 			t.Fatalf("render error: %v", err)
 		}
@@ -508,11 +508,11 @@ func TestLoopSupervisorDelegationHooksAreNoopsByDefault(t *testing.T) {
 		}
 	}
 
-	rendered, err := renderHookPlaceholders(current)
+	rendered, err := renderHookPlaceholders(current, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	previous, err := renderHookPlaceholders(legacy)
+	previous, err := renderHookPlaceholders(legacy, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -536,7 +536,7 @@ func TestRecordLedgerHookResolvesScriptAndRendersTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to parse loop-supervisor: %v", err)
 	}
-	rendered, err := renderHookPlaceholders(current)
+	rendered, err := renderHookPlaceholders(current, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -552,7 +552,7 @@ func TestRecordLedgerHookRendersContinuationWhenUninstalled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to parse loop-supervisor: %v", err)
 	}
-	rendered, err := renderHookPlaceholders(current)
+	rendered, err := renderHookPlaceholders(current, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -578,7 +578,7 @@ func TestLoopSupervisorDelegationHooksRenderBeforeDelegation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to parse canonical loop supervisor: %v", err)
 	}
-	rendered, err := renderHookPlaceholders(current)
+	rendered, err := renderHookPlaceholders(current, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -688,7 +688,7 @@ func TestFreshContextSafeguardsSurviveEmptyHookRenderingAcrossMappings(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
-			resolved, err := renderHookPlaceholders(definition)
+			resolved, err := renderHookPlaceholders(definition, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -766,7 +766,7 @@ func TestBugFixerEmptyHomeRendersFileDefaultPersistTicket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rendered, err := renderHookPlaceholders(definition)
+	rendered, err := renderHookPlaceholders(definition, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -794,7 +794,7 @@ func TestBugFixerInstalledPersistTicketScriptRendersTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rendered, err := renderHookPlaceholders(definition)
+	rendered, err := renderHookPlaceholders(definition, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -979,7 +979,7 @@ func TestRenderHookPlaceholdersFallsBackWhenAgentIDTraverses(t *testing.T) {
 		Body:   "<agent-hooks:list-available>\n<agent-hooks:invoke:pre-plan>\n",
 		Fabric: agent.Fabric{Hooks: []string{"pre-plan"}},
 	}
-	rendered, err := renderHookPlaceholders(d)
+	rendered, err := renderHookPlaceholders(d, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1039,7 +1039,7 @@ func TestPlannerInlinesPortableOrPerAgentPrePlanWithoutReviewerGrilling(t *testi
 		if err := os.Symlink(script, link); err != nil {
 			t.Fatal(err)
 		}
-		rendered, err := renderHookPlaceholders(canonicalPlanner)
+		rendered, err := renderHookPlaceholders(canonicalPlanner, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1047,7 +1047,7 @@ func TestPlannerInlinesPortableOrPerAgentPrePlanWithoutReviewerGrilling(t *testi
 		if !strings.Contains(rendered.Body, want) {
 			t.Fatalf("planner did not inline portable pre-plan fallback:\n%s", rendered.Body)
 		}
-		reviewer, err := renderHookPlaceholders(canonicalReviewer)
+		reviewer, err := renderHookPlaceholders(canonicalReviewer, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1072,7 +1072,7 @@ func TestPlannerInlinesPortableOrPerAgentPrePlanWithoutReviewerGrilling(t *testi
 		if err := os.Symlink(fixture, link); err != nil {
 			t.Fatal(err)
 		}
-		rendered, err := renderHookPlaceholders(canonicalPlanner)
+		rendered, err := renderHookPlaceholders(canonicalPlanner, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1082,7 +1082,7 @@ func TestPlannerInlinesPortableOrPerAgentPrePlanWithoutReviewerGrilling(t *testi
 		if strings.Contains(rendered.Body, portableBody) {
 			t.Fatalf("per-agent override must replace portable fallback:\n%s", rendered.Body)
 		}
-		reviewer, err := renderHookPlaceholders(canonicalReviewer)
+		reviewer, err := renderHookPlaceholders(canonicalReviewer, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1254,5 +1254,41 @@ func TestSourceDirResolvesSymlink(t *testing.T) {
 	root := filepath.Dir(resolved)
 	if !isSourceRoot(root) {
 		t.Fatalf("isSourceRoot failed on resolved symlink directory: %s", root)
+	}
+}
+
+func TestPersistTicketTemplateResolvesFromExplicitSourceRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	hooks := filepath.Join(home, ".agent-hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	scriptPath := filepath.Join(hooks, "persist-ticket.sh")
+	if err := os.WriteFile(scriptPath, []byte("#!/usr/bin/env bash\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sourceRoot := t.TempDir()
+	templateDir := filepath.Join(sourceRoot, "hooks", "bug-fixer")
+	if err := os.MkdirAll(templateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := "SOURCE-ROOT-TEMPLATE-MARKER"
+	if err := os.WriteFile(filepath.Join(templateDir, "persist-ticket.md"), []byte(marker), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	current, err := agent.ParseFile(filepath.Join("..", "..", "agents", "bug-fixer.md"))
+	if err != nil {
+		t.Fatalf("failed to parse bug-fixer: %v", err)
+	}
+	rendered, err := renderHookPlaceholders(current, sourceRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rendered.Body, marker) {
+		t.Fatalf("expected rendered body to use the source-root template %q, got:\n%s", marker, rendered.Body)
+	}
+	if !strings.Contains(rendered.Body, scriptPath) {
+		t.Fatalf("expected rendered body to invoke resolved script %s, got:\n%s", scriptPath, rendered.Body)
 	}
 }

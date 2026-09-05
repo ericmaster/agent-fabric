@@ -452,7 +452,7 @@ func targetBase(o options, target string) (string, error) {
 	return "", fmt.Errorf("unknown target %s", target)
 }
 
-func renderHookPlaceholders(d agent.Definition) (agent.Definition, error) {
+func renderHookPlaceholders(d agent.Definition, sourceRoot string) (agent.Definition, error) {
 	if !strings.Contains(d.Body, "<agent-hooks:") {
 		return d, nil
 	}
@@ -471,7 +471,7 @@ func renderHookPlaceholders(d agent.Definition) (agent.Definition, error) {
 		if strings.Count(d.Body, marker) != 1 {
 			return d, fmt.Errorf("%s must contain %q exactly once", d.ID, marker)
 		}
-		inv := hookInvocation(d.ID, event, resolution)
+		inv := hookInvocation(d.ID, event, resolution, sourceRoot)
 		if inv == "" {
 			d.Body = strings.ReplaceAll(d.Body, marker+"\n\n", "")
 			d.Body = strings.ReplaceAll(d.Body, marker+"\n", "")
@@ -549,7 +549,7 @@ func regularFile(path string, executable bool) bool {
 	return !executable || info.Mode().Perm()&0o111 != 0
 }
 
-func hookInvocation(agentID, event string, resolution hookResolution) string {
+func hookInvocation(agentID, event string, resolution hookResolution, sourceRoot string) string {
 	if resolution.markdown != "" {
 		content, err := os.ReadFile(resolution.markdown)
 		if err == nil && len(strings.TrimSpace(string(content))) > 0 {
@@ -558,7 +558,7 @@ func hookInvocation(agentID, event string, resolution hookResolution) string {
 		return fmt.Sprintf("Execute `%s` hook instructions in `%s`.", event, resolution.markdown)
 	}
 	if resolution.script != "" {
-		tmpl := defaultHookTemplate(agentID, event)
+		tmpl := defaultHookTemplate(agentID, event, sourceRoot)
 		if tmpl != "" {
 			return strings.ReplaceAll(tmpl, "{{.Script}}", resolution.script)
 		}
@@ -583,13 +583,20 @@ func isDelegationLifecycleHook(event string) bool {
 	return strings.HasPrefix(event, "pre-delegate-") || strings.HasPrefix(event, "post-delegate-")
 }
 
-func defaultHookTemplate(agentID, event string) string {
-	candidates := []string{
+func defaultHookTemplate(agentID, event string, sourceRoot string) string {
+	candidates := []string{}
+	if sourceRoot != "" {
+		candidates = append(candidates,
+			filepath.Join(sourceRoot, "hooks", agentID, event+".md"),
+			filepath.Join(sourceRoot, "hooks", event+".md"),
+		)
+	}
+	candidates = append(candidates,
 		filepath.Join("hooks", agentID, event+".md"),
 		filepath.Join("hooks", event+".md"),
 		filepath.Join("..", "..", "hooks", agentID, event+".md"),
 		filepath.Join("..", "..", "hooks", event+".md"),
-	}
+	)
 	if executable, err := os.Executable(); err == nil {
 		if resolved, evalErr := filepath.EvalSymlinks(executable); evalErr == nil {
 			executable = resolved
@@ -694,7 +701,7 @@ func install(o options, sync bool) error {
 		return err
 	}
 	for i, d := range ds {
-		ds[i], err = renderHookPlaceholders(d)
+		ds[i], err = renderHookPlaceholders(d, root)
 		if err != nil {
 			return err
 		}
@@ -1333,7 +1340,7 @@ func runHub(args []string) error {
 		}
 	}
 	for i, d := range ds {
-		ds[i], err = renderHookPlaceholders(d)
+		ds[i], err = renderHookPlaceholders(d, fabricRoot)
 		if err != nil {
 			return err
 		}
