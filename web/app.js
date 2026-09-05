@@ -266,14 +266,14 @@ const cliOutputs = {
     status: 'Exit 0 • 12ms',
     content: `[INFO] Agent Fabric v1.0.0 (linux/amd64)
 [INFO] Resolving canonical source definitions from bundled assets...
-[INFO] Found 8 canonical agents: planner, plan-reviewer, plan-supervisor, implementor, expert-debugger, qa-runner, code-reviewer, loop-supervisor
+[INFO] Found 10 canonical agents: planner, plan-reviewer, plan-supervisor, implementor, expert-debugger, qa-runner, code-reviewer, loop-supervisor, bug-fixer, report-reviewer
 [INFO] Resolving target adapters: opencode, kilo, antigravity, codex, claude
 [INFO] Resolving hooks from ~/.agent-hooks/ (4 installed, 2 skipped)
-[OK] Rendered 8 agents -> ~/.opencode/agents/
-[OK] Rendered 8 agents -> ~/.kilo/agents/
-[OK] Rendered 8 agents -> ~/.gemini/config/agents/
-[OK] Rendered 8 agents -> ~/.codex/agents/
-[OK] Rendered 8 agents -> ~/.claude/agents/
+[OK] Rendered 10 agents -> ~/.opencode/agents/
+[OK] Rendered 10 agents -> ~/.kilo/agents/
+[OK] Rendered 10 agents -> ~/.gemini/config/agents/
+[OK] Rendered 10 agents -> ~/.codex/agents/
+[OK] Rendered 10 agents -> ~/.claude/agents/
 [OK] Manifest recorded at ~/.config/agent-fabric/.agent-fabric-manifest.json
 [SUCCESS] Installed 40 target configurations successfully. Run 'agf doctor' to verify.`
   },
@@ -313,8 +313,10 @@ const cliOutputs = {
 ✔ agents/qa-runner.md: Schema v1 valid, profile 'reviewer'
 ✔ agents/code-reviewer.md: Schema v1 valid, profile 'reviewer'
 ✔ agents/loop-supervisor.md: Schema v1 valid, profile 'supervisor'
+✔ agents/bug-fixer.md: Schema v1 valid, profile 'supervisor'
+✔ agents/report-reviewer.md: Schema v1 valid, profile 'reviewer'
 ✔ Adapters: 5 adapter schemas parsed with zero lint errors
-[SUCCESS] 8 canonical definitions and 5 target adapters are 100% compliant.`
+[SUCCESS] 10 canonical definitions and 5 target adapters are 100% compliant.`
   },
   list: {
     label: 'agf list',
@@ -329,7 +331,9 @@ implementor       worker        high      sandbox      Executes single vertical 
 expert-debugger   worker        high      sandbox      Isolates hard bugs, test failures, and race conditions
 qa-runner         reviewer      high      read-only    Executes test suites and builds reproduction cases for regressions
 code-reviewer     reviewer      high      read-only    Dual-axis review: Standards conventions and Spec adherence
-loop-supervisor   supervisor    high      sandbox      Drives autonomous implementation loops and subagent delegation`
+loop-supervisor   supervisor    high      sandbox      Drives autonomous implementation loops and subagent delegation
+bug-fixer         supervisor    high      workspace    Interviews a reporter, persists one ticket, and gates the next fix
+report-reviewer   reviewer      high      sandbox      Audits one bug report for completeness, ambiguity, and inconsistency`
   },
   hub: {
     label: 'agf hub install https://github.com/ericmaster/agent-hub --tools opencode,kilo --yes',

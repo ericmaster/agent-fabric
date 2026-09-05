@@ -573,6 +573,9 @@ func hookInvocation(agentID, event string, resolution hookResolution) string {
 	if event == "record-ledger" {
 		return "No `record-ledger` hook is installed; continue without it. Canonical supervisors do not hardcode local files, databases, or storage engines; the installed hook determines storage destination and persistence."
 	}
+	if event == "persist-ticket" {
+		return "No `persist-ticket` hook is installed; write the ticket to `bugfix-tickets/UTC-ts-slug.md` under the current execution root with self-generated id `bugfix-ts-slug`, then report the local path to the reporter."
+	}
 	return fmt.Sprintf("No `%s` hook is installed; continue without it.", event)
 }
 

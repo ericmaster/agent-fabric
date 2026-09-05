@@ -14,6 +14,8 @@ internal workflow, hook invocations, delegation relationships, and output contra
 | [expert-debugger](expert-debugger.md) | Root-cause diagnosis | readonly | — |
 | [plan-reviewer](plan-reviewer.md) | Independent plan validation | reviewer | pre-plan |
 | [deploy-supervisor](deploy-supervisor.md) | Gated release & deploy verification | supervisor | load-task · pre-deploy · post-deploy |
+| [bug-fixer](bug-fixer.md) | Plain-language bug intake and gated fix dispatch | supervisor | load-task · label · persist-ticket · decompose |
+| [report-reviewer](bug-fixer.md) | Independent bug-report completeness audit | reviewer | — |
 
 Filing rule: these are structural diagrams — they belong in `docs/architecture/` per §3 of
 [`docs-organization-blueprint.md`](../docs-organization-blueprint.md).

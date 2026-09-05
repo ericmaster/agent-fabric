@@ -35,6 +35,8 @@ func TestCanonicalAgentsRetainWorkflowContracts(t *testing.T) {
 		"plan-reviewer":     {"vertical-slice shape", "## Review Rubric And Output", "PASS|REVISE"},
 		"qa-runner":         {"Read the original DoD", "## Verification Discipline", "PASS|FAIL|BLOCKED"},
 		"deploy-supervisor": {"## Operating Invariant & Human Gate", "## Release Execution Sequence", "## Output Contract"},
+		"bug-fixer":         {"## Plain-Language Contract", "## Intake", "## Triage", "## Ticket Persistence", "## Plan Explanation Artifact", "## Delegation Gates"},
+		"report-reviewer":   {"## Review Rubric And Output", "PASS|REVISE", "missing_detail|ambiguity|inconsistency"},
 	}
 	for id, required := range anchors {
 		d, err := ParseFile(filepath.Join("..", "..", "agents", id+".md"))
@@ -45,6 +47,24 @@ func TestCanonicalAgentsRetainWorkflowContracts(t *testing.T) {
 			if !strings.Contains(d.Body, anchor) {
 				t.Errorf("%s lost workflow anchor %q", id, anchor)
 			}
+		}
+	}
+}
+
+func TestBugFixerExplanationArtifactAnchors(t *testing.T) {
+	d, err := ParseFile(filepath.Join("..", "..", "agents", "bug-fixer.md"))
+	if err != nil {
+		t.Fatalf("parse bug-fixer: %v", err)
+	}
+	body := strings.Join(strings.Fields(d.Body), " ")
+	for _, anchor := range []string{
+		"bugfix-tickets/explanations/",
+		"What is broken",
+		"The fix plan",
+		"What happens next",
+	} {
+		if !strings.Contains(body, anchor) {
+			t.Errorf("bug-fixer missing explanation-artifact anchor %q", anchor)
 		}
 	}
 }
@@ -67,6 +87,7 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 		"loop-supervisor",
 		"plan-supervisor",
 		"planner",
+		"bug-fixer",
 	}
 	childRoles := []string{
 		"implementor",
@@ -74,6 +95,7 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 		"qa-runner",
 		"expert-debugger",
 		"plan-reviewer",
+		"report-reviewer",
 	}
 	ids := append(append([]string{}, dispatchers...), childRoles...)
 	bodies := map[string]string{}
@@ -103,6 +125,10 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 			{"planner discovery child", "planner", "Any fresh discovery or design child receives a self-locating Delegation Packet"},
 			{"planner initial review", "planner", "Every plan-reviewer pass receives a self-locating Delegation Packet"},
 			{"planner revised review", "planner", "This includes every revised-candidate pass"},
+			{"bug-fixer report reviewer", "bug-fixer", "packet, then dispatch `report-reviewer` in a fresh context"},
+			{"bug-fixer planner", "bug-fixer", "packet, then dispatch `planner` in a fresh context"},
+			{"bug-fixer plan supervisor", "bug-fixer", "packet, then dispatch `plan-supervisor` in a fresh context"},
+			{"bug-fixer loop supervisor", "bug-fixer", "packet, then dispatch `loop-supervisor` in a fresh context"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -208,6 +234,8 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 			{"qa-runner", "return `BLOCKED` naming the exact gap"},
 			{"expert-debugger", "return the existing schema with the exact gap in `root_cause_analysis.blockers`"},
 			{"plan-reviewer", "return `REVISE` with a critical finding naming the exact gap"},
+			{"bug-fixer", "stop the affected dispatch and report the exact gap"},
+			{"report-reviewer", "return `REVISE` with a critical finding naming the exact gap"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.agent, func(t *testing.T) {
@@ -291,6 +319,12 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 				`PRESERVE -->|"validated recovery packet"| DIAG_CTX`,
 				`BUDGET -- "Yes · validated retry packet" --> IMPL`,
 			}},
+			{"bug-fixer", []string{
+				"Direct user invocation is not a fresh-child handoff, so its intake packet is optional.",
+				`BF -->|"validated review packet"| RR`,
+				`BF -->|"user confirms projection"| DEC`,
+				`BF -->|"validated planner packet"| PLAN`,
+			}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.agent, func(t *testing.T) {
@@ -369,7 +403,7 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 }
 
 func TestCanonicalAgentsUseInstallTimeHookPlaceholders(t *testing.T) {
-	for _, id := range []string{"planner", "plan-supervisor", "loop-supervisor", "implementor", "code-reviewer", "expert-debugger", "plan-reviewer", "qa-runner", "deploy-supervisor"} {
+	for _, id := range []string{"planner", "plan-supervisor", "loop-supervisor", "implementor", "code-reviewer", "expert-debugger", "plan-reviewer", "qa-runner", "deploy-supervisor", "bug-fixer", "report-reviewer"} {
 		d, err := ParseFile(filepath.Join("..", "..", "agents", id+".md"))
 		if err != nil {
 			t.Fatalf("parse %s: %v", id, err)
@@ -385,6 +419,29 @@ func TestCanonicalAgentsUseInstallTimeHookPlaceholders(t *testing.T) {
 		}
 		if strings.Contains(d.Body, "AGENT_TRACE_ROOT") || strings.Contains(d.Body, "TRACE_ROOT") || strings.Contains(d.Body, ".agent-hooks/") {
 			t.Errorf("%s leaks hook implementation details into the canonical body", id)
+		}
+	}
+}
+
+func TestBugFixerAndReportReviewerBodiesStayPortable(t *testing.T) {
+	forbidden := []string{
+		"plane",
+		"nimblersoft",
+		".agent-hooks/",
+		"AGENT_TRACE_ROOT",
+		"gpt-",
+		"claude-",
+		"gemini-",
+	}
+	for _, id := range []string{"bug-fixer", "report-reviewer"} {
+		d, err := ParseFile(filepath.Join("..", "..", "agents", id+".md"))
+		if err != nil {
+			t.Fatalf("parse %s: %v", id, err)
+		}
+		for _, token := range forbidden {
+			if strings.Contains(d.Body, token) {
+				t.Errorf("%s canonical body contains non-portable token %q", id, token)
+			}
 		}
 	}
 }

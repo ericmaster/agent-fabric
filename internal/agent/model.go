@@ -35,6 +35,7 @@ var allowedHooks = map[string]bool{
 	"pre-plan":                      true,
 	"classify":                      true,
 	"label":                         true,
+	"persist-ticket":                true,
 	"decompose":                     true,
 	"post-plan":                     true,
 	"record-ledger":                 true,

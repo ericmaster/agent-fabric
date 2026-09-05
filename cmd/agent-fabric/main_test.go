@@ -664,6 +664,14 @@ func TestFreshContextSafeguardsSurviveEmptyHookRenderingAcrossMappings(t *testin
 		{"qa-runner", false, []string{"return `BLOCKED` naming the exact gap"}},
 		{"expert-debugger", false, []string{"return the existing schema with the exact gap in `root_cause_analysis.blockers`"}},
 		{"plan-reviewer", false, []string{"return `REVISE` with a critical finding naming the exact gap"}},
+		{"bug-fixer", true, []string{
+			"stop the affected dispatch and report the exact gap",
+			"packet, then dispatch `report-reviewer` in a fresh context",
+			"packet, then dispatch `planner` in a fresh context",
+			"packet, then dispatch `plan-supervisor` in a fresh context",
+			"packet, then dispatch `loop-supervisor` in a fresh context",
+		}},
+		{"report-reviewer", false, []string{"return `REVISE` with a critical finding naming the exact gap"}},
 	}
 	mappings, err := filepath.Glob(filepath.Join(root, "adapters", "*.json"))
 	if err != nil {
@@ -749,6 +757,69 @@ func TestFreshContextSafeguardsSurviveEmptyHookRenderingAcrossMappings(t *testin
 				})
 			}
 		})
+	}
+}
+
+func TestBugFixerEmptyHomeRendersFileDefaultPersistTicket(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	definition, err := agent.ParseFile(filepath.Join("..", "..", "agents", "bug-fixer.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := renderHookPlaceholders(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered.Body, "<agent-hooks:") {
+		t.Fatal("empty HOME left an unresolved hook marker")
+	}
+	const instruction = "write the ticket to `bugfix-tickets/UTC-ts-slug.md` under the current execution root with self-generated id `bugfix-ts-slug`"
+	if got := strings.Count(rendered.Body, instruction); got != 1 {
+		t.Fatalf("bugfix-tickets file-default instruction count = %d, want 1\n%s", got, rendered.Body)
+	}
+}
+
+func TestBugFixerInstalledPersistTicketScriptRendersTemplate(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	hooks := filepath.Join(home, ".agent-hooks", "bug-fixer")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	scriptPath := filepath.Join(hooks, "persist-ticket.sh")
+	if err := os.WriteFile(scriptPath, []byte("#!/usr/bin/env bash\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	definition, err := agent.ParseFile(filepath.Join("..", "..", "agents", "bug-fixer.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := renderHookPlaceholders(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered.Body, "<agent-hooks:") {
+		t.Fatal("installed persist-ticket left an unresolved hook marker")
+	}
+	if strings.Contains(rendered.Body, "{{.Script}}") {
+		t.Fatal("installed persist-ticket left an unsubstituted script placeholder")
+	}
+	if strings.Contains(rendered.Body, "No `persist-ticket` hook is installed") {
+		t.Fatal("installed persist-ticket still rendered the empty-HOME fallback")
+	}
+	for _, anchor := range []string{
+		scriptPath,
+		"ticket payload JSON",
+		"temporary file",
+		"AGENT_TICKET_PATH",
+		`{"status":"ok|error","ticket_id","identifier","url","reason"}`,
+		"On `error` or non-zero exit",
+		"bugfix-tickets/UTC-ts-slug.md",
+		"bugfix-ts-slug",
+	} {
+		if !strings.Contains(rendered.Body, anchor) {
+			t.Errorf("installed persist-ticket rendering missing %q", anchor)
+		}
 	}
 }
 

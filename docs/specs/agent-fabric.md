@@ -151,11 +151,51 @@ Supervisors act as an unbiased **Curation Firewall** across child dispatches:
 - **Expert Debugger Dispatches:** Supervisors forward strictly objective failing gate/test logs, breached contracts, and diffs,
   filtering out conversational histories.
 
+## Bug Intake Orchestrator
+
+`bug-fixer` is a dispatcher-capable primary supervisor for reporters who are not
+assumed to be technical. Every user-facing message, gate, verdict, and artifact
+uses simple words. Approval gates are single yes/no questions. The agent mirrors
+the reporter's language and does not invent details.
+
+Intake captures one ticket per distinct defect using the portable report schema:
+title, component, environment, severity (`urgent|high|medium|low`), steps to
+reproduce, expected behavior, actual behavior, reporter, and project. An optional
+`report-reviewer` pass may audit the report in a fresh context; exactly one
+re-review pass is allowed after gap-filling.
+
+Triage is `exec-ready` (single bounded fix, one component) vs `needs-plan`
+(multi-component change or decomposable vertical slices), with a one-plain-sentence
+rationale stored on the ticket.
+
+Persistence uses the `persist-ticket` hook. The portable payload is the report
+schema plus `triage{verdict, rationale}` and `tags`. When no hook is installed,
+the ticket is written to `bugfix-tickets/UTC-ts-slug.md` under the current
+execution root with self-generated id `bugfix-ts-slug`. The ticket locator is
+carried into later dispatches as the child's task-system locator when the host
+supports one.
+
+Before children projection, bug-fixer writes a self-contained plain-language HTML
+explanation at `bugfix-tickets/explanations/ticket-id.html` with exactly the
+sections What is broken, The fix plan, and What happens next. One file per
+ticket, rewritten in place on each plan revision.
+
+Every dispatch requires an explicit yes. `exec-ready` dispatches `loop-supervisor`.
+`needs-plan` dispatches `planner` (autonomous session; plan parent only, no
+children), then after the user confirms projection invokes `decompose` with the
+confirmed scope and rationale, then may dispatch `plan-supervisor`.
+`report-reviewer` is a hidden reviewer subagent that returns
+`{"verdict":"PASS|REVISE",...}` with findings in
+`missing_detail|ambiguity|inconsistency`; a context gap is `REVISE` with a
+critical finding naming the exact gap and can never yield `PASS`.
+bug-fixer performs zero write-back after persistence; later ticket updates belong
+to the dispatched supervisors.
+
 Canonical bodies declare registered hooks with `<agent-hooks:list-available>` and
 `<agent-hooks:invoke:<event>>` placeholders. During install or sync, the CLI
 resolves each registered event once from host-global `~/.agent-hooks/`; Markdown
 precedes an executable script. Deterministic hook events include `load-task`, `pre-plan`,
-`classify`, `label`, `decompose`, `post-plan`, `record-ledger`, `pre-deploy`, and `post-deploy`.
+`classify`, `label`, `persist-ticket`, `decompose`, `post-plan`, `record-ledger`, `pre-deploy`, and `post-deploy`.
 The generated agent receives either inlined Markdown instructions, an executable script path,
 or an explicit no-hook continuation (or section omission for optional lifecycle blocks). Loop-supervisor
 delegation hooks use `pre-delegate-<agent>` and `post-delegate-<agent>` events;
