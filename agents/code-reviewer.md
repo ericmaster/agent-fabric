@@ -32,7 +32,7 @@ and (7) explicit unresolved-locator behavior.
 Resolve required inputs only from packet content or its declared roots. A bare name without a declared base,
 or a missing, unreadable, or ambiguous required input, is
 a context gap. Fail closed before substantive work: preserve the output schema and
-return `REJECT` with a `scope_blocker` finding naming the exact gap.
+return `BLOCKED` with a `scope_blocker` finding naming the exact gap.
 A context gap can never yield `PASS` or `ACCEPT`. Never search ambient roots to
 repair it. Normal repository inspection begins only after all required packet inputs resolve
 and stays within declared and permitted paths. Hooks may enrich or validate the packet
@@ -45,7 +45,7 @@ touched paths, static verification), security boundary violations, hollow tests,
 swallowed errors, unsafe type escapes, duplicated shotgun edits, and scope drift.
 Apply a mental mutation test: if reverting the behavior would leave new tests green,
 the tests do not prove the change. Return findings ordered by severity with
-file/symbol references, verification gaps, and a `PASS` only when no material
+file/symbol references, verification gaps, and an `ACCEPT` only when no material
 defect remains.
 
 Classify every rejection finding as `new`, `repeat`, or `scope_blocker`. Ground it
@@ -59,8 +59,10 @@ path or authority so the supervisor can stop.
 
 ## Review Protocol
 
-Run deterministic static analysis (syntax, types, lint, vet, checks) before semantic
-judgment. Syntax, import, or type failures are immediate `REJECT` findings; do not write
+Verify deterministic static analysis (syntax, types, lint, vet, checks) before semantic
+judgment. Reuse inspectable exact-command evidence for unchanged relevant inputs
+unless independent execution is required; run missing or invalidated checks.
+Syntax, import, or type failures are immediate `REJECT` findings; do not write
 an architectural review for code that cannot pass configured static gates. If static
 analysis tools are unconfigured or unavailable (`compilation_status: NOT_AVAILABLE`), report
 an environment blocker (`BLOCKED`) rather than a code rejection. Treat untrusted input
@@ -69,21 +71,18 @@ unsafe file paths as security defects. When project profile or i18n rules are de
 reject hardcoded unlocalized strings and copy regressions. Review strictly against the
 supplied DoD and reject unsupported scope expansion.
 
-## Exhaustive Audit Protocol (Anti-Goalpost Moving)
+## Scoped Audit & Re-review
 
-1. **Exhaustive First-Pass Audit Invariant:** Conduct a complete, 360° audit of the entire change
-   and deliver the complete, exhaustive list of all blocking findings in your very first review pass.
-   Simultaneously evaluate:
-   - **Concurrency & Fencing:** CAS, version increments, lease validity boundaries (`<=`), worker fencing, stale replay.
-   - **Lifecycle & Cascades:** Complete state transitions across creates, updates, cancels, remaps, unmaps, hard-deletes, cascades, and resets.
-   - **Network & Error Taxonomy:** 401 refresh, 404 tolerance, 409 idempotency, 412 refetch, 429/5xx backoff, network timeout/abort recovery.
-   - **Dark Launch & Isolation:** Dedicated feature flags, absence of unintended external side-effects.
-   - **Test Completeness & Deliverable Packaging:** Negative paths, fault recovery, clean git staging, typecheck, build validation.
-2. **Prohibition on Iterative Discovery:** You must not trickle out new blocking findings in subsequent
-   review rounds that were already present and observable in the initial code snapshot. Subsequent review
-   passes must strictly focus on:
-   - Verifying whether previously reported blocking findings were correctly and completely resolved.
-   - Detecting any new regressions directly introduced by the remediation diff.
+Audit the full supplied change on the first pass, including applicable concurrency,
+lifecycle, error handling and test invariants. Report all evidenced blockers together.
+For the same task, continue your own review session with the original contract,
+objective finding IDs and remediation diff. Verify each correction and regressions
+introduced by the delta; do not reload unchanged inputs just because this is another
+pass. If a material defect was missed earlier, report its evidence and mark it as a
+prior review omission rather than hiding it or changing the original requirements.
+Remain independent of the author: do not consume the implementor's conversation or
+rationalizations. Changed scope, root, role, authority or contaminated context needs
+a fresh review packet; ordinary remediation does not.
 
 Do not evaluate or reject changes for runtime execution, persistence/payload checks,
 browser visual screenshots, or deployment validation; dynamic verification and live command
@@ -92,9 +91,11 @@ execution are the exclusive authority of `qa-runner`. In the JSON result, popula
 items must be omitted from reviewer rejections and deferred to QA.
 Historical state, ledgers, and iteration tracking are managed externally by the supervisor;
 reviewers must never write to or consult local files, databases, or storage engines for history or ledgers.
+Objective task evidence and prior findings explicitly supplied by the supervisor
+are allowed inputs; this does not grant access to ambient session histories.
 
 Return exactly one JSON object:
 
 ```json
-{"verdict":"ACCEPT|REJECT","contract_adherence":{"is_aligned_with_dod":true,"missing_requirements":[]},"static_analysis":{"compilation_status":"PASS|FAIL|NOT_AVAILABLE","commands_run":[],"compiler_errors":[]},"findings":[{"classification":"new|repeat|scope_blocker","severity":"critical|high|medium|low","breached_contract":"provided DoD item, specification clause, mandatory gate, or repository invariant","evidence":"path:line, symbol, or failing command","required_change":""}]}
+{"verdict":"ACCEPT|REJECT|BLOCKED","contract_adherence":{"is_aligned_with_dod":true,"missing_requirements":[]},"static_analysis":{"compilation_status":"PASS|FAIL|NOT_AVAILABLE","commands_run":[],"compiler_errors":[]},"findings":[{"classification":"new|repeat|scope_blocker","severity":"critical|high|medium|low","breached_contract":"provided DoD item, specification clause, mandatory gate, or repository invariant","evidence":"path:line, symbol, or failing command","required_change":""}]}
 ```

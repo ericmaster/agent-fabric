@@ -100,7 +100,9 @@ authority, specification, or environment evidence resolves its blocker; a
 validated `scope_blocker` terminates the local repair loop.
 
 After a phase's second substantive code or specification rejection, supervision
-requires a fresh diagnostic before another mutation. It identifies the violated
+requires a root-cause diagnostic before another mutation. Reuse a verified diagnostic
+for the same invariant and evidence; the parent does not repeat the child's diagnosis.
+It identifies the violated
 DoD or invariant, relevant producer-to-consumer path, earliest shared enforcement
 boundary, smallest root-cause fix, and regression that fails without it. The fix
 prefers one shared guard or type constraint over denylist growth, sibling patches,
@@ -129,21 +131,77 @@ auditable RELEASE_EVIDENCE.md artifact.
 Canonical agents remain decoupled from host persistence engines, local files, and databases.
 Storage for execution history is resolved exclusively through the declarative `<agent-hooks:invoke:record-ledger>`
 hook declared in supervisor frontmatter. Canonical workers (`implementor`, `code-reviewer`, `planner`)
-must never write to or consult local ledger files or storage engines.
+must never write to or consult local ledger files or storage engines. They may
+consume objective task evidence and prior findings supplied by their supervisor.
+
+### Continuity and checkpoints
+
+The loop supervisor is the sole recovery owner for an atomic task. The plan
+supervisor preserves the DAG and resumes that phase supervisor; it does not run
+a second diagnostic or mutation loop. Use the harness's session continuation
+capability for the same task and role, including re-review in the reviewer's own
+session. Initial reviewers are independent of the author; their continuation
+receives the original contract, objective findings and revision delta, never the
+author's conversation. Resume is conditional on matching task, role, scope,
+execution root and authority, plus refreshed workspace/evidence state. A changed
+scope, unavailable session, contaminated context or unsupported continuation
+requires a fresh validated packet. Fresh sessions never reset task counters.
+
+The existing `record-ledger` hook supports `operation: load|record`. Supervisors
+load the task's checkpoint after resolving the task and before dispatch; record
+the event and full current checkpoint before dispatch and after each return.
+The receipt carries a monotonically increasing `version`; records send its
+`expected_version`. A stale writer reloads and reconciles, never overwrites.
+An in-flight dispatch must be reconciled before a retry, even if no child session
+ID was received. Missing persistence capability must be explicit: retain an
+inline checkpoint for the current session, report that durable resume is
+unavailable, and reconstruct from declared evidence before a fresh continuation.
+An installed hook reporting a persistence error blocks further dispatch.
+
+Checkpoint fields: `scope_id` (approved scope identity), `execution_root`,
+`revision`, `worktree_state` (digest/locator including relevant uncommitted and
+submodule state), `next_stage` (`select_phase|implementation|code_review|qa|
+reconciliation|blocked|done`), `sessions` (role to session ID), `attempts`
+(`mutating`, `review_rejections`, `infrastructure_failures`, `diagnostics`),
+`findings`, `evidence`, `blockers`, and `in_flight` (null or dispatch identity and
+role, with session ID when known). Macro checkpoints also carry `phase_states`
+with each phase's status, counters, child session and evidence/checkpoint locator.
+Macro top-level attempts are cumulative plan totals, not the newest phase's counters.
+Evidence entries
+identify exact command, execution root, input/runtime revision, result and full
+log locator; a summary is not proof. Reentry starts at `next_stage`; repeat only
+gates whose relevant inputs changed, or whose contract requires a fresh run.
+A QA-only environment failure preserves valid code review and static gates.
+Checkpoint metadata does not grant authority or certify evidence automatically.
+
+`hooks/supervisor/record-ledger.py` is an opt-in, host/tool-neutral POSIX reference
+hook (Python standard library). Hosts supply absolute `--root` (trusted artifact
+directory) and `--execution-root`, and a JSON request on stdin. Identity is
+`tier: micro` + `task_id`, or `tier: macro` + `plan_id`, scoped by execution root.
+`load` returns checkpoint/version without creating absent state. `record` requires
+`expected_version`, the event and full checkpoint; it atomically replaces one
+JSON document containing the journal and checkpoint under an exclusive file
+lock. Counters cannot decrease, even across scope changes. Concurrent stale
+writes fail without changing state. Malformed/corrupt state fails closed; output
+is one JSON receipt, exit 0 for success/absent and nonzero for error. This is
+trusted per-task storage, not a filesystem sandbox or runtime dispatch engine.
+Hosts own optional replicas; replica failures never erase local state. The
+reference hook has no network, provider or task-system dependencies. Release
+validation runs its Python unit tests alongside the Go test suite.
 
 The architecture enforces a Two-Tier Ledger Model:
 - **Macro-Ledger (`plan-supervisor`):** Tracks phase-level state transitions across the plan DAG.
   Emits structured events containing `tier: "macro"`, `plan_id`, `phase_id`, `objective`, `summary`,
   `dependencies`, `status: PENDING|IN_PROGRESS|DONE|BLOCKED`, `revision`, `timestamp`, and `blockers`.
 - **Micro-Ledger (`loop-supervisor`):** Tracks iteration-level transitions within an atomic task.
-  Emits structured events containing `tier: "micro"`, `task_id`, `iteration`, `phase`, `status: PASS|FAIL|BLOCKED`,
+  Emits structured events containing `tier: "micro"`, `task_id`, `iteration`, `phase`, `status: IN_PROGRESS|PASS|FAIL|BLOCKED`,
   `mutation_count`, `review_rejections`, structured `findings` (id, classification, severity, breached_contract,
   evidence path:line, required_change), `remediation_targets`, and `timestamp`.
 
 Supervisors act as an unbiased **Curation Firewall** across child dispatches:
 - **Implementor Dispatches:** Supervisors forward only objective finding definitions (`F1: lease boundary equality in path:line`)
   and failing test gates from the ledger, stripping out subjective reviewer commentary, rhetorical critiques, or adversarial debate.
-- **Reviewer Dispatches:** Supervisors forward only the remediation diff and the specific objective criteria from the ledger
+- **Reviewer Dispatches:** Supervisors preserve the original contract and forward the remediation diff and specific objective criteria from the ledger
   ("Verify whether finding F1 is resolved, without regressions"). Supervisors strictly suppress implementor rationalizations,
   apologies, or explanations that would soften adversarial review or prompt iterative goalpost-moving.
 - **QA Runner Dispatches:** Supervisors forward strictly original DoD, test commands, and workspace changes, filtering out

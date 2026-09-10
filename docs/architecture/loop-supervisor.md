@@ -34,9 +34,9 @@ flowchart TD
     subgraph "Atomic Execution Loop"
         BRIEF["① Create or refresh and validate\noutgoing child Delegation Packet"]
 
-        IMPL["② Dispatch implementor\nin fresh context\n(validated packet)"]
+        IMPL["② Dispatch or resume implementor\nrole-local session\n(validated packet + checkpoint)"]
 
-        REV["③ Dispatch code-reviewer\nin fresh context\n(validated packet · static findings only\nauthority-filtered by supervisor)"]
+        REV["③ Independent code-reviewer\nresume its own review session\n(original contract + delta + evidence)"]
 
         QA["④ Dispatch qa-runner\n(validated packet · runtime, persistence,\npayload + visual evidence)"]
 
@@ -64,6 +64,9 @@ flowchart TD
 
     RESULT -- "FAIL / BLOCKED" --> PRESERVE
     PRESERVE -->|"validated recovery packet"| DIAG_CTX
+    PRESERVE -->|"known defect: resume author"| REBR
+    PRESERVE -->|"QA environment repaired: resume QA"| QA
+    PRESERVE -->|"context / authority / quota unavailable"| REPORT
     DIAG_CTX --> REBR --> BUDGET
     BUDGET -- "Yes · validated retry packet" --> IMPL
     BUDGET -- No --> ESCALATE_ART --> REPORT
@@ -84,9 +87,9 @@ flowchart TD
 ```mermaid
 flowchart LR
     LS[Loop Supervisor]
-    IMP[implementor\nfresh context]
-    CR[code-reviewer\nfresh context]
-    QAR[qa-runner\nfresh context]
+    IMP[implementor\nrole-local continuation]
+    CR[code-reviewer\nindependent role-local continuation]
+    QAR[qa-runner\nrole-local continuation]
     DBG[expert-debugger\nfresh context\n— recovery only]
 
     LS -->|"validated packet"| IMP
@@ -104,7 +107,7 @@ flowchart LR
 | Hook | When | Purpose |
 |---|---|---|
 | `load-task` | Start | Resolve and validate atomic task; block if design gap |
-| `record-ledger` | State transitions | Record structured micro-ledger event to host memory or fallback JSONL |
+| `record-ledger` | Load at intake; before dispatch and after return | Versioned event + checkpoint; resume next_stage with valid evidence |
 | `pre-delegate-implementor` | Before implementor | Optional task-specific preparation |
 | `post-delegate-implementor` | After implementor | Optional result handling before review |
 | `pre-delegate-code-reviewer` | Before code review | Optional task-specific preparation |

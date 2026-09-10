@@ -3,7 +3,8 @@
 `agents/plan-supervisor.md` · profile: `supervisor` · mode: `primary` · isolation: `workspace`
 
 The Plan Supervisor executes a pre-decomposed implementation plan phase-by-phase through bounded
-task supervision. It owns phase ordering, evidence integrity, and bounded recovery.
+task supervision. It owns phase ordering and evidence integrity; the phase loop
+is the sole recovery owner. Load the macro checkpoint before phase selection.
 Fresh-child arrows abbreviate the Delegation Packet contract defined normatively in
 [`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
 Direct user invocation is not a fresh-child handoff, so its intake packet is optional.
@@ -31,7 +32,7 @@ flowchart TD
     subgraph "Phase Selection Loop"
         SEL["② Select unblocked phase\nwith all predecessor evidence ready"]
         BRIEF["Write and validate\nself-locating phase packet"]
-        DISPATCH["③ Dispatch loop-supervisor\nin fresh context with packet"]
+        DISPATCH["③ Resume phase loop-supervisor\nfresh only if continuity is unavailable\nvalidated packet + checkpoint"]
     end
 
     DEC --> SEL --> BRIEF
@@ -46,7 +47,7 @@ flowchart TD
 
     subgraph "Recovery"
         FAIL_CLASS["Classify failure\nenvironment · defect · spec-drift · flaky"]
-        DIAG["Delegate bounded diagnostic\nwith validated recovery packet"]
+        DIAG["Consume child diagnosis + checkpoint\nno second diagnostic at parent level"]
         REBR["Refresh same phase packet\n+ diagnostic locator\nincrement attempt count"]
         EXHAUST{Recovery budget\nexhausted?}
         ESCALATE["Write PLAN_ESCALATION.md\n(attempts · root-cause · stable-rev\nrequired operator action)"]
@@ -81,7 +82,7 @@ flowchart TD
 | `pre-plan` | Pre-dispatch | Validate source plan before any mutation |
 | `decompose` | Pre-dispatch | Materialize phases into task-system (if needed) |
 | `label` | After each PASS | Record phase state in task-system |
-| `record-ledger` | State transitions | Record structured macro-ledger event to host memory or fallback JSONL |
+| `record-ledger` | Before selection/dispatch and after return | Load checkpoint; record event + checkpoint with expected_version |
 
 ## Macro-Ledger & Phase Curation Firewall
 

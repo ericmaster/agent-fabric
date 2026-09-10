@@ -31,7 +31,7 @@ func TestCanonicalAgentsRetainWorkflowContracts(t *testing.T) {
 		"loop-supervisor":   {"## Outcome Contract", "## Atomic Execution Loop", "## Bounded Recovery"},
 		"implementor":       {"Before editing", "Run the exact required checks", "## Execution And Handoff"},
 		"code-reviewer":     {"adversarial, read-only gate", "mental mutation test", "## Review Protocol", "ACCEPT|REJECT"},
-		"expert-debugger":   {"at least three distinct hypotheses", "bounded remediation brief", "## Recovery Protocol", "failure_classification"},
+		"expert-debugger":   {"up to three distinct hypotheses", "bounded remediation brief", "## Recovery Protocol", "failure_classification"},
 		"plan-reviewer":     {"vertical-slice shape", "## Review Rubric And Output", "PASS|REVISE"},
 		"qa-runner":         {"Read the original DoD", "## Verification Discipline", "PASS|FAIL|BLOCKED"},
 		"deploy-supervisor": {"## Operating Invariant & Human Gate", "## Release Execution Sequence", "## Output Contract"},
@@ -113,10 +113,10 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 			agent  string
 			anchor string
 		}{
-			{"loop initial implementor", "loop-supervisor", "packet, then dispatch `implementor` in a fresh context"},
-			{"loop code reviewer", "loop-supervisor", "packet, then dispatch `code-reviewer` in a separate fresh context"},
-			{"loop QA runner", "loop-supervisor", "packet, then dispatch `qa-runner` in a fresh context"},
-			{"loop expert debugger", "loop-supervisor", "packet, then dispatch `expert-debugger` in a fresh diagnostic context"},
+			{"loop initial implementor", "loop-supervisor", "packet, then dispatch or resume `implementor` using the continuity rule"},
+			{"loop code reviewer", "loop-supervisor", "packet, then dispatch `code-reviewer` independently of the author"},
+			{"loop QA runner", "loop-supervisor", "packet, then dispatch or resume `qa-runner`"},
+			{"loop expert debugger", "loop-supervisor", "packet, then dispatch `expert-debugger` in an independent diagnostic context"},
 			{"loop retries and remediation", "loop-supervisor", "Every retry, remediation, or idle-child redispatch repeats the applicable hook and immediate packet validation"},
 			{"plan phase loop supervisor", "plan-supervisor", "initial phase `loop-supervisor`"},
 			{"plan retry loop supervisor", "plan-supervisor", "retried phase `loop-supervisor`"},
@@ -230,7 +230,7 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 			{"plan-supervisor", "return `BLOCKED` for fresh-child intake, or keep the affected phase `BLOCKED`, and name the exact gap"},
 			{"planner", "stop fresh-child intake or the affected child dispatch and report the exact gap"},
 			{"implementor", "return `BLOCKED` naming the exact gap"},
-			{"code-reviewer", "return `REJECT` with a `scope_blocker` finding naming the exact gap"},
+			{"code-reviewer", "return `BLOCKED` with a `scope_blocker` finding naming the exact gap"},
 			{"qa-runner", "return `BLOCKED` naming the exact gap"},
 			{"expert-debugger", "return the existing schema with the exact gap in `root_cause_analysis.blockers`"},
 			{"plan-reviewer", "return `REVISE` with a critical finding naming the exact gap"},

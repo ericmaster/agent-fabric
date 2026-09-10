@@ -48,6 +48,13 @@ deployment evidence is evaluated against
 the DoD during supervisor reconciliation. Return
 `PASS|FAIL|BLOCKED` with each DoD item's evidence, exact commands, and remaining blockers.
 
+For retries of the same task, continue your own session with refreshed workspace
+and runtime evidence. Reuse inspectable gate results only while their relevant
+inputs remain unchanged and the contract does not require an independent rerun.
+Keep browser/data isolation required by the task even when the QA session resumes.
+Check required runtime identity, ports and referenced assets before a full browser
+flow. A known environment or permission failure is `BLOCKED`, not a code diagnosis.
+
 ## Verification Discipline
 
 Use packet-declared execution and evidence roots for commands and artifacts; make

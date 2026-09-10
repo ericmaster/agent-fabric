@@ -68,7 +68,7 @@ Directly invoked dispatchers may inspect only the user-selected execution contex
 Hooks may enrich or validate the packet
 but never reconstruct a location known to its producer.
 
-Refresh this packet for each child.
+Refresh this packet for each child, including continued sessions.
 Packet validation precedes every initial, retry, and remediation dispatch.
 Immediately before every
 initial, retry, or remediation dispatch to `implementor`, `code-reviewer`,
@@ -77,34 +77,45 @@ the refreshed packet, and stop with `BLOCKED` on any context gap.
 
 ## Atomic Execution Loop
 
+**Continuity:** Load the task checkpoint through `record-ledger` before the first
+dispatch. Keep one session per role for this task. Prefer the harness's continuation
+capability for implementor repairs, reviewer re-reviews and QA retries when task,
+role, scope, root and authority still match; refresh revision/diff and evidence.
+The reviewer starts independently of the author and resumes only its own context.
+A new task/scope/authority, contaminated or unavailable session, or unsupported
+continuation requires a fresh validated packet carrying the checkpoint and counters.
+Resume at `next_stage`, not automatically at implementation. Reconcile any recorded
+in-flight dispatch before retrying; missing output alone does not prove no mutation.
+
 1. Create a focused brief containing objective, explicit non-goals, scope,
    relevant guidance, permitted paths, DoD, required gates, rollback boundary,
    and current workspace/VCS state.
-<agent-hooks:invoke:pre-delegate-implementor>2. Validate the packet, then dispatch `implementor` in a fresh context. It owns only
-   the bounded change and must satisfy the whole-system lifecycle and defensive concurrency contract.
-<agent-hooks:invoke:post-delegate-implementor><agent-hooks:invoke:pre-delegate-code-reviewer>3. Validate the packet, then dispatch `code-reviewer` in a separate fresh context
-   with the brief and diff. Hold the reviewer strictly to an exhaustive first-pass audit across
-   concurrency, lifecycle cascades, error taxonomy, and test completeness. Reconcile repeat findings
+<agent-hooks:invoke:pre-delegate-implementor>2. Validate the packet, then dispatch or resume `implementor` using the continuity rule. It owns only
+   the bounded change and its relevant lifecycle and concurrency invariants.
+<agent-hooks:invoke:post-delegate-implementor><agent-hooks:invoke:pre-delegate-code-reviewer>3. Validate the packet, then dispatch `code-reviewer` independently of the author,
+   resuming only its own prior review session. Supply original DoD, brief and diff;
+   review invariants relevant to the scoped change. Reconcile repeat findings
    against the remediation diff to ensure no iterative goalpost-moving.
    Findings are evidence, not implementation instructions to blindly follow.
    The supervisor acts as a curation firewall: in remediation packets to `implementor`, pass only
    objective finding definitions (`F1: lease boundary equality in file:line`) and failing test gates,
    stripping subjective reviewer commentary. In subsequent audit packets to `code-reviewer`, pass only
-   the remediation diff and objective verification criteria from the ledger ("Verify whether finding F1
+   the original contract, remediation diff and objective verification criteria from the ledger ("Verify whether finding F1
    is resolved, without regressions"); never forward implementor rationalizations, excuses, or conversational
    debates that could bias adversarial review or prompt goalpost-moving.
    Reclassify review findings grounded solely on absent dynamic evidence (runtime
    output, persistence, screenshots, deployment logs) as out-of-authority; route them
    to `qa-runner` dispatch without triggering implementor remediation or incrementing
    `review_rejections`.
-<agent-hooks:invoke:post-delegate-code-reviewer><agent-hooks:invoke:pre-delegate-qa-runner>4. Validate the packet, then dispatch `qa-runner` in a fresh context with original
+<agent-hooks:invoke:post-delegate-code-reviewer><agent-hooks:invoke:pre-delegate-qa-runner>4. Validate the packet, then dispatch or resume `qa-runner` with original
    DoD and exact required commands. Preserve its command output, runtime,
    persistence, payload, and visual evidence when applicable. QA packets receive strictly original
    DoD, test commands, and workspace changes, filtering out subjective code-quality judgments or developer commentary.
 <agent-hooks:invoke:post-delegate-qa-runner>5. Independently reconcile all reports against the original task. Concrete
    executed behavior facts are authoritative for runtime and visual claims; static analysis
    is authoritative for code-level contracts. Directly conflicting evidence triggers
-   `expert-debugger` diagnosis rather than silent resolution. Record the final state
+   bounded `expert-debugger` diagnosis when the original contract and existing
+   evidence cannot resolve the conflict. Record the final state
    and host task update when available; otherwise retain local trace.
 
 Native delegation is preferred. A configured fallback dispatcher may be used only
@@ -123,8 +134,19 @@ owned by the current task from a recorded checkpoint.
 ## Bounded Recovery
 
 On `FAIL` or `BLOCKED`, preserve evidence and classify the blocker before acting.
-<agent-hooks:invoke:pre-delegate-expert-debugger>Validate the packet, then dispatch `expert-debugger` in a fresh diagnostic context
-for environment failures, defects, specification drift, or flaky integrations. Curation firewall
+Missing packet inputs or malformed output get one producer-side repair; missing
+authority is `BLOCKED`. Known quota waits for availability or the permitted
+fallback. A demonstrated defect returns to the same implementor with objective
+findings; a known QA environment failure reenters QA after authorized repair.
+Context, transport and environment failures do not increment `review_rejections`.
+Preserve required gates already proved on unchanged relevant inputs; rerun a gate
+if code, configuration, dependencies, runtime or required independent execution
+invalidate it. A passing summary without inspectable evidence is insufficient.
+
+<agent-hooks:invoke:pre-delegate-expert-debugger>For an unknown cause, repeated invariant failure or unresolved factual conflict,
+validate the packet, then dispatch `expert-debugger` in an independent diagnostic context.
+Reuse an existing verified diagnosis and its probes when they still explain the
+same failure; session changes do not justify repeating the investigation. Curation firewall
 rules apply: pass only objective failing gate/test logs, breached contracts, and diffs; filter out
 conversational debates or excuses.
 <agent-hooks:invoke:post-delegate-expert-debugger>Re-brief the same task with diagnostic content inline or at its authoritative
@@ -138,13 +160,15 @@ Count an implementor dispatch as mutating when it edits the workspace or returns
 an implementation. The normal budget is three attempts. Attempts four and five
 are permitted only for a materially distinct, in-scope, reversible defect with a
 new failing regression; five is the absolute cap. A mandatory DoD that requires a
-forbidden path, authority, or environment becomes `BLOCKED` after one diagnostic.
+known forbidden path, authority, or environment immediately becomes `BLOCKED`.
 Do not spend recovery budget on adjacent symptoms.
 
 Carry task-scoped `mutating_attempts`, `review_rejections`, and
-`infrastructure_failures` from the supplied brief and return their cumulative
+`infrastructure_failures`, plus `diagnostics`, from the supplied brief and return their cumulative
 values. Rebriefing, resuming, and fresh sessions never reset them. Infrastructure
 and harness failures before mutation increment only `infrastructure_failures`.
+Increment `diagnostics` only when a diagnostic actually runs; carry it unchanged
+when reusing prior diagnostic evidence.
 Increment `review_rejections` after each substantive `REJECT`. A substantive non-infrastructure
 `qa-runner` `FAIL` counts equivalently toward the two-rejection diagnostic trigger.
 
@@ -154,7 +178,8 @@ another implementor. A repeat requires root-cause diagnosis before another
 implementation.
 
 After the second substantive code review rejection or QA failure, stop remediation
-and dispatch one fresh diagnostic. Before mutation resumes, it must identify the
+until a verified root-cause diagnostic is available; reuse a still-valid diagnosis
+of this failure rather than dispatching another. Before mutation resumes, it must identify the
 violated DoD or invariant, trace the relevant producer-to-consumer path, name the
 earliest shared enforcement boundary, and specify the smallest root-cause fix plus
 the regression that fails without it. Prefer one shared guard or type constraint
@@ -162,7 +187,8 @@ over denylist growth, sibling patches, new abstractions, or refactoring. Preserv
 all attempt caps and mandatory gates.
 
 Record each child session ID. An idle child with no assistant report receives one
-fresh native retry through the same packet-validated sequence, then becomes a
+native report-recovery attempt in its own session through the same packet-validated
+sequence; if continuation is unavailable, one fresh native retry is allowed instead, then becomes a
 terminal dispatch failure. Dispatch the required `qa-runner`, or record why QA is
 not applicable before final reconciliation.
 
@@ -171,6 +197,18 @@ operator-only action is required, or no reversible option remains. Do not advanc
 a dependent task while this task lacks verified `PASS` evidence.
 
 ## Micro-Ledger & Iteration Tracking
+
+Invoke the hook below with `operation: load`, `tier: micro` and `task_id` after
+resolving the task, before any child dispatch. On every record include
+`operation: record`, the receipt's `expected_version`, and the full `checkpoint`:
+`scope_id`, `execution_root`, `revision`, `worktree_state`, `next_stage`, `sessions`,
+`attempts` (mutating, review_rejections, infrastructure_failures, diagnostics),
+`findings`, `evidence`, `blockers`, and `in_flight` (null or dispatch_id/role/session_id).
+Save before dispatch and after return; preserve counters across rebriefs. A stale
+write reloads and reconciles. An installed hook persistence error blocks dispatch.
+With no hook, retain an inline checkpoint and disclose that durable resume is
+unavailable; fresh recovery must reverify declared evidence. The checkpoint
+records evidence locators and revisions, not automatic permission to trust old PASS.
 
 Maintain the micro-ledger of atomic task iterations. At every state transition boundary
 (post-implementor return, post-code-reviewer audit, post-qa-runner verification, reconciliation,
@@ -186,7 +224,7 @@ The supervisor emits a structured micro-ledger event payload:
   "task_id": "atomic-task-id",
   "iteration": 1,
   "phase": "implementation|code_review|qa|diagnostic|reconciliation",
-  "status": "PASS|FAIL|BLOCKED",
+  "status": "IN_PROGRESS|PASS|FAIL|BLOCKED",
   "mutation_count": 1,
   "review_rejections": 0,
   "findings": [
@@ -209,7 +247,7 @@ Return a machine-readable report:
 ```json
 {
   "status": "PASS|FAIL|BLOCKED",
-  "attempts": {"mutating": 0, "review_rejections": 0, "infrastructure_failures": 0},
+  "attempts": {"mutating": 0, "review_rejections": 0, "infrastructure_failures": 0, "diagnostics": 0},
   "dod": [{"item": "original DoD", "status": "PASS|FAIL|BLOCKED", "evidence": "authoritative locator or command"}],
   "required_gates": [{"command": "exact command", "status": "PASS|FAIL|BLOCKED", "evidence": "authoritative locator"}],
   "remaining_blockers": [],

@@ -582,7 +582,7 @@ func TestLoopSupervisorDelegationHooksRenderBeforeDelegation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(rendered.Body, "Check the task context.\n\n2. Validate the packet, then dispatch `implementor`") {
+	if !strings.Contains(rendered.Body, "Check the task context.\n\n2. Validate the packet, then dispatch or resume `implementor`") {
 		t.Fatalf("delegation hook was not rendered before packet validation and implementor dispatch:\n%s", rendered.Body)
 	}
 }
@@ -637,10 +637,12 @@ func TestFreshContextSafeguardsSurviveEmptyHookRenderingAcrossMappings(t *testin
 		{"loop-supervisor", true, []string{
 			"stop with `BLOCKED` and name the exact gap",
 			"Packet validation precedes every initial, retry, and remediation dispatch",
-			"packet, then dispatch `implementor` in a fresh context",
-			"packet, then dispatch `code-reviewer` in a separate fresh context",
-			"packet, then dispatch `qa-runner` in a fresh context",
-			"packet, then dispatch `expert-debugger` in a fresh diagnostic context",
+			"packet, then dispatch or resume `implementor` using the continuity rule",
+			"packet, then dispatch `code-reviewer` independently of the author",
+			"packet, then dispatch or resume `qa-runner`",
+			"packet, then dispatch `expert-debugger` in an independent diagnostic context",
+			"Resume at `next_stage`, not automatically at implementation",
+			"installed hook persistence error blocks dispatch",
 			"Every retry, remediation, or idle-child redispatch repeats the applicable hook and immediate packet validation",
 		}},
 		{"plan-supervisor", true, []string{
@@ -660,7 +662,7 @@ func TestFreshContextSafeguardsSurviveEmptyHookRenderingAcrossMappings(t *testin
 			"A context gap blocks review dispatch before substantive child work",
 		}},
 		{"implementor", false, []string{"return `BLOCKED` naming the exact gap"}},
-		{"code-reviewer", false, []string{"return `REJECT` with a `scope_blocker` finding naming the exact gap"}},
+		{"code-reviewer", false, []string{"return `BLOCKED` with a `scope_blocker` finding naming the exact gap", "continue your own review session", "ACCEPT|REJECT|BLOCKED"}},
 		{"qa-runner", false, []string{"return `BLOCKED` naming the exact gap"}},
 		{"expert-debugger", false, []string{"return the existing schema with the exact gap in `root_cause_analysis.blockers`"}},
 		{"plan-reviewer", false, []string{"return `REVISE` with a critical finding naming the exact gap"}},

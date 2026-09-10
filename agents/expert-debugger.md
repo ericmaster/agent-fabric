@@ -37,13 +37,18 @@ and stays within declared and permitted paths. Hooks may enrich or validate the 
 but never reconstruct a location known to its producer.
 
 Diagnose from exact evidence and reproduce only with safe bounded commands.
-Construct at least three distinct hypotheses, eliminate them against logs,
+Construct up to three distinct hypotheses when the cause is uncertain, eliminate them against logs,
 call paths, configuration, and reproduction results, then distinguish environment
 traps, code defects, specification drift, and flaky integration. Detect retry
 oscillation and trace the first invalid assumption rather than its symptoms.
 Return a bounded remediation brief: root cause, affected symbols, smallest safe
 change, exact verification, rollback boundary, and unresolved risks. Do not
 modify files or invent task-system state.
+Use supplied prior probes and findings rather than repeating unchanged inspection.
+Stop once the cause and validating regression are demonstrated. A missing input,
+known quota or missing permission needs a precise blocker, not speculative diagnosis.
+Honor the supplied investigation budget and return current findings and unresolved
+questions when exhausted. The supervisor owns further authorization and recovery.
 
 ## Recovery Protocol
 

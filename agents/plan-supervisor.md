@@ -31,7 +31,8 @@ crossed:
    optionally through its host task-system parent, and construct the DAG.
 2. Select an unblocked phase with all required predecessor evidence.
 3. Write an isolated phase packet, validate it immediately before dispatch, and
-   dispatch a fresh `loop-supervisor`.
+   resume that phase's `loop-supervisor` when its task, role, scope, root and authority
+   still match. Otherwise dispatch a fresh `loop-supervisor` with the checkpoint.
 4. Verify its evidence and record the resulting phase state.
 5. <agent-hooks:invoke:label> Record the resulting phase state, then dispatch
    the next eligible phase immediately or enter bounded recovery.
@@ -125,7 +126,7 @@ Require each phase supervisor to return exactly this shape:
 ```json
 {
   "status": "PASS|FAIL|BLOCKED",
-  "attempts": {"mutating": 0, "review_rejections": 0, "infrastructure_failures": 0},
+  "attempts": {"mutating": 0, "review_rejections": 0, "infrastructure_failures": 0, "diagnostics": 0},
   "dod": [{"item": "original DoD text", "status": "PASS|FAIL|BLOCKED", "evidence": "path or command"}],
   "required_gates": [{"command": "exact command", "status": "PASS|FAIL|BLOCKED", "evidence": "authoritative locator"}],
   "remaining_blockers": [],
@@ -139,6 +140,19 @@ independently verify evidence exists and record the phase-owned VCS revision. If
 the evidence is absent or contradictory, keep the phase incomplete.
 
 ## Macro-Ledger & State Transitions
+
+After resolving the plan, invoke the hook below with `operation: load`, `tier: macro`
+and `plan_id` before selecting a phase. Restore `phase_states`, sessions, evidence
+and cumulative attempts; reconcile an in-flight child before redispatching it.
+Record `operation: record`, `expected_version` from the latest receipt, and the
+full checkpoint before each dispatch and after every child return. Include scope
+identity, execution root, revision and working-tree digest, `next_stage`, role
+sessions, attempts, findings, evidence locators, blockers, `in_flight` and
+`phase_states`. Top-level attempts are cumulative plan totals; `phase_states`
+retains each phase's own counters, child session and evidence. An installed hook
+persistence error blocks further dispatch.
+If no hook is installed, retain this checkpoint inline and explicitly report that
+durable resume is unavailable; a fresh continuation must reverify declared evidence.
 
 Maintain the macro-ledger of phase execution across the plan. At every state
 transition boundary (phase selection/initialization `PENDING` -> `IN_PROGRESS`,
@@ -170,25 +184,30 @@ Treat `FAIL`, `BLOCKED`, malformed reports, absent evidence, and contradictory
 reports as phase failure. Keep the phase incomplete and never dispatch a
 dependent phase.
 
-1. Classify the failure as environment/harness, code defect, specification drift,
-   or flaky integration.
-2. Delegate a fresh, bounded diagnostic or remediation task only with a newly
-   validated self-locating packet containing the needed evidence.
-3. Do not waive the original gate. Repair the phase when authorized, otherwise
+1. The phase's loop-supervisor is the sole recovery owner. Consume its failure
+   classification, diagnostic, checkpoint and counters; do not start a second
+   diagnosis or implementation loop at this level.
+2. Repair missing packet inputs or report transport before resuming the child.
+   A known provider quota waits for availability or uses the permitted fallback;
+   starting a fresh session on the same unavailable provider does not repair it.
+3. Do not waive the original gate. Resume the phase when authorized, otherwise
    return `BLOCKED` with the required decision or capability.
 4. For a non-blocked phase, refresh and revalidate the same phase packet with the
-   diagnostic evidence and cumulative counters, then dispatch again in fresh
-   context. For a `BLOCKED`
+   diagnostic evidence and cumulative counters, then resume its role-local session
+   at the checkpoint's pending stage. Use a fresh context only if continuation is
+   unavailable or task, role, scope, root or authority no longer matches. For a `BLOCKED`
    phase, retain its status and do not rebrief or redispatch until new resolving
    evidence is supplied.
 
-Carry each phase's cumulative mutating-attempt, review-rejection, and
-infrastructure-failure counters through every rebrief and fresh session. A
+Carry each phase's cumulative mutating-attempt, review-rejection,
+infrastructure-failure and diagnostics counters through every rebrief, resume and fresh session. A
 `BLOCKED` phase is eligible for redispatch only when new scope, authority,
 specification, or environment evidence explicitly resolves its blocker.
 
 After a phase's second substantive code or specification rejection, require the
-phase supervisor's fresh diagnostic before another mutation. The diagnostic must
+phase supervisor's root-cause diagnostic before another mutation. Reuse its
+verified diagnosis of the same invariant; never repeat it merely at the parent level.
+The diagnostic must
 name the violated DoD or invariant, relevant producer-to-consumer path, earliest
 shared enforcement boundary, smallest root-cause fix, and regression that fails
 without it. Environment and harness failures do not count as review rejections.
