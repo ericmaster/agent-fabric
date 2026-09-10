@@ -13,6 +13,7 @@ for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; d
   work="$(mktemp -d)"
   GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$work/agent-fabric${suffix}" "$root/cmd/agent-fabric"
   cp -R "$root/agents" "$root/adapters" "$root/hooks" "$work/"
+  find -P "$work" \( -name '__pycache__' -o -name '*.pyc' \) -prune -exec rm -rf {} +
   tar -C "$work" -czf "$out/${name}.tar.gz" "agent-fabric${suffix}" agents adapters hooks
   rm -rf "$work"
 done

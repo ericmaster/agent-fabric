@@ -13,6 +13,7 @@ jobs:
         with:
           go-version: '1.22'
       - run: go test ./...
+      - run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_supervisor_ledger.py'
       - run: scripts/release.sh "${GITHUB_REF_NAME#v}" dist
       - uses: softprops/action-gh-release@v2
         with:
