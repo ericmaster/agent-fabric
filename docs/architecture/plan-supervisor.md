@@ -32,7 +32,7 @@ flowchart TD
     subgraph "Phase Selection Loop"
         SEL["② Select unblocked phase\nwith all predecessor evidence ready"]
         BRIEF["Write and validate\nself-locating phase packet"]
-        DISPATCH["③ Resume phase loop-supervisor\nfresh only if continuity is unavailable\nvalidated packet + checkpoint"]
+        DISPATCH["③ Resume recorded loop-supervisor\nnew session only on new resolving authority / approved scope identity change / unavailable recorded continuation\ncontext length: resume or BLOCKED\nvalidated packet + checkpoint"]
     end
 
     DEC --> SEL --> BRIEF

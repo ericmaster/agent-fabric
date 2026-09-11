@@ -100,8 +100,8 @@ authority, specification, or environment evidence resolves its blocker; a
 validated `scope_blocker` terminates the local repair loop.
 
 After a phase's second substantive code or specification rejection, supervision
-requires a root-cause diagnostic before another mutation. Reuse a verified diagnostic
-for the same invariant and evidence; the parent does not repeat the child's diagnosis.
+requires a root-cause diagnostic before another mutation. Reuse a finding's recorded diagnosis;
+the parent consumes the child's diagnosis.
 It identifies the violated
 DoD or invariant, relevant producer-to-consumer path, earliest shared enforcement
 boundary, smallest root-cause fix, and regression that fails without it. The fix
@@ -137,15 +137,16 @@ consume objective task evidence and prior findings supplied by their supervisor.
 ### Continuity and checkpoints
 
 The loop supervisor is the sole recovery owner for an atomic task. The plan
-supervisor preserves the DAG and resumes that phase supervisor; it does not run
-a second diagnostic or mutation loop. Use the harness's session continuation
-capability for the same task and role, including re-review in the reviewer's own
-session. Initial reviewers are independent of the author; their continuation
-receives the original contract, objective findings and revision delta, never the
-author's conversation. Resume is conditional on matching task, role, scope,
-execution root and authority, plus refreshed workspace/evidence state. A changed
-scope, unavailable session, contaminated context or unsupported continuation
-requires a fresh validated packet. Fresh sessions never reset task counters.
+supervisor preserves the DAG and resumes that phase supervisor's recorded
+session. Pass the recorded child continuation ID to the harness resume mechanism
+on every later dispatch for that phase or role. Open a new session only when new resolving authority arrives, the approved scope identity changes, or the recorded continuation is unavailable.
+Blocked status, missing child output, idle children, repeated gates, and context
+length resume the recorded session or stay blocked. Initial reviewers are
+independent of the author; their continuation receives the original contract,
+objective findings and revision delta, never the author's conversation. Resume
+also requires matching task, role, and execution root, plus refreshed
+workspace/evidence state. Fresh sessions never reset task counters.
+Reuse a finding's recorded diagnosis; a later session consumes that diagnosis.
 
 The existing `record-ledger` hook supports `operation: load|record`. Supervisors
 load the task's checkpoint after resolving the task and before dispatch; record

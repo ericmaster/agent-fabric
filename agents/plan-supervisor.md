@@ -31,8 +31,11 @@ crossed:
    optionally through its host task-system parent, and construct the DAG.
 2. Select an unblocked phase with all required predecessor evidence.
 3. Write an isolated phase packet, validate it immediately before dispatch, and
-   resume that phase's `loop-supervisor` when its task, role, scope, root and authority
-   still match. Otherwise dispatch a fresh `loop-supervisor` with the checkpoint.
+   resume the recorded `loop-supervisor` session for that phase. Record its
+   continuation ID on first dispatch and pass that resume handle on every later
+   dispatch. Open a new `loop-supervisor` session only when new resolving authority arrives, the approved scope identity changes, or the recorded continuation is unavailable.
+   Context length is not continuation unavailability: resume the recorded session
+   or keep the phase `BLOCKED`.
 4. Verify its evidence and record the resulting phase state.
 5. <agent-hooks:invoke:label> Record the resulting phase state, then dispatch
    the next eligible phase immediately or enter bounded recovery.
@@ -67,8 +70,10 @@ Hooks may enrich or validate the packet
 but never reconstruct a location known to its producer.
 
 Every fresh child dispatch requires a validated self-locating Delegation Packet.
-This includes an initial phase `loop-supervisor`, a retried phase `loop-supervisor`,
-a recovery diagnostic, and a recovery remediation. Refresh authoritative evidence
+The first `loop-supervisor` for a phase is a fresh child; retries, recovery, and
+idle-child report collection resume that recorded session. A replacement session
+is a fresh child only after new resolving authority, an approved scope-identity
+change, or unavailable continuation. Refresh authoritative evidence
 and workspace/VCS state and validate the packet immediately before each dispatch.
 A context gap blocks dispatch before substantive child work.
 
@@ -184,18 +189,16 @@ Treat `FAIL`, `BLOCKED`, malformed reports, absent evidence, and contradictory
 reports as phase failure. Keep the phase incomplete and never dispatch a
 dependent phase.
 
-1. The phase's loop-supervisor is the sole recovery owner. Consume its failure
-   classification, diagnostic, checkpoint and counters; do not start a second
-   diagnosis or implementation loop at this level.
+1. The phase's loop-supervisor is the sole recovery owner. Consume its recorded
+   failure classification, diagnostic, checkpoint and counters.
 2. Repair missing packet inputs or report transport before resuming the child.
    A known provider quota waits for availability or uses the permitted fallback;
    starting a fresh session on the same unavailable provider does not repair it.
 3. Do not waive the original gate. Resume the phase when authorized, otherwise
    return `BLOCKED` with the required decision or capability.
 4. For a non-blocked phase, refresh and revalidate the same phase packet with the
-   diagnostic evidence and cumulative counters, then resume its role-local session
-   at the checkpoint's pending stage. Use a fresh context only if continuation is
-   unavailable or task, role, scope, root or authority no longer matches. For a `BLOCKED`
+   diagnostic evidence and cumulative counters, then resume the recorded
+   `loop-supervisor` session at the checkpoint's pending stage. For a `BLOCKED`
    phase, retain its status and do not rebrief or redispatch until new resolving
    evidence is supplied.
 
@@ -205,8 +208,7 @@ infrastructure-failure and diagnostics counters through every rebrief, resume an
 specification, or environment evidence explicitly resolves its blocker.
 
 After a phase's second substantive code or specification rejection, require the
-phase supervisor's root-cause diagnostic before another mutation. Reuse its
-verified diagnosis of the same invariant; never repeat it merely at the parent level.
+phase supervisor's root-cause diagnostic before another mutation. Reuse a finding's recorded diagnosis; a later session consumes that diagnosis.
 The diagnostic must
 name the violated DoD or invariant, relevant producer-to-consumer path, earliest
 shared enforcement boundary, smallest root-cause fix, and regression that fails

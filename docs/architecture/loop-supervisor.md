@@ -56,7 +56,7 @@ flowchart TD
 
     subgraph "Bounded Recovery"
         PRESERVE["Preserve evidence\nClassify blocker\n(defect · env · spec-drift · flaky)"]
-        DIAG_CTX["Fresh diagnostic context\n(expert-debugger if needed)"]
+        DIAG_CTX["Resume recorded expert-debugger session\nnew only on new resolving authority,\napproved scope identity change, or unavailable continuation\ncontext length: resume or BLOCKED\nreuse recorded diagnosis"]
         REBR["Refresh same task packet\n+ diagnostic locator"]
         BUDGET{Recovery budget\nremaining?}
         ESCALATE_ART["Produce escalation artifact\nStop"]
@@ -90,7 +90,7 @@ flowchart LR
     IMP[implementor\nrole-local continuation]
     CR[code-reviewer\nindependent role-local continuation]
     QAR[qa-runner\nrole-local continuation]
-    DBG[expert-debugger\nfresh context\n— recovery only]
+    DBG[expert-debugger\nrecorded session]
 
     LS -->|"validated packet"| IMP
     IMP -->|"changed files\n+ evidence"| LS

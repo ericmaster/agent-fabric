@@ -640,7 +640,7 @@ func TestFreshContextSafeguardsSurviveEmptyHookRenderingAcrossMappings(t *testin
 			"packet, then dispatch or resume `implementor` using the continuity rule",
 			"packet, then dispatch `code-reviewer` independently of the author",
 			"packet, then dispatch or resume `qa-runner`",
-			"packet, then dispatch `expert-debugger` in an independent diagnostic context",
+			"packet, then dispatch or resume `expert-debugger` using the continuity rule",
 			"Resume at `next_stage`, not automatically at implementation",
 			"installed hook persistence error blocks dispatch",
 			"Every retry, remediation, or idle-child redispatch repeats the applicable hook and immediate packet validation",
@@ -648,10 +648,9 @@ func TestFreshContextSafeguardsSurviveEmptyHookRenderingAcrossMappings(t *testin
 		{"plan-supervisor", true, []string{
 			"return `BLOCKED` for fresh-child intake, or keep the affected phase `BLOCKED`, and name the exact gap",
 			"Every fresh child dispatch requires a validated self-locating Delegation Packet",
-			"initial phase `loop-supervisor`",
-			"retried phase `loop-supervisor`",
-			"recovery diagnostic",
-			"recovery remediation",
+			"The first `loop-supervisor` for a phase is a fresh child",
+			"idle-child report collection resume that recorded session",
+			"A replacement session",
 			"A context gap blocks dispatch before substantive child work",
 		}},
 		{"planner", true, []string{

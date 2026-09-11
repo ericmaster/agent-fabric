@@ -78,13 +78,13 @@ the refreshed packet, and stop with `BLOCKED` on any context gap.
 ## Atomic Execution Loop
 
 **Continuity:** Load the task checkpoint through `record-ledger` before the first
-dispatch. Keep one session per role for this task. Prefer the harness's continuation
-capability for implementor repairs, reviewer re-reviews and QA retries when task,
-role, scope, root and authority still match; refresh revision/diff and evidence.
-The reviewer starts independently of the author and resumes only its own context.
-A new task/scope/authority, contaminated or unavailable session, or unsupported
-continuation requires a fresh validated packet carrying the checkpoint and counters.
-Resume at `next_stage`, not automatically at implementation. Reconcile any recorded
+dispatch. Keep one session per role for this task. Record each role's continuation
+ID on first dispatch and pass that resume handle on every later dispatch for the
+same role. Open a new session for a role only when new resolving authority arrives, the approved scope identity changes, or the recorded continuation is unavailable.
+Context length is not continuation unavailability: resume the recorded session or
+stay `BLOCKED`.
+The reviewer starts independently of the author and resumes only its own recorded
+session. Resume at `next_stage`, not automatically at implementation. Reconcile any recorded
 in-flight dispatch before retrying; missing output alone does not prove no mutation.
 
 1. Create a focused brief containing objective, explicit non-goals, scope,
@@ -144,9 +144,8 @@ if code, configuration, dependencies, runtime or required independent execution
 invalidate it. A passing summary without inspectable evidence is insufficient.
 
 <agent-hooks:invoke:pre-delegate-expert-debugger>For an unknown cause, repeated invariant failure or unresolved factual conflict,
-validate the packet, then dispatch `expert-debugger` in an independent diagnostic context.
-Reuse an existing verified diagnosis and its probes when they still explain the
-same failure; session changes do not justify repeating the investigation. Curation firewall
+validate the packet, then dispatch or resume `expert-debugger` using the continuity rule.
+Reuse a finding's recorded diagnosis and its probes. Curation firewall
 rules apply: pass only objective failing gate/test logs, breached contracts, and diffs; filter out
 conversational debates or excuses.
 <agent-hooks:invoke:post-delegate-expert-debugger>Re-brief the same task with diagnostic content inline or at its authoritative
@@ -178,8 +177,8 @@ another implementor. A repeat requires root-cause diagnosis before another
 implementation.
 
 After the second substantive code review rejection or QA failure, stop remediation
-until a verified root-cause diagnostic is available; reuse a still-valid diagnosis
-of this failure rather than dispatching another. Before mutation resumes, it must identify the
+until a verified root-cause diagnostic is available; reuse a finding's recorded diagnosis.
+Before mutation resumes, it must identify the
 violated DoD or invariant, trace the relevant producer-to-consumer path, name the
 earliest shared enforcement boundary, and specify the smallest root-cause fix plus
 the regression that fails without it. Prefer one shared guard or type constraint

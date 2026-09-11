@@ -116,12 +116,11 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 			{"loop initial implementor", "loop-supervisor", "packet, then dispatch or resume `implementor` using the continuity rule"},
 			{"loop code reviewer", "loop-supervisor", "packet, then dispatch `code-reviewer` independently of the author"},
 			{"loop QA runner", "loop-supervisor", "packet, then dispatch or resume `qa-runner`"},
-			{"loop expert debugger", "loop-supervisor", "packet, then dispatch `expert-debugger` in an independent diagnostic context"},
+			{"loop expert debugger", "loop-supervisor", "packet, then dispatch or resume `expert-debugger` using the continuity rule"},
 			{"loop retries and remediation", "loop-supervisor", "Every retry, remediation, or idle-child redispatch repeats the applicable hook and immediate packet validation"},
-			{"plan phase loop supervisor", "plan-supervisor", "initial phase `loop-supervisor`"},
-			{"plan retry loop supervisor", "plan-supervisor", "retried phase `loop-supervisor`"},
-			{"plan recovery diagnostic", "plan-supervisor", "recovery diagnostic"},
-			{"plan recovery remediation", "plan-supervisor", "recovery remediation"},
+			{"plan first loop supervisor", "plan-supervisor", "The first `loop-supervisor` for a phase is a fresh child"},
+			{"plan resume recorded session", "plan-supervisor", "idle-child report collection resume that recorded session"},
+			{"plan replacement session", "plan-supervisor", "A replacement session"},
 			{"planner discovery child", "planner", "Any fresh discovery or design child receives a self-locating Delegation Packet"},
 			{"planner initial review", "planner", "Every plan-reviewer pass receives a self-locating Delegation Packet"},
 			{"planner revised review", "planner", "This includes every revised-candidate pass"},
@@ -480,6 +479,119 @@ func TestPlannerCapsReviewAndHonorsPublishInstruction(t *testing.T) {
 		if strings.Contains(d.Body, forbidden) {
 			t.Errorf("planner still blocks on review: %q", forbidden)
 		}
+	}
+}
+
+func TestSupervisorResumeHandleIsMandatory(t *testing.T) {
+	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "agent-fabric.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	planSup, err := ParseFile(filepath.Join("..", "..", "agents", "plan-supervisor.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	loopSup, err := ParseFile(filepath.Join("..", "..", "agents", "loop-supervisor.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shared := "new resolving authority arrives, the approved scope identity changes, or the recorded continuation is unavailable"
+	for _, tc := range []struct {
+		name, body string
+		wants      []string
+	}{
+		{"spec", string(spec), []string{
+			"Pass the recorded child continuation ID to the harness resume mechanism",
+			shared,
+			"Reuse a finding's recorded diagnosis",
+		}},
+		{"plan-supervisor", planSup.Body, []string{
+			"resume the recorded `loop-supervisor` session for that phase",
+			"pass that resume handle on every later",
+			"Open a new `loop-supervisor` session only when " + shared,
+			"Context length is not continuation unavailability: resume the recorded session",
+			"Reuse a finding's recorded diagnosis",
+		}},
+		{"loop-supervisor", loopSup.Body, []string{
+			"pass that resume handle on every later dispatch for the",
+			"Open a new session for a role only when " + shared,
+			"Context length is not continuation unavailability: resume the recorded session",
+			"dispatch or resume `expert-debugger` using the continuity rule",
+			"Reuse a finding's recorded diagnosis",
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, want := range tc.wants {
+				if !strings.Contains(tc.body, want) {
+					t.Errorf("%s missing resume-handle contract %q", tc.name, want)
+				}
+			}
+		})
+	}
+
+	for _, forbidden := range []string{
+		"Otherwise dispatch a fresh `loop-supervisor`",
+		"Use a fresh context only if continuation is unavailable",
+		"a retried phase `loop-supervisor`",
+		"a recovery diagnostic",
+	} {
+		if strings.Contains(planSup.Body, forbidden) {
+			t.Errorf("plan-supervisor still authorizes a new loop via %q", forbidden)
+		}
+	}
+	for _, forbidden := range []string{
+		"creating that session only when the finding has no recorded diagnosis",
+		"independent diagnostic context",
+	} {
+		if strings.Contains(loopSup.Body, forbidden) {
+			t.Errorf("loop-supervisor still authorizes a replacement session via %q", forbidden)
+		}
+	}
+
+	for _, tc := range []struct {
+		name, path string
+		wants      []string
+		forbids    []string
+	}{
+		{
+			name: "plan-supervisor architecture",
+			path: filepath.Join("..", "..", "docs", "architecture", "plan-supervisor.md"),
+			wants: []string{
+				"Resume recorded loop-supervisor",
+				"new session only on new resolving authority / approved scope identity change / unavailable recorded continuation",
+				"context length: resume or BLOCKED",
+			},
+			forbids: []string{"new session only on authority/scope/unavailable", "fresh context for context length"},
+		},
+		{
+			name: "loop-supervisor architecture",
+			path: filepath.Join("..", "..", "docs", "architecture", "loop-supervisor.md"),
+			wants: []string{
+				"Resume recorded expert-debugger session",
+				"context length: resume or BLOCKED",
+				"reuse recorded diagnosis",
+			},
+			forbids: []string{"Fresh diagnostic context", "fresh context for context length"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			architecture, err := os.ReadFile(tc.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := string(architecture)
+			for _, want := range tc.wants {
+				if !strings.Contains(body, want) {
+					t.Errorf("%s missing continuity contract %q", tc.name, want)
+				}
+			}
+			for _, forbidden := range tc.forbids {
+				if strings.Contains(body, forbidden) {
+					t.Errorf("%s still authorizes continuity loophole %q", tc.name, forbidden)
+				}
+			}
+		})
 	}
 }
 
