@@ -4,7 +4,9 @@
 
 The Deploy Supervisor coordinates post-merge deployment execution, database migration checks,
 live endpoint smoke testing, and empirical release evidence collection. It executes deployments
-only under explicit human operator confirmation.
+under durable authority from a scoped executable release task. The task names the
+target, DoD, rollback, and authority chain from the current request or approved
+parent; an agent cannot manufacture a new release objective outside that scope.
 
 ## Full Workflow
 
@@ -14,20 +16,20 @@ flowchart TD
 
     subgraph "Load Task & Profile"
         LT["load-task hook\nLoad release task, destination target, and\nproject profile (.agent-fabric/profile.yaml)"]
-        CONFIRM{"Explicit Operator\nAuthorization Signed?"}
-        BLOCKED_GATE([Return BLOCKED\n— unauthorized deploy attempt])
+        CONFIRM{"Scoped executable task?\nTraceable parent authority"}
+        BLOCKED_GATE([Return BLOCKED\n— missing executable task authority])
     end
 
     LT --> CONFIRM
     CONFIRM -- No --> BLOCKED_GATE
-    CONFIRM -- Yes --> PRE_DEPLOY
+    CONFIRM -- "Yes · durable task authority" --> PRE_DEPLOY
 
     subgraph "Release Execution Sequence"
-        PRE_DEPLOY["① pre-deploy hook\nValidate environment health & staging state"]
-        DEPLOY["② Execute Build & Deploy\n(e.g., Pages/Workers, container, hosting cmd)"]
+        PRE_DEPLOY["① pre-deploy hook\nVerify target · checkpoint · rollback signals"]
+        DEPLOY["② Execute Build & Deploy\nSmallest viable canary or batch"]
         MIG["③ Validate Database Migrations\n(schema status on target store)"]
         SMOKE["④ Run Route Smoke Tests\n(HTTP status, latency, payload assertions)"]
-        PARITY["⑤ Assert Git Parity\n(HEAD SHA == deployed runtime tag)"]
+        PARITY["⑤ Assert Git Parity\n(authorized target SHA == deployed runtime)"]
         POST_DEPLOY["⑥ post-deploy hook\nGenerate RELEASE_EVIDENCE.md"]
     end
 
@@ -36,12 +38,12 @@ flowchart TD
     subgraph "Outcome"
         RESULT{All checks PASS?}
         REP_PASS["Return DEPLOYED / VERIFIED\nwith release artifact"]
-        REP_FAIL["Return FAILED / ROLLED_BACK\nwith error trace"]
+        REP_FAIL["Automatic rollback\nReturn FAILED / ROLLED_BACK with trace"]
     end
 
     POST_DEPLOY --> RESULT
     RESULT -- Yes --> REP_PASS --> DONE([Release Complete])
-    RESULT -- No --> REP_FAIL --> ESCALATE([Operator Escalation])
+    RESULT -- No --> REP_FAIL --> ESCALATE([Preserve evidence; external escalation only if verified])
 
     style LT fill:#6366f1,color:#fff,stroke:none
     style DEPLOY fill:#d97706,color:#fff,stroke:none
@@ -61,7 +63,7 @@ flowchart TD
 
 | Allowed | Not Allowed |
 |---|---|
-| Execute project profile build & deploy scripts | Trigger production mutations without human authorization |
+| Execute project profile build & deploy scripts | Mutate a production target outside the executable task scope |
 | Run live HTTP smoke tests and latency assertions | Fabricate or mock live deployment evidence |
 | Verify remote database migration status | Overwrite unverified releases on failure |
 | Produce structured `RELEASE_EVIDENCE.md` | Suppress deployment or migration failures |
@@ -70,12 +72,18 @@ flowchart TD
 
 ```json
 {
-  "release_status": "DEPLOYED|VERIFIED|FAILED|ROLLED_BACK",
+  "release_status": "DEPLOYED|VERIFIED|FAILED|ROLLED_BACK|BLOCKED",
   "target_environment": "staging|production",
-  "git_ref": "HEAD-SHA",
+  "git_ref": "authorized-target-SHA",
+  "risk_controls": {
+    "checkpoint": "locator",
+    "canary_or_batch": "boundary",
+    "rollback_signals": [],
+    "rollback_status": "NOT_NEEDED|PASS|FAIL"
+  },
   "deployment_execution": {
     "command": "",
-    "status": "PASS|FAIL",
+    "status": "PASS|FAIL|NOT_RUN",
     "deploy_logs_summary": ""
   },
   "smoke_tests": [
@@ -88,8 +96,9 @@ flowchart TD
   ],
   "migrations": {
     "applied_count": 0,
-    "status": "PASS|FAIL|NOT_APPLICABLE"
+    "status": "PASS|FAIL|NOT_APPLICABLE|NOT_RUN"
   },
+  "remaining_blockers": [],
   "release_evidence_artifact": "RELEASE_EVIDENCE.md"
 }
 ```

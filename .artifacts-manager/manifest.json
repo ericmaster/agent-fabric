@@ -7,17 +7,19 @@
       "title": "Agent Fabric Architecture & Extended Lifecycle",
       "type": "html",
       "file": "agent-fabric-architecture-lifecycle.html",
-      "description": "Interactive topology, 9-agent inspector, gated deploy-supervisor, and conditional UI A11y workflow",
+      "description": "11-agent inspector, reviewed execution handoffs, bounded recovery, durable continuity, scoped release authority, and portable compiler",
       "tags": [
         "architecture",
         "lifecycle",
         "agents",
         "deploy",
         "a11y",
-        "orchestration"
+        "orchestration",
+        "tailwind",
+        "mermaid"
       ],
       "createdAt": "2026-09-01T16:16:44.484Z",
-      "updatedAt": "2026-09-01T16:16:44.484Z"
+      "updatedAt": "2026-09-15T22:32:21.000Z"
     }
   ]
 }

@@ -34,7 +34,7 @@ func TestCanonicalAgentsRetainWorkflowContracts(t *testing.T) {
 		"expert-debugger":   {"up to three distinct hypotheses", "bounded remediation brief", "## Recovery Protocol", "failure_classification"},
 		"plan-reviewer":     {"vertical-slice shape", "## Review Rubric And Output", "PASS|REVISE"},
 		"qa-runner":         {"Read the original DoD", "## Verification Discipline", "PASS|FAIL|BLOCKED"},
-		"deploy-supervisor": {"## Operating Invariant & Human Gate", "## Release Execution Sequence", "## Output Contract"},
+		"deploy-supervisor": {"## Operating Invariant", "## Release Execution Sequence", "## Output Contract"},
 		"bug-fixer":         {"## Plain-Language Contract", "## Intake", "## Triage", "## Ticket Persistence", "## Plan Explanation Artifact", "## Delegation Gates"},
 		"report-reviewer":   {"## Review Rubric And Output", "PASS|REVISE", "missing_detail|ambiguity|inconsistency"},
 	}
@@ -46,6 +46,274 @@ func TestCanonicalAgentsRetainWorkflowContracts(t *testing.T) {
 		for _, anchor := range required {
 			if !strings.Contains(d.Body, anchor) {
 				t.Errorf("%s lost workflow anchor %q", id, anchor)
+			}
+		}
+	}
+}
+
+func TestCanonicalExecutionRolesRetainAutonomousRecovery(t *testing.T) {
+	for _, id := range []string{"plan-supervisor", "loop-supervisor", "implementor", "qa-runner"} {
+		d, err := ParseFile(filepath.Join("..", "..", "agents", id+".md"))
+		if err != nil {
+			t.Fatalf("parse %s: %v", id, err)
+		}
+		for _, anchor := range []string{
+			"Recoverable capability friction is work, not a human gate",
+			"least expensive",
+			"mandatory DoD",
+		} {
+			if !strings.Contains(d.Body, anchor) {
+				t.Errorf("%s lost autonomous recovery anchor %q", id, anchor)
+			}
+		}
+	}
+}
+
+func TestCanonicalCredentialHandoffStaysAutonomousAndSecretSafe(t *testing.T) {
+	for _, id := range []string{"loop-supervisor", "implementor", "qa-runner"} {
+		d, err := ParseFile(filepath.Join("..", "..", "agents", id+".md"))
+		if err != nil {
+			t.Fatalf("parse %s: %v", id, err)
+		}
+		body := strings.Join(strings.Fields(strings.ToLower(d.Body)), " ")
+		for _, anchor := range []string{
+			"task explicitly authorizes authentication",
+			"environment value directly",
+			"logs, screenshots, and files",
+		} {
+			if !strings.Contains(body, anchor) {
+				t.Errorf("%s lost secure credential handoff anchor %q", id, anchor)
+			}
+		}
+	}
+}
+
+func TestCanonicalExecutionRolesRequireProvenExternalBlockers(t *testing.T) {
+	for _, id := range []string{"plan-supervisor", "loop-supervisor", "implementor", "qa-runner"} {
+		d, err := ParseFile(filepath.Join("..", "..", "agents", id+".md"))
+		if err != nil {
+			t.Fatalf("parse %s: %v", id, err)
+		}
+		body := strings.Join(strings.Fields(d.Body), " ")
+		for _, anchor := range []string{
+			"only an external actor can perform",
+			"materially distinct",
+			"would require setup",
+			"disclose secrets",
+			"discoverable operational detail is not a context gap",
+		} {
+			if !strings.Contains(body, anchor) {
+				t.Errorf("%s lost blocker-proof anchor %q", id, anchor)
+			}
+		}
+		for _, forbidden := range []string{
+			"cannot pass within current authority, environment",
+			"authority, or environment immediately becomes `BLOCKED`",
+			"unapproved production, destructive",
+		} {
+			if strings.Contains(body, forbidden) {
+				t.Errorf("%s retains premature blocker rule %q", id, forbidden)
+			}
+		}
+	}
+}
+
+func TestCanonicalSupervisorsOwnBlockerResolution(t *testing.T) {
+	for _, id := range []string{"plan-supervisor", "loop-supervisor", "deploy-supervisor", "bug-fixer"} {
+		d, err := ParseFile(filepath.Join("..", "..", "agents", id+".md"))
+		if err != nil {
+			t.Fatalf("parse %s: %v", id, err)
+		}
+		body := strings.Join(strings.Fields(d.Body), " ")
+		for _, anchor := range []string{
+			"## Supervisor Resolution Invariant",
+			"resolver of blockers, not a blocked participant",
+			"internal recovery state",
+			"Never relay child `BLOCKED` unchanged",
+			"unavailable external capability or credentials",
+		} {
+			if !strings.Contains(body, anchor) {
+				t.Errorf("%s lost supervisor resolution anchor %q", id, anchor)
+			}
+		}
+	}
+}
+
+func TestAutonomousFlowPreservesOnlyExternalGates(t *testing.T) {
+	bugFixer, err := ParseFile(filepath.Join("..", "..", "agents", "bug-fixer.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bugBody := strings.Join(strings.Fields(bugFixer.Body), " ")
+	for _, anchor := range []string{
+		"Reporting a defect is standing approval",
+		"Do not ask again between review, planning, projection, implementation, or QA",
+		"explicit `report-only` instruction",
+		"unresolved product intent remains an external gate",
+	} {
+		if !strings.Contains(bugBody, anchor) {
+			t.Errorf("bug-fixer lost human gate %q", anchor)
+		}
+	}
+	if strings.Contains(bugBody, "Hook errors or child `BLOCKED` are reported plainly with next options") {
+		t.Error("bug-fixer restored passive child blocker relay")
+	}
+	for _, forbidden := range []string{
+		"Every dispatch requires an explicit plain-language yes",
+		"the user confirms children projection",
+		"ask whether to start the fix now",
+		"do not implement the fix, project children",
+	} {
+		if strings.Contains(bugBody, forbidden) {
+			t.Errorf("bug-fixer restored redundant approval gate %q", forbidden)
+		}
+	}
+
+	deploy, err := ParseFile(filepath.Join("..", "..", "agents", "deploy-supervisor.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deployBody := strings.Join(strings.Fields(deploy.Body), " ")
+	for _, anchor := range []string{
+		"scoped executable release task",
+		"durable authority for the entire release sequence",
+		"do not ask again between build, deploy, migration, smoke-test, and rollback steps",
+		"may not manufacture a new target or release objective",
+		"Choose safety controls autonomously and proportionally",
+		"Create and verify the best available checkpoint or backup",
+		"Deploy through the smallest viable canary or batch",
+		"attempt the recorded rollback and verify restored state",
+		"read-only preflight probes",
+	} {
+		if !strings.Contains(deployBody, anchor) {
+			t.Errorf("deploy-supervisor lost production gate %q", anchor)
+		}
+	}
+
+	planner, err := ParseFile(filepath.Join("..", "..", "agents", "planner.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plannerBody := strings.Join(strings.Fields(planner.Body), " ")
+	for _, anchor := range []string{
+		"direct execution intent or a trusted executable task is standing authority",
+		"dispatch `plan-supervisor`",
+		"Do not ask for a second confirmation",
+	} {
+		if !strings.Contains(plannerBody, anchor) {
+			t.Errorf("planner lost autonomous handoff %q", anchor)
+		}
+	}
+	if strings.Contains(plannerBody, "Approval/projection: only when explicitly authorized") {
+		t.Error("planner restored redundant projection approval")
+	}
+
+	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "agent-fabric.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	specBody := strings.Join(strings.Fields(string(spec)), " ")
+	for _, forbidden := range []string{
+		"Every dispatch requires an explicit yes",
+		"after the user confirms projection",
+		"Approval gates are single yes/no questions",
+	} {
+		if strings.Contains(specBody, forbidden) {
+			t.Errorf("spec restored redundant approval gate %q", forbidden)
+		}
+	}
+
+	plannerArchitecture, err := os.ReadFile(filepath.Join("..", "..", "docs", "architecture", "planner.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plannerArchitectureBody := string(plannerArchitecture)
+	for _, anchor := range []string{
+		"Execution intent + current review PASS",
+		"plan-supervisor",
+		"orchestration rather than",
+	} {
+		if !strings.Contains(plannerArchitectureBody, anchor) {
+			t.Errorf("planner architecture lost autonomous handoff %q", anchor)
+		}
+	}
+	if strings.Contains(plannerArchitectureBody, "AUTH{Explicit approval?}") {
+		t.Error("planner architecture restored live approval gate")
+	}
+
+	deployArchitecture, err := os.ReadFile(filepath.Join("..", "..", "docs", "architecture", "deploy-supervisor.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deployArchitectureBody := string(deployArchitecture)
+	for _, anchor := range []string{
+		"Traceable parent authority",
+		"cannot manufacture a new release objective",
+		"durable task authority",
+	} {
+		if !strings.Contains(deployArchitectureBody, anchor) {
+			t.Errorf("deploy architecture lost durable provenance %q", anchor)
+		}
+	}
+	if strings.Contains(deployArchitectureBody, "Explicit Operator\\nAuthorization Signed?") ||
+		strings.Contains(deployArchitectureBody, "human authorization") {
+		t.Error("deploy architecture restored live confirmation gate")
+	}
+}
+
+func TestExecutionSupervisorsDoNotReconfirmApprovedWork(t *testing.T) {
+	for _, id := range []string{"plan-supervisor", "loop-supervisor"} {
+		d, err := ParseFile(filepath.Join("..", "..", "agents", id+".md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := strings.Join(strings.Fields(d.Body), " ")
+		for _, anchor := range []string{
+			"standing authority",
+			"task-owned commits",
+			"Do not ask for confirmation",
+		} {
+			if !strings.Contains(body, anchor) {
+				t.Errorf("%s lost durable authority anchor %q", id, anchor)
+			}
+		}
+	}
+}
+
+func TestAutonomousBudgetAndProportionalSafetyContract(t *testing.T) {
+	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "agent-fabric.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	specBody := strings.Join(strings.Fields(string(spec)), " ")
+	for _, anchor := range []string{
+		"least expensive configured role/model",
+		"Safety measures are selected autonomously and proportionally",
+		"smallest viable canary or batch",
+		"attempts rollback or predeclared compensating recovery on failure",
+	} {
+		if !strings.Contains(specBody, anchor) {
+			t.Errorf("spec lost budget/safety contract %q", anchor)
+		}
+	}
+	if strings.Contains(specBody, "only under explicit human operator authorization") {
+		t.Error("spec restored repeated production approval")
+	}
+
+	for _, id := range []string{"plan-supervisor", "loop-supervisor", "deploy-supervisor"} {
+		d, err := ParseFile(filepath.Join("..", "..", "agents", id+".md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := strings.Join(strings.Fields(d.Body), " ")
+		for _, anchor := range []string{
+			"least expensive",
+			"canary",
+			"roll back",
+			"Never reduce mandatory",
+		} {
+			if !strings.Contains(body, anchor) {
+				t.Errorf("%s lost budget/safety anchor %q", id, anchor)
 			}
 		}
 	}
@@ -126,8 +394,8 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 			{"planner revised review", "planner", "This includes every revised-candidate pass"},
 			{"bug-fixer report reviewer", "bug-fixer", "packet, then dispatch `report-reviewer` in a fresh context"},
 			{"bug-fixer planner", "bug-fixer", "packet, then dispatch `planner` in a fresh context"},
-			{"bug-fixer plan supervisor", "bug-fixer", "packet, then dispatch `plan-supervisor` in a fresh context"},
-			{"bug-fixer loop supervisor", "bug-fixer", "packet, then dispatch `loop-supervisor` in a fresh context"},
+			{"bug-fixer plan supervisor", "bug-fixer", "packet, then dispatch `plan-supervisor` using the continuity rule"},
+			{"bug-fixer loop supervisor", "bug-fixer", "packet, then dispatch `loop-supervisor` using the continuity rule"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -320,9 +588,9 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 			}},
 			{"bug-fixer", []string{
 				"Direct user invocation is not a fresh-child handoff, so its intake packet is optional.",
-				`BF -->|"validated review packet"| RR`,
-				`BF -->|"user confirms projection"| DEC`,
-				`BF -->|"validated planner packet"| PLAN`,
+				`BF -->|"optional validated review packet"| RR`,
+				`ART -->|"validated autonomous projection"| DEC`,
+				`GATE -- "needs-plan: validated planner packet" --> PLAN`,
 			}},
 		}
 		for _, tt := range tests {
@@ -604,13 +872,13 @@ func TestSupervisionRecoveryContracts(t *testing.T) {
 		{"plan-supervisor", []string{
 			"cumulative mutating-attempt",
 			"`BLOCKED` phase is eligible for redispatch only when new",
-			"For a `BLOCKED`\n   phase, retain its status and do not rebrief or redispatch",
+			"Do not accept an\n   unverified child `BLOCKED`",
 			"second substantive code or specification rejection",
 			"Environment and harness failures do not count",
 		}, []string{"Re-brief the same phase with the diagnostic artifact and cumulative counters,\n   then dispatch again in fresh context."}},
 		{"loop-supervisor", []string{
 			"Rebriefing, resuming, and fresh sessions never reset",
-			"a `scope_blocker` immediately returns `BLOCKED`",
+			"Treat a claimed\n`scope_blocker` as unverified",
 			"second substantive code review rejection or QA failure",
 			"earliest shared enforcement boundary",
 			"\"attempts\":",
@@ -639,6 +907,116 @@ func TestSupervisionRecoveryContracts(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSupervisorsRecoverOverbroadPhasesByStableBaseDecomposition(t *testing.T) {
+	for _, tc := range []struct {
+		agent string
+		wants []string
+	}{
+		{"loop-supervisor", []string{
+			"Before a\nfourth mutation, perform the structural recovery test",
+			"multiple independently testable\nproducer-to-consumer paths or state machines",
+			"original task retains all counters",
+			"Assign every original DoD\nitem to at least one replacement slice",
+			"failed parent attempts attributable to its owned path",
+			"permit one\nstructural split per lineage",
+			"Start replacement workspaces from the\nstable revision",
+			"`recovery.mode: split`",
+			"stop the failed-scope\nloop",
+			`"scope_id": "deterministic-id"`,
+			"`recovery.mode: exhausted`",
+			"Exhaustion is not an external blocker",
+		}},
+		{"plan-supervisor", []string{
+			"mandatorily before a fourth mutation",
+			"non-mutating aggregate acceptance gate",
+			"The rendered decompose executor is reusable",
+			"owned by at least one complete vertical slice",
+			"Failed-branch changes are reference material only",
+			"failed parent attempts\nattributable to its owned path",
+			"Never recreate an equivalent slice or recursively split a replacement",
+			"cumulative macro totals without decrement\nor reset",
+			"At the fifth mutation, evaluate a valid vertical split",
+			"Aggregate acceptance runs against the integrated revision",
+			"Do not redispatch",
+			"`recovery.mode: exhausted`",
+		}},
+	} {
+		t.Run(tc.agent, func(t *testing.T) {
+			d, err := ParseFile(filepath.Join("..", "..", "agents", tc.agent+".md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range tc.wants {
+				if !strings.Contains(d.Body, want) {
+					t.Errorf("%s missing structural recovery contract %q", tc.agent, want)
+				}
+			}
+		})
+	}
+
+	loop, err := ParseFile(filepath.Join("..", "..", "agents", "loop-supervisor.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(loop.Body, "<agent-hooks:invoke:decompose>") {
+		t.Error("loop-supervisor must propose a split, not invoke materialization")
+	}
+	plan, err := ParseFile(filepath.Join("..", "..", "agents", "plan-supervisor.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(plan.Body, "<agent-hooks:invoke:decompose>"); got != 1 {
+		t.Fatalf("plan-supervisor decompose marker count = %d, want 1", got)
+	}
+	for _, forbidden := range []string{
+		"owned by at least one complete vertical slice or the aggregate gate",
+		"replacement counters start\nat zero",
+	} {
+		if strings.Contains(loop.Body, forbidden) || strings.Contains(plan.Body, forbidden) {
+			t.Errorf("supervisors retain unsafe split contract %q", forbidden)
+		}
+	}
+
+	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "agent-fabric.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Budget exhaustion is not itself an external blocker",
+		"mandatorily before a fourth mutation",
+		"failed phase retains its counters",
+		"deterministic scope identity and workspace from the stable revision",
+		"One structural split is allowed per lineage",
+		"Every original DoD item belongs to at least",
+		"structural_recovery|aggregate_acceptance",
+		"At the mutation cap, evaluate structural recovery",
+	} {
+		if !strings.Contains(string(spec), want) {
+			t.Errorf("spec missing structural recovery contract %q", want)
+		}
+	}
+
+	for _, tc := range []struct {
+		path      string
+		want      string
+		forbidden string
+	}{
+		{"loop-supervisor.md", "ATOMIC -- Yes --> SPLIT --> REPORT", "| `decompose` | Structural recovery"},
+		{"plan-supervisor.md", "CAP_SPLIT -- Yes --> FREEZE --> SPLIT --> AGG --> DEC", "SPLIT --> EXTERNAL"},
+	} {
+		body, err := os.ReadFile(filepath.Join("..", "..", "docs", "architecture", tc.path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), tc.want) {
+			t.Errorf("%s missing state transition %q", tc.path, tc.want)
+		}
+		if strings.Contains(string(body), tc.forbidden) {
+			t.Errorf("%s retains ambiguous transition %q", tc.path, tc.forbidden)
+		}
 	}
 }
 

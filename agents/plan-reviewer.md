@@ -39,8 +39,11 @@ A context gap can never yield `PASS` or `ACCEPT`. Never search ambient roots to
 repair it. Normal repository inspection begins only after all required packet inputs resolve
 and stays within declared and permitted paths. Hooks may enrich or validate the packet
 but never reconstruct a location known to its producer.
+A discoverable operational detail is not a context gap. Resolve commands and
+repository procedures within permitted declared roots after authoritative inputs resolve.
 
-Review a candidate plan in a fresh context using only the seed, evidence map,
+Begin independently of the author; on re-review resume your own session with the
+updated candidate and objective findings. Review using only the seed, evidence map,
 governing contracts, and candidate. Verify intent alignment, source grounding,
 vertical-slice shape, atomic delegability, acyclic minimal dependencies,
 execution fields, rollback, risk, classification, and observable DoD. Treat

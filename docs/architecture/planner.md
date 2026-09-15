@@ -3,7 +3,9 @@
 `agents/planner.md` · profile: `planner` · mode: `primary` · isolation: `sandbox`
 
 The Planner authors grounded, independently reviewed implementation plans as executable vertical
-slices. It never executes phases or treats a proposal as approval.
+slices. It never implements phases itself; under standing execution intent,
+decomposition and `plan-supervisor` dispatch are orchestration rather than
+self-implementation.
 Fresh discovery and review children receive the self-locating handoff defined
 normatively in [`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
 Direct user invocation is not a fresh-child handoff, so its intake packet is optional.
@@ -68,11 +70,11 @@ flowchart TD
         PPOST["post-plan hook (optional)\nPublish / notify / trigger downstream"]
     end
 
-    PROPOSE --> PPOST --> READY([Plan ready for approval])
-    READY --> AUTH{Explicit approval?}
-    AUTH -- No --> DONE([Stop])
-    AUTH -- Yes --> DEC["decompose hook (optional)\nHost-owned projection"]
-    DEC --> PROJECTED([Host-owned result])
+    PROPOSE --> PPOST --> READY{Execution intent + current review PASS\nand planner owns handoff?}
+    READY -- "No · return candidate and review disposition" --> DONE([Stop or return to caller])
+    READY -- Yes --> DEC["decompose hook (optional)\nHost-owned projection"]
+    DEC --> PSUP["plan-supervisor\nAutonomous phase execution"]
+    PSUP --> PROJECTED([Host-owned result])
 
     style LT fill:#6366f1,color:#fff,stroke:none
     style PP fill:#a855f7,color:#fff,stroke:none
@@ -88,7 +90,7 @@ flowchart TD
 | `load-task` | Initial Understanding (Step 1) | Enrich or resolve task seed from host issue tracker or custom format | No-op — agent resolves seed directly from prompt context |
 | `pre-plan` | Pre-Design (Step 6) | Inject target plan schema, DoD templates, validation rules, constraints, or a host interview that replaces the default interview | No-op — agent uses the short default interview and canonical phase blocks |
 | `post-plan` | Proposal Boundary | Emit plan publication events, notifications, or downstream task projection | No-op — agent completes proposal locally without external events |
-| `decompose` | After explicit approval | Materialize the approved plan through the host task-system adapter | No-op — agent does not invent identifiers or project children |
+| `decompose` | Under standing execution intent | Materialize the validated plan through the host task-system adapter | No-op — agent does not invent identifiers or project children |
 
 ## Operating Modes
 
@@ -97,4 +99,4 @@ flowchart TD
 | **Author** | New goal, brief, file, or task seed | — |
 | **Refine** | Eligible draft plan exists | Must still be a draft; not approved, projected, or blocked by children |
 | **Publish** | User instructs writing the plan to the task system | Write the current candidate; skip remaining reviews and earlier hooks |
-| **Approval / projection** | Explicit operator authorization | Requires stored body + auditable receipt |
+| **Execution handoff** | Direct execution intent or trusted executable task | Current reviewer PASS, no blocking findings, stored body + authority receipt; caller-owned projection returns to caller |

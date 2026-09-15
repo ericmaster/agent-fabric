@@ -26,7 +26,7 @@ flowchart TD
     BF --> H_PT --> H_LBL_BF
     BF -->|"validated planner packet"| PLANNER
     H_LBL_BF -->|"exec-ready packet"| LSUP
-    BF -->|"user confirms projection"| H_DEC_BF
+    BF -->|"validated autonomous projection"| H_DEC_BF
     H_DEC_BF -->|"validated plan-supervisor packet"| PSUP
 
     subgraph "Planning Pipeline"
@@ -54,7 +54,7 @@ flowchart TD
     PSUP --> H_LT2 --> H_PP2 --> H_DEC2
 
     subgraph "Atomic Execution Loop (per phase)"
-        LSUP["**Loop Supervisor**\nprofile: supervisor · primary"]
+        LSUP["**Loop Supervisor**\nprofile: supervisor · all"]
         H_LT3["🪝 load-task"]
         IMPL["**Implementor**\nprofile: worker · subagent"]
         IMPL_H_LT["🪝 load-task"]
@@ -84,6 +84,7 @@ flowchart TD
     LSUP --> H_LBL2 --> PHASE_DONE{All phases\ncomplete?}
     PHASE_DONE -- "next phase" --> H_DEC2
     PHASE_DONE -- "all done" --> COMPLETE([Plan complete])
+    COMPLETE -- "scoped executable release task only" --> DEPLOY[Deploy Supervisor: checkpoint, canary and live verification]
 
     style H_PT fill:#6366f1,color:#fff,stroke:none
     style H_LBL_BF fill:#6366f1,color:#fff,stroke:none
@@ -104,7 +105,7 @@ flowchart TD
 
 | Agent | Profile | Mode | Isolation | Hooks |
 |---|---|---|---|---|
-| [Planner](planner.md) | `planner` | primary | sandbox | load-task · pre-plan · post-plan |
+| [Planner](planner.md) | `planner` | primary | sandbox | load-task · pre-plan · post-plan · decompose |
 | [Plan Reviewer](plan-reviewer.md) | `reviewer` | subagent | sandbox | pre-plan |
 | [Plan Supervisor](plan-supervisor.md) | `supervisor` | primary | workspace | load-task · pre-plan · label · decompose · record-ledger |
 | [Loop Supervisor](loop-supervisor.md) | `supervisor` | all | workspace | load-task · record-ledger |
@@ -114,19 +115,21 @@ flowchart TD
 | [Expert Debugger](expert-debugger.md) | `solver` | subagent | sandbox | — |
 | [Bug Fixer](bug-fixer.md) | `supervisor` | primary | workspace | load-task · label · persist-ticket · decompose |
 | [Report Reviewer](bug-fixer.md) | `reviewer` | subagent | sandbox | — |
+| [Deploy Supervisor](deploy-supervisor.md) | `supervisor` | primary | workspace | load-task · pre-deploy · post-deploy |
 
 ## Hook Event Reference
 
 | Event | Registered by | Typical purpose |
 |---|---|---|
-| `load-task` | Planner · Plan Supervisor · Loop Supervisor · Implementor · Code Reviewer | Enrich or validate supplied task packet context |
+| `load-task` | Planner · Plan Supervisor · Loop Supervisor · Implementor · Code Reviewer · Bug Fixer · Deploy Supervisor | Enrich or validate supplied task packet context |
 | `pre-plan` | Planner · Plan Supervisor · Plan Reviewer | Validation gate and schema/constraint loading before planning or review begins |
 | `classify` | — (reserved; no built-in agent registers it) | Route to destination / select next unblocked phase |
 | `label` | Plan Supervisor · Bug Fixer | Apply task-system labels or state transitions |
 | `persist-ticket` | Bug Fixer | Persist a portable bug ticket; file default when uninstalled |
-| `decompose` | Plan Supervisor · Bug Fixer | Project child phases into task-system |
+| `decompose` | Planner · Plan Supervisor · Bug Fixer | Single-owner projection of child phases into task-system |
 | `post-plan` | Planner | Signal completion / publish / notify |
-| `record-ledger` | Plan Supervisor · Loop Supervisor | Record structured macro- or micro-ledger event to host memory or fallback JSONL |
+| `record-ledger` | Plan Supervisor · Loop Supervisor | Load/record versioned macro/micro checkpoint and journal; explicit inline fallback without hook |
+| `pre-deploy` · `post-deploy` | Deploy Supervisor | Target/authority preflight and empirical release evidence |
 
 Hooks are resolved once at install/sync time from `~/.agent-hooks/`. Markdown instructions
 take precedence over executable scripts. When no hook is installed, agents continue without it.

@@ -37,6 +37,8 @@ A context gap can never yield `PASS` or `ACCEPT`. Never search ambient roots to
 repair it. Normal repository inspection begins only after all required packet inputs resolve
 and stays within declared and permitted paths. Hooks may enrich or validate the packet
 but never reconstruct a location known to its producer.
+A discoverable operational detail is not a context gap. Resolve commands and
+repository procedures within permitted declared roots after authoritative inputs resolve.
 
 Review supplied changes as an adversarial, read-only gate. First inspect the
 task, specification, DoD, diff, and available static-analysis configuration. Run
@@ -55,7 +57,7 @@ findings may produce `REJECT`. For a security, routing, or persistence finding,
 identify the earliest common enforcement point and statically trace the exploit matrix through
 the call path to the side-effect sink. A repeated finding must explain why the
 prior remediation missed the invariant; a scope blocker must name the required
-path or authority so the supervisor can stop.
+path or authority so the supervisor can verify and recover the claimed boundary.
 
 ## Review Protocol
 
@@ -65,7 +67,10 @@ unless independent execution is required; run missing or invalidated checks.
 Syntax, import, or type failures are immediate `REJECT` findings; do not write
 an architectural review for code that cannot pass configured static gates. If static
 analysis tools are unconfigured or unavailable (`compilation_status: NOT_AVAILABLE`), report
-an environment blocker (`BLOCKED`) rather than a code rejection. Treat untrusted input
+an environment recovery request (`BLOCKED`) to the supervisor rather than a code
+rejection; this child claim is not a terminal external blocker. If no static tool
+applies to the scoped material, record NOT_AVAILABLE with that rationale and
+complete the semantic review. Treat untrusted input
 or raw tool output flowing into execution, query, or persistence sinks and
 unsafe file paths as security defects. When project profile or i18n rules are defined,
 reject hardcoded unlocalized strings and copy regressions. Review strictly against the

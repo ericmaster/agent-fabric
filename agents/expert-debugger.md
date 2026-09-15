@@ -35,6 +35,8 @@ A context gap can never yield `PASS` or `ACCEPT`. Never search ambient roots to
 repair it. Normal repository inspection begins only after all required packet inputs resolve
 and stays within declared and permitted paths. Hooks may enrich or validate the packet
 but never reconstruct a location known to its producer.
+A discoverable operational detail is not a context gap. Resolve commands and
+repository procedures within permitted declared roots after authoritative inputs resolve.
 
 Diagnose from exact evidence and reproduce only with safe bounded commands.
 Construct up to three distinct hypotheses when the cause is uncertain, eliminate them against logs,
@@ -46,7 +48,8 @@ change, exact verification, rollback boundary, and unresolved risks. Do not
 modify files or invent task-system state.
 Use supplied prior probes and findings rather than repeating unchanged inspection.
 Stop once the cause and validating regression are demonstrated. A missing input,
-known quota or missing permission needs a precise blocker, not speculative diagnosis.
+known quota or missing permission needs a precise supervisor recovery request in
+`root_cause_analysis.blockers`, not speculative diagnosis or a terminal verdict.
 Honor the supplied investigation budget and return current findings and unresolved
 questions when exhausted. The supervisor owns further authorization and recovery.
 

@@ -12,7 +12,7 @@ import sys
 import tempfile
 
 COUNTERS = ("mutating", "review_rejections", "infrastructure_failures", "diagnostics")
-STAGES = {"select_phase", "implementation", "code_review", "qa", "reconciliation", "blocked", "done"}
+STAGES = {"select_phase", "implementation", "code_review", "qa", "reconciliation", "structural_recovery", "aggregate_acceptance", "blocked", "done"}
 
 
 def validate_checkpoint(value, execution_root):

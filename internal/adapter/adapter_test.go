@@ -76,6 +76,88 @@ func TestRenderGlobalPathsAreRelativeToHarnessRoot(t *testing.T) {
 	}
 }
 
+func TestRenderOpenCodeToolsAreDeterministic(t *testing.T) {
+	d := agent.Definition{ID: "demo", Description: "Demo", Mode: "subagent", Body: "hello\n", Fabric: agent.Fabric{Profile: "worker"}}
+	m := Mapping{Profiles: map[string]Profile{"worker": {
+		Model: "openai/test",
+		Tools: map[string]bool{
+			"read":                  true,
+			"*":                     false,
+			"context7_*":            true,
+			"apply_patch":           true,
+			"codebase-memory-mcp_*": true,
+		},
+	}}}
+	first, _, _, err := Render("opencode", d, m, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, _, err := Render("opencode", d, m, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatal("OpenCode tools rendering is not deterministic")
+	}
+	const want = "tools:\n  \"*\": false\n  \"apply_patch\": true\n  \"codebase-memory-mcp_*\": true\n  \"context7_*\": true\n  \"read\": true\n"
+	if !strings.Contains(first, want) {
+		t.Fatalf("OpenCode tools mapping was not sorted or rendered correctly:\n%s", first)
+	}
+}
+
+func TestRenderNonOpenCodeTargetsDoNotIncludeTools(t *testing.T) {
+	d := agent.Definition{ID: "demo", Description: "Demo", Mode: "subagent", Body: "hello\n", Fabric: agent.Fabric{Profile: "worker"}}
+	m := Mapping{Profiles: map[string]Profile{"worker": {
+		Model: "openai/test",
+		Tools: map[string]bool{"*": false, "read": true},
+	}}}
+	for _, target := range []string{"kilo", "antigravity", "claude", "codex"} {
+		body, _, _, err := Render(target, d, m, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(body, "\ntools:\n") {
+			t.Fatalf("%s output leaked OpenCode tools:\n%s", target, body)
+		}
+	}
+}
+
+func TestReplaceOpenCodeToolsPreservesAgentAndSortsTools(t *testing.T) {
+	body := "---\ndescription: \"Hub\"\npermission:\n  edit: \"deny\"\ntools:\n  \"read\": true\nhooks: [\"load-task\"]\n---\nHub body.\n"
+	got, err := ReplaceOpenCodeTools(body, map[string]bool{"read": true, "*": false, "bash": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "tools:\n  \"*\": false\n  \"bash\": true\n  \"read\": true\n"
+	if !strings.Contains(got, want) {
+		t.Fatalf("tools mapping was not replaced deterministically:\n%s", got)
+	}
+	if strings.Count(got, "tools:\n") != 1 || !strings.Contains(got, "permission:\n  edit: \"deny\"") || !strings.HasSuffix(got, "Hub body.\n") {
+		t.Fatalf("agent content changed unexpectedly:\n%s", got)
+	}
+}
+
+func TestReplaceOpenCodeAgentOverridesUpdatesModelEffortAndTools(t *testing.T) {
+	body := "---\ndescription: \"Hub\"\nmodel: \"openai/default\"\nvariant: \"high\"\npermission:\n  edit: \"deny\"\ntools:\n  \"read\": true\n---\nHub body.\n"
+	got, err := ReplaceOpenCodeAgentOverrides(body, "xai/grok-4.6", "medium", map[string]bool{"*": false, "bash": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`model: "xai/grok-4.6"`,
+		`variant: "medium"`,
+		"tools:\n  \"*\": false\n  \"bash\": true\n  \"read\": true\n",
+		"permission:\n  edit: \"deny\"",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("exact override missing %q:\n%s", want, got)
+		}
+	}
+	if !strings.HasSuffix(got, "Hub body.\n") {
+		t.Fatalf("agent body changed unexpectedly:\n%s", got)
+	}
+}
+
 func TestRenderMatchesRepresentativeGoldenFixtures(t *testing.T) {
 	fixture := filepath.Join("..", "..", "fixtures", "representative.md")
 	d, err := agent.ParseFile(fixture)

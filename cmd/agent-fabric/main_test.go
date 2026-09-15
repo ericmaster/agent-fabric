@@ -228,6 +228,189 @@ func TestUserConfigOverridesOneTargetProfile(t *testing.T) {
 	}
 }
 
+func TestUserConfigMergesTargetProfileTools(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"profiles":{"opencode":{"worker":{"tools":{"*":false,"bash":true}}}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AGF_CONFIG", path)
+	m := adapter.Mapping{Profiles: map[string]adapter.Profile{"worker": {
+		Model: "openai/default",
+		Tools: map[string]bool{"*": true, "read": true},
+	}}}
+	if err := applyUserOverrides(&m, "opencode"); err != nil {
+		t.Fatal(err)
+	}
+	tools := m.Profiles["worker"].Tools
+	if tools["*"] || !tools["read"] || !tools["bash"] {
+		t.Fatalf("tools override did not merge by key: %#v", tools)
+	}
+}
+
+func writeInstallSource(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "adapters"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	definition := "---\ndescription: Canonical\nmode: subagent\nx-agent-fabric:\n  schema: 1\n  profile: worker\n  effort: high\n  visibility: hidden\n  isolation: sandbox\n---\nCanonical body.\n"
+	if err := os.WriteFile(filepath.Join(root, "agents", "canonical.md"), []byte(definition), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mapping := `{"target":"opencode","profiles":{"worker":{"model":"openai/test","sandbox":"workspace"}}}`
+	if err := os.WriteFile(filepath.Join(root, "adapters", "opencode.json"), []byte(mapping), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+func TestInstallSynchronizesManifestManagedExactAgentOverrides(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	config := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("AGF_CONFIG", config)
+	if err := os.WriteFile(config, []byte(`{"profiles":{"opencode":{"worker":{"tools":{"*":false,"read":true}}}},"agents":{"opencode":{"canonical":{"model":"xai/grok-4.6","effort":"medium","tools":{"bash":true}},"hub":{"model":"zai-coding-plan/glm-5.3","effort":"low","tools":{"bash":true}}}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hubPath := filepath.Join(home, ".config", "opencode", "agents", "hub.md")
+	hub := "---\ndescription: \"Hub\"\npermission:\n  edit: \"deny\"\ntools:\n  \"*\": false\n  \"read\": true\n---\nHub body.\n"
+	if err := os.MkdirAll(filepath.Dir(hubPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hubPath, []byte(hub), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(home, ".config", "agent-fabric", ".agent-fabric-manifest.json")
+	originalHash := manifest.Hash([]byte(hub))
+	if err := manifest.WriteAtomic(manifestPath, manifest.Manifest{Schema: 1, Scope: "global", Mappings: map[string]string{"opencode": "adapters/opencode.json"}, Files: []manifest.File{{Path: hubPath, Hash: originalHash, Agent: "hub", Target: "opencode"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := install(options{source: writeInstallSource(t), tools: "opencode", yes: true}, true); err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := os.ReadFile(filepath.Join(home, ".config", "opencode", "agents", "canonical.md"))
+	const canonicalTools = "tools:\n  \"*\": false\n  \"bash\": true\n  \"read\": true\n"
+	if err != nil || !strings.Contains(string(canonical), canonicalTools) {
+		t.Fatalf("canonical exact override did not merge profile tools: %s, err=%v", canonical, err)
+	}
+	if !strings.Contains(string(canonical), `model: "xai/grok-4.6"`) || !strings.Contains(string(canonical), `variant: "medium"`) {
+		t.Fatalf("canonical exact model/effort override missing:\n%s", canonical)
+	}
+	updated, err := os.ReadFile(hubPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const tools = "tools:\n  \"*\": false\n  \"bash\": true\n  \"read\": true\n"
+	if !strings.Contains(string(updated), tools) || !strings.HasSuffix(string(updated), "Hub body.\n") {
+		t.Fatalf("manifest-managed hub was not updated safely:\n%s", updated)
+	}
+	if !strings.Contains(string(updated), `model: "zai-coding-plan/glm-5.3"`) || !strings.Contains(string(updated), `variant: "low"`) {
+		t.Fatalf("manifest-managed exact model/effort override missing:\n%s", updated)
+	}
+	updatedManifest, err := manifest.Read(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range updatedManifest.Files {
+		if file.Target == "opencode" && file.Agent == "hub" {
+			if file.Hash != manifest.Hash(updated) {
+				t.Fatalf("hub manifest hash = %q, want %q", file.Hash, manifest.Hash(updated))
+			}
+			if file.Hash == originalHash {
+				t.Fatal("hub manifest hash was not updated")
+			}
+			return
+		}
+	}
+	t.Fatal("updated hub was not retained in manifest")
+}
+
+func TestInstallRejectsUnknownExactAgentToolsBeforeWrites(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	config := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("AGF_CONFIG", config)
+	if err := os.WriteFile(config, []byte(`{"agents":{"opencode":{"missing":{"tools":{"*":false,"read":true}}}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := install(options{source: writeInstallSource(t), tools: "opencode", yes: true}, true); err == nil || !strings.Contains(err.Error(), `unknown opencode agent "missing"`) {
+		t.Fatalf("unknown exact override error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", "agents", "canonical.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unknown override wrote canonical output: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".config", "agent-fabric", ".agent-fabric-manifest.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unknown override wrote manifest: %v", err)
+	}
+}
+
+func TestInstallRejectsInvalidExactAgentIDBeforeWrites(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	config := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("AGF_CONFIG", config)
+	if err := os.WriteFile(config, []byte(`{"agents":{"opencode":{"../evil":{"model":"xai/grok-4.6"}}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := install(options{source: writeInstallSource(t), tools: "opencode", yes: true}, true)
+	if err == nil || !strings.Contains(err.Error(), `invalid opencode agent "../evil"`) {
+		t.Fatalf("invalid exact override error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".config", "agent-fabric", ".agent-fabric-manifest.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("invalid override wrote manifest: %v", err)
+	}
+}
+
+func TestRejectsExactAgentOverridesForNonOpenCodeTargets(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("AGF_CONFIG", config)
+	if err := os.WriteFile(config, []byte(`{"agents":{"kilo":{"canonical":{"model":"xai/grok-4.6"}}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agentOverrides("kilo"); err == nil || !strings.Contains(err.Error(), "supported only for opencode") {
+		t.Fatalf("non-OpenCode exact override error = %v", err)
+	}
+}
+
+func TestProjectInstallSkipsGlobalManifestOwnedExactAgentTools(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	config := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("AGF_CONFIG", config)
+	if err := os.WriteFile(config, []byte(`{"agents":{"opencode":{"hub":{"tools":{"*":false,"read":true}}}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hubPath := filepath.Join(home, ".config", "opencode", "agents", "hub.md")
+	hub := "---\ndescription: \"Hub\"\n---\nGlobal hub body.\n"
+	if err := os.MkdirAll(filepath.Dir(hubPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hubPath, []byte(hub), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := manifest.WriteAtomic(filepath.Join(home, ".config", "agent-fabric", ".agent-fabric-manifest.json"), manifest.Manifest{
+		Schema: 1,
+		Scope:  "global",
+		Files:  []manifest.File{{Path: hubPath, Hash: manifest.Hash([]byte(hub)), Agent: "hub", Target: "opencode"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	project := t.TempDir()
+	if err := install(options{source: writeInstallSource(t), project: project, tools: "opencode", yes: true}, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".opencode", "agents", "hub.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("project install wrote global hub override: %v", err)
+	}
+	actualHub, err := os.ReadFile(hubPath)
+	if err != nil || string(actualHub) != hub {
+		t.Fatalf("project install changed global hub: %q, err=%v", actualHub, err)
+	}
+}
+
 func TestUserConfigOverridesAntigravityTargetUsingAgyKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(path, []byte(`{"profiles":{"agy":{"planner":{"model":"gemini-custom","effort":"max"}}}}`), 0o600); err != nil {
@@ -669,8 +852,8 @@ func TestFreshContextSafeguardsSurviveEmptyHookRenderingAcrossMappings(t *testin
 			"stop the affected dispatch and report the exact gap",
 			"packet, then dispatch `report-reviewer` in a fresh context",
 			"packet, then dispatch `planner` in a fresh context",
-			"packet, then dispatch `plan-supervisor` in a fresh context",
-			"packet, then dispatch `loop-supervisor` in a fresh context",
+			"packet, then dispatch `plan-supervisor` using the continuity rule",
+			"packet, then dispatch `loop-supervisor` using the continuity rule",
 		}},
 		{"report-reviewer", false, []string{"return `REVISE` with a critical finding naming the exact gap"}},
 	}
@@ -992,22 +1175,30 @@ func TestRenderHookPlaceholdersFallsBackWhenAgentIDTraverses(t *testing.T) {
 	}
 }
 
-func TestPlannerDecomposeInvokeFollowsExplicitApproval(t *testing.T) {
+func TestPlannerDecomposeInvokeFollowsStandingExecutionAuthority(t *testing.T) {
 	d, err := agent.ParseFile(filepath.Join("..", "..", "agents", "planner.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	const marker = "<agent-hooks:invoke:decompose>"
-	const approval = "Only after explicit operator approval:"
+	const approval = "standing approval to project the validated phases and continue"
 	if n := strings.Count(d.Body, marker); n != 1 {
 		t.Fatalf("planner must contain %q exactly once, got %d", marker, n)
 	}
 	approvalAt := strings.Index(d.Body, approval)
 	if approvalAt < 0 {
-		t.Fatal("planner missing explicit approval wording")
+		t.Fatal("planner missing standing execution authority")
 	}
 	if strings.Index(d.Body, marker) < approvalAt {
-		t.Fatal("planner decompose invoke appears before explicit approval wording")
+		t.Fatal("planner decompose invoke appears before standing authority wording")
+	}
+	for _, forbidden := range []string{
+		"Only after explicit operator approval:",
+		"Offer in-session `plan-supervisor` execution",
+	} {
+		if strings.Contains(d.Body, forbidden) {
+			t.Fatalf("planner restored redundant confirmation %q", forbidden)
+		}
 	}
 }
 

@@ -57,8 +57,12 @@ flowchart TD
     subgraph "Bounded Recovery"
         PRESERVE["Preserve evidence\nClassify blocker\n(defect · env · spec-drift · flaky)"]
         DIAG_CTX["Resume recorded expert-debugger session\nnew only on new resolving authority,\napproved scope identity change, or unavailable continuation\ncontext length: resume or BLOCKED\nreuse recorded diagnosis"]
+        ATOMIC{"Structurally overbroad\nafter diagnostic?"}
+        CAP_SPLIT{"Strict DoD-preserving\npartition exists?"}
+        SPLIT["Freeze failed checkpoint\nSelect stable revision\nReturn FAIL + split proposal\nor dispatch plan-supervisor"]
         REBR["Refresh same task packet\n+ diagnostic locator"]
         BUDGET{Recovery budget\nremaining?}
+        EXTERNAL{"No valid split and\nverified external gate?"}
         ESCALATE_ART["Produce escalation artifact\nStop"]
     end
 
@@ -67,9 +71,15 @@ flowchart TD
     PRESERVE -->|"known defect: resume author"| REBR
     PRESERVE -->|"QA environment repaired: resume QA"| QA
     PRESERVE -->|"context / authority / quota unavailable"| REPORT
-    DIAG_CTX --> REBR --> BUDGET
+    DIAG_CTX --> ATOMIC
+    ATOMIC -- Yes --> SPLIT --> REPORT
+    ATOMIC -- No --> REBR --> BUDGET
     BUDGET -- "Yes · validated retry packet" --> IMPL
-    BUDGET -- No --> ESCALATE_ART --> REPORT
+    BUDGET -- No --> CAP_SPLIT
+    CAP_SPLIT -- Yes --> SPLIT
+    CAP_SPLIT -- No --> EXTERNAL
+    EXTERNAL -- No --> REPORT
+    EXTERNAL -- Yes --> ESCALATE_ART --> REPORT
 
     RESULT -- PASS --> REPORT
 
@@ -161,6 +171,7 @@ Curation Firewall across all subagent dispatches:
 ```json
 {
   "status": "PASS|FAIL|BLOCKED",
+  "recovery": {"mode": "none|retry|split|exhausted|external_block", "stable_revision": "...", "failed_revision": "...", "replacement_slices": [{"scope_id": "deterministic-id", "dod": ["original item"], "required_gates": ["command"], "dependencies": [], "permitted_paths": ["path"], "initial_attempts": {"mutating": 0}}]},
   "dod": [{"item": "original DoD", "status": "PASS|FAIL|BLOCKED", "evidence": "authoritative locator or command"}],
   "required_gates": [{"command": "exact command", "status": "PASS|FAIL|BLOCKED", "evidence": "authoritative locator"}],
   "remaining_blockers": [],
@@ -169,3 +180,5 @@ Curation Firewall across all subagent dispatches:
 ```
 
 `PASS` requires every original DoD item and every mandatory gate to have concrete passing evidence.
+An exhausted atomic scope returns terminal `FAIL` with `recovery.mode: exhausted`;
+budget exhaustion alone is never an external blocker.

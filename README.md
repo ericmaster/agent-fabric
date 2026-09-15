@@ -1,6 +1,6 @@
 # Agent Fabric
 
-Agent Fabric installs eight portable agents into OpenCode, Kilo, Antigravity CLI,
+Agent Fabric installs eleven portable agents into OpenCode, Kilo, Antigravity CLI,
 Codex, and Claude Code. It copies generated files and records ownership in a
 manifest so upgrades do not overwrite user edits.
 
@@ -128,7 +128,40 @@ Optional target profile overrides live in one user file,
       "worker": {
         "model": "openai/gpt-5.6",
         "effort": "high",
-        "permissions": { "network": "deny" }
+        "permissions": { "network": "deny" },
+        "tools": {
+          "*": false,
+          "bash": true,
+          "read": true,
+          "glob": true,
+          "grep": true,
+          "skill": true,
+          "codebase-memory-mcp_*": true,
+          "context7_*": true
+        }
+      }
+    }
+  }
+}
+```
+
+`permissions` and `tools` merge by entry with the checked-in target profile.
+`tools` is emitted only for OpenCode as a sorted Markdown-frontmatter mapping;
+use `"*": false` followed by explicit allow entries for a lean profile. Other
+targets ignore `tools`.
+
+For an exact OpenCode agent override, add an `agents` entry. Its `tools` map
+merges after the agent's profile tools. During sync, the override can refresh a
+manifest-owned, otherwise unselected Markdown agent; unknown IDs fail before any
+writes. A project sync ignores an override owned only by the global manifest, so
+it never creates or modifies a project-local hub file.
+
+```json
+{
+  "agents": {
+    "opencode": {
+      "mr-meeseeks": {
+        "tools": { "*": false, "read": true, "task": true }
       }
     }
   }

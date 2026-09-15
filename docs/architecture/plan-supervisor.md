@@ -48,16 +48,28 @@ flowchart TD
     subgraph "Recovery"
         FAIL_CLASS["Classify failure\nenvironment · defect · spec-drift · flaky"]
         DIAG["Consume child diagnosis + checkpoint\nno second diagnostic at parent level"]
+        STRUCT{"Structurally overbroad\nafter diagnostic?"}
+        CAP_SPLIT{"Strict DoD-preserving\npartition exists?"}
+        FREEZE["Freeze failed checkpoint\nReturn to stable revision"]
+        SPLIT["Materialize deterministic slices\nwith decompose hook or inline DAG"]
+        AGG["Original phase becomes\naggregate acceptance gate"]
         REBR["Refresh same phase packet\n+ diagnostic locator\nincrement attempt count"]
         EXHAUST{Recovery budget\nexhausted?}
-        ESCALATE["Write PLAN_ESCALATION.md\n(attempts · root-cause · stable-rev\nrequired operator action)"]
+        EXTERNAL{"No DoD-preserving split\nand verified external gate?"}
+        ESCALATE["Write PLAN_ESCALATION.md\n(attempts · root-cause · stable/failed revs\nrequired external action)"]
     end
 
     RESULT -- "FAIL / BLOCKED" --> FAIL_CLASS
     FAIL_CLASS -->|"validated recovery packet"| DIAG
-    DIAG --> REBR --> EXHAUST
+    DIAG --> STRUCT
+    STRUCT -- Yes --> FREEZE
+    STRUCT -- No --> REBR --> EXHAUST
     EXHAUST -- "No · refreshed phase packet" --> DISPATCH
-    EXHAUST -- Yes --> ESCALATE --> DONE_FAIL([Plan blocked / escalated])
+    EXHAUST -- Yes --> CAP_SPLIT
+    CAP_SPLIT -- Yes --> FREEZE --> SPLIT --> AGG --> DEC
+    CAP_SPLIT -- No --> EXTERNAL
+    EXTERNAL -- No --> DONE_FAIL([Atomic phase failed with evidence])
+    EXTERNAL -- Yes --> ESCALATE --> DONE_BLOCKED([Plan blocked / escalated])
 
     subgraph "Phase Completion"
         LBL["⑤ label hook\nRecord phase state in task-system\n(if installed)"]
@@ -80,7 +92,7 @@ flowchart TD
 |---|---|---|
 | `load-task` | 1 | Resolve plan source; build phase DAG |
 | `pre-plan` | Pre-dispatch | Validate source plan before any mutation |
-| `decompose` | Pre-dispatch | Materialize phases into task-system (if needed) |
+| `decompose` | Pre-dispatch and structural recovery | Materialize initial or replacement phases into task-system (if installed); otherwise update inline DAG |
 | `label` | After each PASS | Record phase state in task-system |
 | `record-ledger` | Before selection/dispatch and after return | Load checkpoint; record event + checkpoint with expected_version |
 
@@ -114,17 +126,23 @@ The Plan Supervisor acts as a curation firewall between phases:
 |---|---|
 | Successful non-final phase | Continue immediately — no human pause |
 | Phase explicitly `operator-required` | Pause and wait for human action |
-| Recovery budget exhausted | Produce `PLAN_ESCALATION.md`; stop |
-| Irreversible environment / authority failure | Stop; preserve evidence |
+| Recovery budget exhausted | Evaluate stable-base split; if still atomic, terminal FAIL with exhausted disposition |
+| No DoD-preserving split and verified external gate | Produce `PLAN_ESCALATION.md`; stop |
+| Irreversible mechanics within scope | Apply proportional controls; stop only for a verified external boundary or terminal failure |
 
 ## Evidence Contract (per phase)
 
 ```json
 {
   "status": "PASS|FAIL|BLOCKED",
+  "recovery": {"mode": "none|retry|split|exhausted|external_block", "stable_revision": "...", "failed_revision": "...", "replacement_slices": [{"scope_id": "deterministic-id", "dod": ["original item"], "required_gates": ["command"], "dependencies": [], "permitted_paths": ["path"], "initial_attempts": {"mutating": 0}}]},
   "dod": [{"item": "...", "status": "PASS|FAIL|BLOCKED", "evidence": "authoritative locator or command"}],
   "required_gates": [{"command": "...", "status": "...", "evidence": "authoritative locator"}],
   "remaining_blockers": [],
   "changed_files": []
 }
 ```
+
+The plan supervisor integrates accepted slice outputs into one recorded revision;
+dependent slices consume verified predecessor changes. Aggregate acceptance runs
+against that integrated revision. Exhausted atomic scopes are not redispatched.

@@ -33,8 +33,11 @@ A context gap can never yield `PASS` or `ACCEPT`. Never search ambient roots to
 repair it. Normal repository inspection begins only after all required packet inputs resolve
 and stays within declared and permitted paths. Hooks may enrich or validate the packet
 but never reconstruct a location known to its producer.
+A discoverable operational detail is not a context gap. Resolve repository
+procedures within permitted declared roots; reporter facts must come from the report.
 
-Audit one bug report in a fresh context against the supplied report schema for
+Start independently; on re-review resume your own session with the updated report.
+Audit one bug report against the supplied report schema for
 completeness (`missing_detail`), ambiguity, and internal inconsistency. Every
 finding cites the report field. Do not expand scope or re-interview. A context
 gap can never yield `PASS`.

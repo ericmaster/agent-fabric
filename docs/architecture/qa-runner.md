@@ -57,7 +57,7 @@ No registered hooks.
 | Run additional safe verification (runtime, persistence, payload, visual) | Execute deployments (deployment evidence evaluated at reconciliation) |
 | Capture screenshots / browser evidence | Produce code-quality or design reviews |
 | Compress logs into relevant evidence | Hide or suppress failures |
-| Return `BLOCKED` for budget-exhausted loops | Replace a required command with a narrower substitute |
+| Circuit-break repeated loops with `FAIL` and a supervisor recovery request | Replace a required command with a narrower substitute |
 | | Claim `PASS` without concrete per-item evidence |
 
 ## Output Contract

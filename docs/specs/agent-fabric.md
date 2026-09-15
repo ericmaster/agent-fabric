@@ -8,6 +8,18 @@ not shadow the bundled source.
 Adapters must validate the complete source set before writing anything. Adapter
 profiles are loaded from the checked-in mapping and may be partially overridden
 by one user file at `~/.config/agent-fabric/config.json` or `AGF_CONFIG`.
+Profile overrides merge `permissions` and `tools` entries by key. `tools` is a
+boolean OpenCode allowlist map; OpenCode emits it as a sorted frontmatter mapping,
+while Kilo, Claude, Antigravity, and Codex ignore the target-specific field.
+Exact-agent OpenCode overrides live under `agents.<target>.<agent>` in the same
+user config and may set `model`, `effort`, and merged `tools`. They apply after the
+role profile during normal rendering. During
+sync, an exact override may update an otherwise unselected Markdown agent only
+when its exact target/agent pair is manifest-owned and still resolves to its managed
+destination; unknown agent IDs fail before any writes. Project sync ignores an
+override owned only by the global manifest, never creating or modifying a
+project-local hub file. Exact-agent overrides for non-OpenCode targets are rejected
+rather than applied inconsistently.
 
 When agent or tool selections are omitted from an interactive command, the CLI
 uses `/dev/tty`, preselects all canonical agents and PATH-detected tools, and
@@ -91,13 +103,172 @@ valid. Static structural and rendering tests verify that this contract is presen
 and survives adapter mappings; they do not prove model compliance or provide
 runtime transport or filesystem enforcement.
 
+## Autonomous Execution Contract
+
+An approved task or plan authorizes every in-scope, safe, reversible local or
+non-production action needed to satisfy its DoD. Execution roles own capability
+recovery: adapt command invocation and tool-compatible artifact paths, select a
+free port, start and stop local services, create and clean disposable fixtures,
+use packet-authorized credentials without exposing them, repair reversible test
+or Dev state, and retry with a bounded alternative. Recoverable capability
+friction is work, not a human gate.
+
+Task authorization is durable. Direct execution intent or a trusted task-system
+item marked executable is standing authority for planning, decomposition, child
+dispatch, implementation, review, QA, bounded recovery, reversible local/Dev
+setup, task-owned fixture cleanup, task-owned commits, and task-status updates.
+Agents continue through those stages without asking for repeated confirmation.
+`plan-only`, `report-only`, and equivalent explicit non-goals stop execution;
+otherwise a planning or defect-fix request proceeds autonomously. Execution handoff
+requires plan-reviewer PASS on the current candidate and no unresolved blocking
+findings. Publication after the two-pass review cap or in Publish mode may retain
+unresolved findings, but never authorizes execution. A delegated planner honors
+caller-owned projection and dispatch; bug-fixer owns its needs-plan handoff.
+An executable
+release task with a named target environment, deployment DoD, rollback, and
+traceable authority from its current request or approved parent is durable
+authorization for its complete release sequence; the deploy supervisor verifies
+that chain once and does not ask again between steps. An agent may execute such a
+task but may not manufacture a new release objective outside its authorized
+parent scope.
+
+Budget efficiency and functional completion govern execution. Start with the
+least expensive configured role/model and smallest relevant test or evidence set
+that can prove the next decision. Reuse unchanged evidence and existing sessions;
+do not duplicate discovery, reviews, tests, or failed attempts. Escalate model
+capability, test breadth, or delegation count only after objective evidence shows
+the cheaper path is inadequate. Mandatory final gates and DoD are never reduced
+for cost.
+
+Safety measures are selected autonomously and proportionally to blast radius,
+reversibility, and expected loss. For stateful, production, destructive, or
+irreversible work, the supervisor verifies the exact target and scope, creates the
+best available checkpoint or backup, uses the smallest viable canary or batch,
+defines success and rollback signals, executes, validates, and attempts rollback
+or predeclared compensating recovery on failure. Restoration must be verified;
+irreversible effects never imply guaranteed rollback. It chooses the least costly controls that bound the actual risk
+instead of requesting approval. Secret values remain process-memory-only and must
+never be disclosed or persisted.
+
+Every supervisor-profile agent is the resolver of blockers, not a blocked
+participant. A child permission boundary, refusal, malformed result, missing tool,
+failed command, absent documentation, unsuitable fixture, unavailable local
+service/image, workspace problem, or reversible Dev-state failure remains an
+internal recovery state. The supervisor diagnoses it, repairs it directly when
+authorized, delegates it to a role with the required capability, provisions a
+replacement, or resumes with a materially distinct path. It never relays a child
+`BLOCKED` unchanged. A supervisor may surface `BLOCKED` only for a verified exact
+action that requires unavailable external capability or credentials, unresolved
+product intent, or an explicit non-overridable policy/scope boundary. Production,
+destructive, or irreversible mechanics are risk classes to control autonomously,
+not approval categories.
+
+An authorized secret-loader-to-client handoff is secure when the value remains in
+process memory and passes directly from an environment variable to the local API
+or browser input. The command, transcript, logs, URLs, screenshots, and artifacts
+must not contain the value. A user-pasted credential or secret-bearing temporary
+file is neither required nor permitted when this direct handoff is available.
+
+Evidence remains valid at a packet-permitted tool-owned locator when a browser or
+other tool cannot write to the preferred evidence root. The role records the
+actual locator and continues; it does not weaken the evidence requirement.
+
+`BLOCKED` is reserved for a requirement that genuinely needs unavailable external
+capability or credentials, an
+unresolved product decision, or an explicit non-overridable policy/scope boundary. A
+supervisor repairs child packets and environments with authority it already has,
+then resumes the same child without requesting another user instruction. New
+resolving evidence may be produced by that autonomous recovery; it does not need
+to arrive in a new user message.
+
+A `BLOCKED` result is a claim to verify, not a verdict to relay. It identifies the
+exact action only an external actor can perform and includes executed capability
+probes plus materially distinct recovery attempts. Missing documentation, a
+preferred tool/path, a pre-existing fixture, a local image, or ready-made test
+state does not prove external dependence. The execution role inspects declared
+repository guidance, performs ordinary setup, builds or starts safe local/Dev
+dependencies, and provisions a disposable workspace, bot, account, or fixture
+when the existing one is unsuitable. “Not supplied”, “not documented”, and “would
+require setup” are insufficient blocker evidence.
+
+The context firewall protects authoritative task and design inputs that only the
+producer can locate or decide. A command, repository procedure, or fixture setup
+discoverable inside permitted declared roots is ordinary operational work, not a
+context gap and not a reason to demand command-by-command user instruction.
+
+Implementation and verification mechanics are part of approved execution unless
+the current task explicitly excludes them; they do not need command-by-command
+enumeration. Supervisors autonomously choose proportional controls for
+authentication, network, path, production, destructive, and irreversible work
+within the authorized objective. They never disclose secrets or silently expand
+the product objective.
+
 Supervisors carry cumulative phase counters for mutating attempts, substantive
 review rejections, and infrastructure failures through rebriefs and fresh
 sessions. A dispatch counts as mutating when it edits the workspace or returns an
 implementation; infrastructure failures before mutation are recorded separately
 and do not consume the mutation budget. A blocked phase is eligible for redispatch only when new scope,
 authority, specification, or environment evidence resolves its blocker; a
-validated `scope_blocker` terminates the local repair loop.
+supervisor-verified external or policy `scope_blocker` terminates the local repair
+loop. A child's context gap or environment `BLOCKED` is an internal recovery claim,
+not proof of external dependence.
+
+Budget exhaustion is not itself an external blocker. After each root-cause
+diagnostic, and mandatorily before a fourth mutation, the atomic supervisor tests
+whether the phase is structurally overbroad. A phase requires decomposition when
+the remaining findings span multiple independently testable producer-to-consumer
+paths or state machines, need disjoint acceptance surfaces, or cannot be repaired
+at one shared enforcement boundary without combining unrelated mutations. A
+repeated finding does not require decomposition when one coherent root-cause fix
+still closes the path.
+
+For an overbroad phase, the supervisor freezes the latest failed checkpoint as
+diagnostic history, identifies the last revision with verified prerequisite
+evidence, and proposes complete vertical replacement slices. Each slice owns one
+producer-to-consumer path, explicit DoD and gates, permitted paths, and dependency
+edges. The failed phase retains its counters and becomes a non-mutating aggregate
+acceptance gate over the original DoD. Every original DoD item belongs to at least
+one replacement slice; the aggregate gate verifies only their union and owns no
+unique implementation requirement. Each replacement slice receives a
+deterministic scope identity and workspace from the stable revision. Its counters
+inherit failed parent attempts attributable to that path; only a previously
+untouched path starts at zero. One structural split is allowed per lineage, and an
+equivalent slice cannot be recreated to reset counters. Macro totals and the
+failed phase's history never decrease. Failed-branch changes
+are reference material only and may be selectively reapplied after inspection,
+never inherited wholesale.
+
+The plan supervisor owns composition into one recorded integration revision.
+It also owns replacement-DAG acceptance: obtain independent plan-reviewer PASS
+before materialization or execution, including direct loop-supervisor split handoffs.
+Use at most two passes, resume the reviewer, and revise the same deterministic
+slices without resetting counters; unresolved rejection returns terminal FAIL.
+An original plan's PASS does not cover a changed replacement DAG.
+Dependent replacements consume verified predecessor changes on top of the stable
+base. Conflicts return to the owning slice's existing session and counters;
+invalidated gates rerun. Aggregate acceptance verifies the integrated revision
+containing all accepted outputs, never only isolated PASS reports.
+
+When a parent plan exists, `loop-supervisor` returns `recovery.mode: split` and a
+validated split proposal to `plan-supervisor`. The plan supervisor invokes the
+`decompose` hook, materializes replacement slices and dependencies, blocks later
+phases on the aggregate gate, and continues without human confirmation. On direct
+atomic invocation, loop-supervisor hands the replacement DAG to `plan-supervisor`
+and stops its failed-scope loop; if dispatch is unavailable, it returns the split
+proposal as `FAIL`, not `BLOCKED`. The plan supervisor reuses its rendered
+`decompose` executor during recovery; without an installed hook it updates the
+inline macro DAG and discloses missing durable task-system materialization. A
+replacement that appears overbroad invalidates the partition and causes a
+non-mutating revision of the same deterministic slices, never a recursive split.
+Only inability to preserve the
+original DoD without a product decision or policy expansion may escalate the
+split. At the mutation cap, evaluate structural recovery before external escalation.
+When the task remains atomic and no permitted remediation remains, return terminal
+`FAIL` with `recovery.mode: exhausted`, counters, failed gates, and rejected-split
+evidence. The parent must not redispatch that exhausted scope without a valid
+non-mutating recovery path or authorized scope change that preserves the caps.
+Retryable FAIL uses `retry`; overbroad FAIL uses `split`; verified external BLOCKED
+uses `external_block`; PASS uses `none`. Exhaustion alone never means BLOCKED.
 
 After a phase's second substantive code or specification rejection, supervision
 requires a root-cause diagnostic before another mutation. Reuse a finding's recorded diagnosis;
@@ -122,15 +293,25 @@ executed strictly when verifying end-user UI surfaces, evaluating to NOT_APPLICA
 backend, CLI, or library code.
 
 The Deploy Supervisor coordinates post-merge deployment, database migration verification,
-live endpoint smoke testing, and empirical release evidence collection. Deployments are
-gated actions executed only under explicit human operator authorization, generating an
-auditable RELEASE_EVIDENCE.md artifact.
+live endpoint smoke testing, and empirical release evidence collection. A scoped executable
+release task is durable authority; the supervisor autonomously applies proportional
+checkpoint, canary, verification, and rollback controls and generates an auditable
+RELEASE_EVIDENCE.md artifact.
+Release intake and outgoing child packets follow the same delegation contract.
+Continuations reconcile actual target effects before repeating release steps.
+Parity is against the authorized target revision rather than a moving HEAD.
+Release status is `DEPLOYED|VERIFIED|FAILED|ROLLED_BACK|BLOCKED`; unrun execution
+and migration checks use `NOT_RUN`. Failed restoration is `FAILED`, never VERIFIED.
 
 ## Supervisor Ledger Hook Contract & Curation Firewall
 
-Canonical agents remain decoupled from host persistence engines, local files, and databases.
-Storage for execution history is resolved exclusively through the declarative `<agent-hooks:invoke:record-ledger>`
-hook declared in supervisor frontmatter. Canonical workers (`implementor`, `code-reviewer`, `planner`)
+Canonical agents remain decoupled from host execution-ledger storage engines and databases.
+Storage for loop/plan execution ledgers is resolved exclusively through the declarative `<agent-hooks:invoke:record-ledger>`
+hook declared in those two supervisors' frontmatter. Bug-fixer keeps dispatch
+receipts in its declared handoff artifact, separately from the ticket; deploy-supervisor
+records release steps and child receipts in its declared release evidence. Both
+reuse recorded child continuation IDs and reconcile in-flight effects on resume.
+Canonical workers (`implementor`, `code-reviewer`, `planner`)
 must never write to or consult local ledger files or storage engines. They may
 consume objective task evidence and prior findings supplied by their supervisor.
 
@@ -148,6 +329,11 @@ also requires matching task, role, and execution root, plus refreshed
 workspace/evidence state. Fresh sessions never reset task counters.
 Reuse a finding's recorded diagnosis; a later session consumes that diagnosis.
 
+Planner records child continuation IDs, review and handoff receipts in planning
+artifacts or supplied context, not execution ledgers. Subsequent same-role dispatches
+pass the recorded ID; in-flight effects are reconciled and completed projection
+receipts reused before any retry.
+
 The existing `record-ledger` hook supports `operation: load|record`. Supervisors
 load the task's checkpoint after resolving the task and before dispatch; record
 the event and full current checkpoint before dispatch and after each return.
@@ -162,11 +348,15 @@ An installed hook reporting a persistence error blocks further dispatch.
 Checkpoint fields: `scope_id` (approved scope identity), `execution_root`,
 `revision`, `worktree_state` (digest/locator including relevant uncommitted and
 submodule state), `next_stage` (`select_phase|implementation|code_review|qa|
-reconciliation|blocked|done`), `sessions` (role to session ID), `attempts`
+reconciliation|structural_recovery|aggregate_acceptance|blocked|done`), `sessions`
+(role to session ID), `attempts`
 (`mutating`, `review_rejections`, `infrastructure_failures`, `diagnostics`),
 `findings`, `evidence`, `blockers`, and `in_flight` (null or dispatch identity and
 role, with session ID when known). Macro checkpoints also carry `phase_states`
 with each phase's status, counters, child session and evidence/checkpoint locator.
+An overbroad phase additionally records `stable_revision`, `failed_revision`,
+`split_rationale`, replacement scope IDs and dependencies, and aggregate-gate
+status.
 Macro top-level attempts are cumulative plan totals, not the newest phase's counters.
 Evidence entries
 identify exact command, execution root, input/runtime revision, result and full
@@ -214,8 +404,9 @@ Supervisors act as an unbiased **Curation Firewall** across child dispatches:
 
 `bug-fixer` is a dispatcher-capable primary supervisor for reporters who are not
 assumed to be technical. Every user-facing message, gate, verdict, and artifact
-uses simple words. Approval gates are single yes/no questions. The agent mirrors
-the reporter's language and does not invent details.
+uses simple words. The defect report is standing execution authority unless it is
+explicitly `report-only`; only irreducible reporter or product decisions are asked.
+The agent mirrors the reporter's language and does not invent details.
 
 Intake captures one ticket per distinct defect using the portable report schema:
 title, component, environment, severity (`urgent|high|medium|low`), steps to
@@ -239,10 +430,10 @@ explanation at `bugfix-tickets/explanations/ticket-id.html` with exactly the
 sections What is broken, The fix plan, and What happens next. One file per
 ticket, rewritten in place on each plan revision.
 
-Every dispatch requires an explicit yes. `exec-ready` dispatches `loop-supervisor`.
-`needs-plan` dispatches `planner` (autonomous session; plan parent only, no
-children), then after the user confirms projection invokes `decompose` with the
-confirmed scope and rationale, then may dispatch `plan-supervisor`.
+`exec-ready` dispatches `loop-supervisor` under standing execution authority.
+`needs-plan` dispatches `planner` (autonomous session; plan parent only), then
+invokes `decompose` with validated scope and rationale and dispatches
+`plan-supervisor` without repeated approval prompts.
 `report-reviewer` is a hidden reviewer subagent that returns
 `{"verdict":"PASS|REVISE",...}` with findings in
 `missing_detail|ambiguity|inconsistency`; a context gap is `REVISE` with a

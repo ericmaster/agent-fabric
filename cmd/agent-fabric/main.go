@@ -354,9 +354,17 @@ func mapping(root, target string) (adapter.Mapping, error) {
 
 type userConfig struct {
 	Profiles map[string]map[string]adapter.Profile `json:"profiles"`
+	Agents   map[string]map[string]agentOverride   `json:"agents"`
 }
 
-func applyUserOverrides(m *adapter.Mapping, target string) error {
+type agentOverride struct {
+	Model  string          `json:"model"`
+	Effort string          `json:"effort"`
+	Tools  map[string]bool `json:"tools"`
+}
+
+func loadUserConfig() (userConfig, error) {
+	var config userConfig
 	path := os.Getenv("AGF_CONFIG")
 	if path == "" {
 		if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
@@ -364,29 +372,40 @@ func applyUserOverrides(m *adapter.Mapping, target string) error {
 		} else {
 			home, err := os.UserHomeDir()
 			if err != nil {
-				return err
+				return config, err
 			}
 			path = filepath.Join(home, ".config", "agent-fabric", "config.json")
 		}
 	}
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return config, nil
 	}
 	if err != nil {
-		return err
+		return config, err
 	}
-	var config userConfig
 	if err := json.Unmarshal(b, &config); err != nil {
-		return fmt.Errorf("read Agent Fabric config: %w", err)
+		return config, fmt.Errorf("read Agent Fabric config: %w", err)
 	}
+	return config, nil
+}
+
+func configTargets(target string) []string {
 	targetsToApply := []string{target}
 	if target == "antigravity" {
 		targetsToApply = append(targetsToApply, "agy")
 	} else if target == "agy" {
 		targetsToApply = append(targetsToApply, "antigravity")
 	}
-	for _, t := range targetsToApply {
+	return targetsToApply
+}
+
+func applyUserOverrides(m *adapter.Mapping, target string) error {
+	config, err := loadUserConfig()
+	if err != nil {
+		return err
+	}
+	for _, t := range configTargets(target) {
 		for profile, override := range config.Profiles[t] {
 			base, exists := m.Profiles[profile]
 			if !exists {
@@ -407,10 +426,174 @@ func applyUserOverrides(m *adapter.Mapping, target string) error {
 				}
 				base.Permissions[key] = value
 			}
+			for key, value := range override.Tools {
+				if base.Tools == nil {
+					base.Tools = map[string]bool{}
+				}
+				base.Tools[key] = value
+			}
 			m.Profiles[profile] = base
 		}
 	}
 	return nil
+}
+
+func mergeTools(base, override map[string]bool) map[string]bool {
+	if len(base) == 0 && len(override) == 0 {
+		return nil
+	}
+	merged := make(map[string]bool, len(base)+len(override))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range override {
+		merged[key] = value
+	}
+	return merged
+}
+
+func agentOverrides(target string) (map[string]agentOverride, error) {
+	config, err := loadUserConfig()
+	if err != nil {
+		return nil, err
+	}
+	overrides := map[string]agentOverride{}
+	for _, t := range configTargets(adapterTarget(target)) {
+		if adapterTarget(target) != "opencode" && len(config.Agents[t]) > 0 {
+			return nil, fmt.Errorf("exact-agent overrides are supported only for opencode, not %s", target)
+		}
+		for id, override := range config.Agents[t] {
+			base := overrides[id]
+			if override.Model != "" {
+				base.Model = override.Model
+			}
+			if override.Effort != "" {
+				base.Effort = override.Effort
+			}
+			base.Tools = mergeTools(base.Tools, override.Tools)
+			overrides[id] = base
+		}
+	}
+	return overrides, nil
+}
+
+func mappingWithAgentOverride(m adapter.Mapping, d agent.Definition, override agentOverride) (adapter.Mapping, error) {
+	if override.Model == "" && override.Effort == "" && len(override.Tools) == 0 {
+		return m, nil
+	}
+	profile, exists := m.Profiles[d.Fabric.Profile]
+	if !exists {
+		return m, fmt.Errorf("no mapping for profile %q", d.Fabric.Profile)
+	}
+	profiles := make(map[string]adapter.Profile, len(m.Profiles))
+	for name, value := range m.Profiles {
+		profiles[name] = value
+	}
+	if override.Model != "" {
+		profile.Model = override.Model
+	}
+	if override.Effort != "" {
+		profile.Effort = override.Effort
+	}
+	profile.Tools = mergeTools(profile.Tools, override.Tools)
+	profiles[d.Fabric.Profile] = profile
+	m.Profiles = profiles
+	return m, nil
+}
+
+func isExactAgentID(id string) bool {
+	return id != "" && id != "." && id != ".." && filepath.Base(id) == id && !strings.ContainsAny(id, `/\\*?[]`)
+}
+
+func globallyManagedAgent(target, id string) (bool, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false, err
+	}
+	m, err := manifest.Read(filepath.Join(home, ".config", "agent-fabric", ".agent-fabric-manifest.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, file := range m.Files {
+		if file.Target == target && file.Agent == id {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func exactAgentOverrideWrites(target string, overrides map[string]agentOverride, available, selected []agent.Definition, previous manifest.Manifest, o options) ([]pendingWrite, error) {
+	if target != "opencode" || len(overrides) == 0 {
+		return nil, nil
+	}
+	known, selectedIDs := map[string]bool{}, map[string]bool{}
+	for _, d := range available {
+		known[d.ID] = true
+	}
+	for _, d := range selected {
+		selectedIDs[d.ID] = true
+	}
+	managed := map[string]manifest.File{}
+	for _, file := range previous.Files {
+		if file.Target != target {
+			continue
+		}
+		if _, requested := overrides[file.Agent]; !requested {
+			continue
+		}
+		if _, exists := managed[file.Agent]; exists {
+			return nil, fmt.Errorf("multiple manifest-managed %s agents named %q", target, file.Agent)
+		}
+		path, err := expectedManagedPath(o, file)
+		if err != nil {
+			return nil, err
+		}
+		file.Path = path
+		managed[file.Agent] = file
+	}
+	ids := make([]string, 0, len(overrides))
+	for id := range overrides {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	writes := make([]pendingWrite, 0, len(ids))
+	for _, id := range ids {
+		if !isExactAgentID(id) {
+			return nil, fmt.Errorf("config override targets invalid %s agent %q", target, id)
+		}
+		if selectedIDs[id] {
+			continue
+		}
+		file, exists := managed[id]
+		if !exists {
+			if known[id] {
+				continue
+			}
+			if o.project != "" {
+				global, err := globallyManagedAgent(target, id)
+				if err != nil {
+					return nil, err
+				}
+				if global {
+					continue
+				}
+			}
+			return nil, fmt.Errorf("config override targets unknown %s agent %q", target, id)
+		}
+		body, err := os.ReadFile(file.Path)
+		if err != nil {
+			return nil, err
+		}
+		updated, err := adapter.ReplaceOpenCodeAgentOverrides(string(body), overrides[id].Model, overrides[id].Effort, overrides[id].Tools)
+		if err != nil {
+			return nil, fmt.Errorf("update %s agent %q: %w", target, id, err)
+		}
+		writes = append(writes, pendingWrite{file.Path, updated, id, target})
+	}
+	return writes, nil
 }
 
 func adapterTarget(target string) string {
@@ -696,6 +879,7 @@ func install(o options, sync bool) error {
 			o.tools = toolSelection
 		}
 	}
+	available := ds
 	ds, err = selectedAgents(ds, o.agents, o.all)
 	if err != nil {
 		return err
@@ -719,6 +903,12 @@ func install(o options, sync bool) error {
 	if err != nil {
 		return err
 	}
+	previous, err := manifest.Read(manifestPath)
+	if errors.Is(err, os.ErrNotExist) {
+		previous = manifest.Manifest{}
+	} else if err != nil {
+		return err
+	}
 	release := os.Getenv("AGF_VERSION")
 	if release == "" {
 		release = version
@@ -730,9 +920,20 @@ func install(o options, sync bool) error {
 		if e != nil {
 			return e
 		}
+		overrides, e := agentOverrides(t)
+		if e != nil {
+			return e
+		}
 		m.Mappings[t] = filepath.Join("adapters", adapterTarget(t)+".json")
 		for _, d := range ds {
-			body, rel, warnings, e := adapter.Render(adapterTarget(t), d, mp, o.project != "")
+			rendering := mp
+			if override, exists := overrides[d.ID]; exists {
+				rendering, e = mappingWithAgentOverride(mp, d, override)
+				if e != nil {
+					return e
+				}
+			}
+			body, rel, warnings, e := adapter.Render(adapterTarget(t), d, rendering, o.project != "")
 			if e != nil {
 				return e
 			}
@@ -748,6 +949,11 @@ func install(o options, sync bool) error {
 			}
 			writes = append(writes, pendingWrite{filepath.Join(base, rel), body, d.ID, t})
 		}
+		hubWrites, e := exactAgentOverrideWrites(adapterTarget(t), overrides, available, ds, previous, o)
+		if e != nil {
+			return e
+		}
+		writes = append(writes, hubWrites...)
 	}
 	for _, w := range writes {
 		m.Files = append(m.Files, manifest.File{Path: w.path, Hash: manifest.Hash([]byte(w.body)), Agent: w.id, Target: w.target})

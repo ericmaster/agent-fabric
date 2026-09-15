@@ -52,6 +52,17 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(len(state["events"]), 2)
         self.assertEqual(state["checkpoint"]["sessions"]["code-reviewer"], "reviewer-1")
 
+    # Spec: docs/specs/agent-fabric.md — structural recovery checkpoints
+    def test_structural_recovery_and_aggregate_acceptance_round_trip(self):
+        for stage in ("structural_recovery", "aggregate_acceptance"):
+            with self.subTest(stage=stage):
+                self.request["checkpoint"]["next_stage"] = stage
+                self.request["checkpoint"]["replacement_scopes"] = ["TASK-1/path-a"]
+                receipt = self.run_hook(self.request)
+                restored = self.run_hook({"operation": "load", "tier": "micro", "task_id": "TASK-1"})
+                self.assertEqual(restored["checkpoint"], self.request["checkpoint"])
+                self.request["expected_version"] = receipt["version"]
+
     # Spec: docs/specs/agent-fabric.md via stale-write rejection
     def test_stale_writer_and_counter_reset_leave_state_unchanged(self):
         receipt = self.run_hook(self.request)
