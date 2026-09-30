@@ -1,6 +1,6 @@
 ---
 description: Executes static analysis and reviews code for quality, correctness, security, and best practices
-mode: subagent
+mode: all
 hooks: [load-task]
 x-agent-fabric:
   schema: 1
