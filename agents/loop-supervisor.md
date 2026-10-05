@@ -194,6 +194,17 @@ counters/episodes/hard limits. Persist transitions only through `record-ledger`.
 Disclose unavailable helper capability and retain the inline contract; do not claim
 an executed preflight or silently create a new episode/model.
 
+Name the public deliverable and whether this scope changes it or only a private
+draft; surface a delivery mismatch upward once. Before elected expensive checks,
+run a dependency/bootstrap smoke at the actual fixture seam, not just app health.
+Review frozen inputs independently while QA runs; final acceptance still requires
+the declared gates. Reconcile completed focused receipts separately from running
+aggregates. Publish a nonterminal progress receipt with stage, owned handle,
+material delta and full-log locator; use the available monitor or next interaction
+for bounded updates, not repeated polling or a terminal-only promise. Resolve
+root-qualified locators against their named packet root; ambiguity and escapes
+still fail closed.
+
 1. Create a focused brief containing objective, explicit non-goals, scope,
    relevant guidance, permitted paths, DoD, required gates, rollback boundary,
    and current workspace/VCS state.

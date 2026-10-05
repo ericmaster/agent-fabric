@@ -103,3 +103,19 @@ func TestDeterministicSupportInstructions(t *testing.T) {
 		}
 	}
 }
+
+// Spec: docs/specs/agent-fabric.md — long-running checks and visible delivery
+func TestSupervisorLongChecksPreserveVisibleProgress(t *testing.T) {
+	for _, role := range []string{"loop-supervisor", "plan-supervisor"} {
+		d, err := ParseFile(filepath.Join("..", "..", "agents", role+".md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := strings.Join(strings.Fields(d.Body), " ")
+		for _, want := range []string{"public deliverable", "frozen inputs", "progress receipt", "dependency/bootstrap smoke"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s missing long-check contract %q", role, want)
+			}
+		}
+	}
+}

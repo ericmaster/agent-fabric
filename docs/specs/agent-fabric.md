@@ -315,6 +315,27 @@ and migration checks use `NOT_RUN`. Failed restoration is `FAILED`, never VERIFI
 
 ## Bounded episodes, waiting, and reduced delivery
 
+Before an expensive check, record the user-facing deliverable and whether the
+current phase changes the public preview or only a private draft. A mismatch with
+the user's delivery goal is surfaced to the superior once, not hidden behind
+setup or QA progress. Run a representative dependency/bootstrap smoke at the actual
+test-fixture seam; full-application health does not establish fixture readiness.
+
+An owned long-running command is not a serial gate on independent source review.
+Review frozen inputs while QA runs, without mutating those inputs or weakening
+final acceptance. Track each continuation independently; reconcile a completed
+focused receipt even when an aggregate remains running. Publish a nonterminal
+progress receipt with the pending stage, owned handle, material output delta and
+full-log locator. Provide bounded progress updates through the available monitor
+or the next user interaction; never promise only a terminal callback that the
+harness cannot deliver. Do not repeatedly poll, relaunch a live command or describe
+unchanged messages as progress.
+
+Root-qualified artifact locators (for example `evidence:report.json`) resolve only
+against the explicitly declared named root. They do not require another approval
+or ambient discovery. Ambiguous roots, escaping paths and unreadable required
+inputs still fail closed.
+
 The initial episode has a soft budget of three mutations, with attempts four and
 five allowed only for a materially distinct, reversible fix with a new failing
 regression and an atomicity check. Five ends that episode; it is not a lifetime

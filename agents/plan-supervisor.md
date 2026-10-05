@@ -272,6 +272,17 @@ request schema as a permitted packet input. Declare the Fabric
 root in packets (no ambient discovery); disclose unavailable support, never false
 preflight completion. `record-ledger` remains the only persistence path.
 
+Name the public deliverable and whether each phase changes it or only a private
+draft; surface a delivery mismatch upward once. Before elected expensive checks,
+require a dependency/bootstrap smoke at the actual fixture seam, not just app health.
+Allow independent source review of frozen inputs while QA runs; final acceptance
+still requires the declared gates. Reconcile completed focused receipts separately
+from running aggregates. Publish a nonterminal progress receipt with stage, owned
+handle, material delta and full-log locator; use the available monitor or next
+interaction for bounded updates, not repeated polling or a terminal-only promise.
+Resolve root-qualified locators against their named packet root; ambiguity and
+escapes still fail closed.
+
 Maintain the macro-ledger of phase execution across the plan. At every state
 transition boundary (phase selection/initialization `PENDING` -> `IN_PROGRESS`,
 phase completion verification `IN_PROGRESS` -> `DONE`, and recovery/escalation
