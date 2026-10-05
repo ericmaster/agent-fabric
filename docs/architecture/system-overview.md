@@ -71,8 +71,9 @@ flowchart TD
     IMPL -->|"implementation result"| LSUP
     LSUP -->|"validated review packet dispatch"| CREV
     CREV -->|"review result"| LSUP
-    LSUP -->|"validated QA packet dispatch"| QAR
+    LSUP -.->|"optional validated QA packet dispatch"| QAR
     QAR -->|"QA result"| LSUP
+    LSUP -->|"deferred QA receipt; implementation continues"| PSUP
 
     subgraph "Recovery (on FAIL / BLOCKED)"
         DBG["**Expert Debugger**\nprofile: solver · subagent"]

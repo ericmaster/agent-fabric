@@ -33,7 +33,7 @@ func TestCanonicalAgentsRetainWorkflowContracts(t *testing.T) {
 		"code-reviewer":     {"adversarial, read-only gate", "mental mutation test", "## Review Protocol", "ACCEPT|REJECT"},
 		"expert-debugger":   {"up to three distinct hypotheses", "bounded remediation brief", "## Recovery Protocol", "failure_classification"},
 		"plan-reviewer":     {"vertical-slice shape", "## Review Rubric And Output", "PASS|REVISE"},
-		"qa-runner":         {"Read the original DoD", "## Verification Discipline", "PASS|FAIL|BLOCKED"},
+		"qa-runner":         {"Read the assigned checks against the original DoD", "## Verification Discipline", "PASS|FAIL|BLOCKED"},
 		"deploy-supervisor": {"## Operating Invariant", "## Release Execution Sequence", "## Output Contract"},
 		"bug-fixer":         {"## Plain-Language Contract", "## Intake", "## Triage", "## Ticket Persistence", "## Plan Explanation Artifact", "## Delegation Gates"},
 		"report-reviewer":   {"## Review Rubric And Output", "PASS|REVISE", "missing_detail|ambiguity|inconsistency"},
@@ -582,7 +582,7 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 				`FRESH -->|"intake Delegation Packet"| LT`,
 				`BRIEF -->|"validated implementor packet"| IMPL`,
 				`IMPL -->|"validated review packet"| REV`,
-				`REV -->|"validated QA packet"| QA`,
+				`QA_DECIDE -->|"run · validated QA packet"| QA`,
 				`PRESERVE -->|"validated recovery packet"| DIAG_CTX`,
 				`BUDGET -- "Yes · validated retry packet" --> IMPL`,
 			}},
@@ -650,7 +650,7 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 			`IMPL -->|"implementation result"| LSUP`,
 			`LSUP -->|"validated review packet dispatch"| CREV`,
 			`CREV -->|"review result"| LSUP`,
-			`LSUP -->|"validated QA packet dispatch"| QAR`,
+			`LSUP -.->|"optional validated QA packet dispatch"| QAR`,
 			`QAR -->|"QA result"| LSUP`,
 		} {
 			if !strings.Contains(body, edge) {
@@ -938,7 +938,7 @@ func TestSupervisorsRecoverOverbroadPhasesByStableBaseDecomposition(t *testing.T
 			"failed parent attempts\nattributable to its owned path",
 			"Never recreate an equivalent slice or recursively split a replacement",
 			"cumulative macro totals without decrement\nor reset",
-			"At the fifth mutation, evaluate a valid vertical split",
+			"At the episode mutation cap, evaluate a valid vertical split",
 			"Aggregate acceptance runs against the integrated revision",
 			"Do not redispatch",
 			"`recovery.mode: exhausted`",
@@ -1030,8 +1030,8 @@ func TestReviewerAndQARunnerScopeBoundaries(t *testing.T) {
 	crWants := []string{
 		"statically trace the exploit matrix through\nthe call path",
 		"Reject missing code-level evidence",
-		"dynamic verification and live command\nexecution are the exclusive authority of `qa-runner`",
-		"dynamic DoD\nitems must be omitted from reviewer rejections and deferred to QA",
+		"dynamic verification and live command\nexecution belong to supervisor-assigned verification",
+		"dynamic DoD\nitems must be omitted from reviewer rejections and referred to the supervisor's",
 		"compilation_status: NOT_AVAILABLE",
 		"Syntax, import, or type failures",
 		"untrusted input",
@@ -1175,7 +1175,7 @@ func TestSupervisorLedgerAndCurationFirewallContracts(t *testing.T) {
 			"Verify whether finding F1",
 			"stripping subjective reviewer commentary",
 			"never forward implementor rationalizations, excuses, or conversational\n   debates",
-			"QA packets receive strictly original\n   DoD, test commands, and workspace changes",
+			"original DoD as reference and exact commands",
 			"pass only objective failing gate/test logs, breached contracts, and diffs; filter out\nconversational debates or excuses",
 		}
 		for _, want := range wants {

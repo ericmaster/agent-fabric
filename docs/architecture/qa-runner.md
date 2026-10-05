@@ -2,9 +2,10 @@
 
 `agents/qa-runner.md` · profile: `qa` · mode: `subagent` · isolation: `sandbox`
 
-The QA Runner performs deterministic and visual verification against the original DoD.
-It cannot edit product files. It is dispatched by the loop-supervisor and returns a
-structured evidence report.
+The QA Runner verifies supervisor-assigned checks, with original DoD as reference.
+It cannot implement product code, wrappers or tooling. QA is recommended, not
+mandatory; loop-supervisor decides whether to dispatch and what evidence is needed.
+Execution blockers are communicated upward as deferred QA without stopping implementation.
 Its intake follows the fail-closed packet contract defined normatively in
 [`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
 
@@ -15,17 +16,17 @@ flowchart TD
     START([Validated packet from loop-supervisor]) --> READDOD
 
     subgraph "Preparation"
-        READDOD["Resolve packet inputs, then read original DoD\n(context gap → BLOCKED)"]
+        READDOD["Resolve packet inputs, then read assigned checks\noriginal DoD as reference\n(context gap → BLOCKED, supervisor defers QA)"]
     end
 
     READDOD --> REGRESSION
 
     subgraph "Verification Sequence"
-        REGRESSION["① Run exact required regression\nand feature checks"]
-        TYPE["② Type checks\n(when applicable)"]
-        RUNTIME["③ Runtime checks\n(when destination provides safe capabilities)"]
-        PERSIST["④ Persistence / payload checks\n(when applicable)"]
-        VISUAL["⑤ Visual / browser checks\n(when destination provides safe capabilities)"]
+        REGRESSION["① Run exact assigned regression\nand feature checks using existing tooling"]
+        TYPE["② Type checks\n(only when assigned)"]
+        RUNTIME["③ Runtime checks\n(only when assigned and safely available)"]
+        PERSIST["④ Persistence / payload checks\n(only when assigned)"]
+        VISUAL["⑤ Visual / browser checks\n(only when assigned and safely available)"]
     end
 
     REGRESSION --> TYPE --> RUNTIME --> PERSIST --> VISUAL --> ANTICHECK
@@ -54,7 +55,7 @@ No registered hooks.
 | Allowed | Not Allowed |
 |---|---|
 | Run exact required commands | Edit product files |
-| Run additional safe verification (runtime, persistence, payload, visual) | Execute deployments (deployment evidence evaluated at reconciliation) |
+| Run assigned verification (runtime, persistence, payload, visual) | Add acceptance predicates or engineer QA tooling |
 | Capture screenshots / browser evidence | Produce code-quality or design reviews |
 | Compress logs into relevant evidence | Hide or suppress failures |
 | Circuit-break repeated loops with `FAIL` and a supervisor recovery request | Replace a required command with a narrower substitute |
@@ -64,7 +65,10 @@ No registered hooks.
 
 ```json
 {
-  "outcome_verdict": "PASS|FAIL|BLOCKED",
+  "outcome_verdict": "PASS|FAIL|BLOCKED|IN_PROGRESS",
+  "verification_scope": "assigned checks only",
+  "failure_kind": null,
+  "unrun_checks": [],
   "contract_compliance": {
     "dod_verified": false,
     "satisfied_criteria": [],

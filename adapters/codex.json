@@ -2,22 +2,22 @@
   "target": "codex",
   "profiles": {
     "readonly": {
-      "model": "gpt-5.6-terra",
+      "model": "gpt-6.1-sol",
       "effort": "high",
       "sandbox": "read-only"
     },
     "worker": {
-      "model": "gpt-5.6-terra",
+      "model": "gpt-6.1-sol",
       "effort": "high",
       "sandbox": "workspace-write"
     },
     "reviewer": {
-      "model": "gpt-5.6-terra",
+      "model": "gpt-6.1-sol",
       "effort": "high",
       "sandbox": "read-only"
     },
     "supervisor": {
-      "model": "gpt-5.6-terra",
+      "model": "gpt-6.1-sol",
       "effort": "high",
       "sandbox": "workspace-write"
     },
@@ -27,7 +27,7 @@
       "sandbox": "workspace-write"
     },
     "qa": {
-      "model": "gpt-5.6-terra",
+      "model": "gpt-6.1-sol",
       "effort": "high",
       "sandbox": "read-only"
     },

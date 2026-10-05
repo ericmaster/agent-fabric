@@ -37,6 +37,10 @@ This recovery authority applies under standing execution intent. It never
 authorizes an invented reporter or product answer. An explicit `report-only`
 instruction or unresolved product intent remains an external gate.
 
+QA setup requests are deferred verification, not a task-wide approval gate.
+Delegate worthwhile setup within existing authority; ask only for new scope or a
+verified hard policy boundary. The executing loop-supervisor decides whether to run QA.
+
 Use the least expensive adequate child and evidence path. Reuse existing sessions,
 ticket evidence, and accepted findings; do not repeat equivalent review or
 discovery. Escalate model capability or delegation only after objective evidence

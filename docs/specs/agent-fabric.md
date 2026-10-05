@@ -8,6 +8,11 @@ not shadow the bundled source.
 Adapters must validate the complete source set before writing anything. Adapter
 profiles are loaded from the checked-in mapping and may be partially overridden
 by one user file at `~/.config/agent-fabric/config.json` or `AGF_CONFIG`.
+Bundled OpenAI profiles use `openai/gpt-6.1-sol` for OpenCode/Kilo readonly,
+worker, reviewer, supervisor, planner, qa, recursive, and solver roles, and `gpt-6.1-sol`
+for Codex readonly, worker, reviewer, supervisor, and qa roles.
+OpenCode/Kilo bundled profiles must not restore retired `openai/gpt-5.6*` defaults
+into the dashboard's generated model suggestions.
 Profile overrides merge `permissions` and `tools` entries by key. `tools` is a
 boolean OpenCode allowlist map; OpenCode emits it as a sorted frontmatter mapping,
 while Kilo, Claude, Antigravity, and Codex ignore the target-specific field.
@@ -112,6 +117,10 @@ free port, start and stop local services, create and clean disposable fixtures,
 use packet-authorized credentials without exposing them, repair reversible test
 or Dev state, and retry with a bounded alternative. Recoverable capability
 friction is work, not a human gate.
+
+The QA Startup Contract separates verification from setup implementation. Missing
+QA capability is deferred verification, not a plan-wide execution gate. Setup
+outside standing authority requires approval; already authorized setup does not.
 
 Task authorization is durable. Direct execution intent or a trusted task-system
 item marked executable is standing authority for planning, decomposition, child
@@ -265,8 +274,9 @@ original DoD without a product decision or policy expansion may escalate the
 split. At the mutation cap, evaluate structural recovery before external escalation.
 When the task remains atomic and no permitted remediation remains, return terminal
 `FAIL` with `recovery.mode: exhausted`, counters, failed gates, and rejected-split
-evidence. The parent must not redispatch that exhausted scope without a valid
-non-mutating recovery path or authorized scope change that preserves the caps.
+evidence. The parent must not redispatch that exhausted episode without a valid
+non-mutating recovery path or an explicitly authorized new episode under the
+bounded episode contract below. Hard limits remain in force.
 Retryable FAIL uses `retry`; overbroad FAIL uses `split`; verified external BLOCKED
 uses `external_block`; PASS uses `none`. Exhaustion alone never means BLOCKED.
 
@@ -287,7 +297,7 @@ command evidence. Ungrounded findings cannot produce rejection. Reviewer finding
 gate exclusively on code-level proof (diff quality, static types, security invariants,
 mental mutation test); rejections citing absent dynamic evidence (runtime execution,
 persistence checks, browser screenshots, or deployment validation) are out-of-authority
-and filtered by the supervisor to QA delegation. QA Runner executes dynamic regression,
+and filtered by the supervisor to its discretionary QA decision. QA Runner executes assigned dynamic regression,
 runtime, persistence, payload, and visual checks; accessibility auditing (WCAG 2.2) is
 executed strictly when verifying end-user UI surfaces, evaluating to NOT_APPLICABLE for
 backend, CLI, or library code.
@@ -303,7 +313,241 @@ Parity is against the authorized target revision rather than a moving HEAD.
 Release status is `DEPLOYED|VERIFIED|FAILED|ROLLED_BACK|BLOCKED`; unrun execution
 and migration checks use `NOT_RUN`. Failed restoration is `FAILED`, never VERIFIED.
 
+## Bounded episodes, waiting, and reduced delivery
+
+The initial episode has a soft budget of three mutations, with attempts four and
+five allowed only for a materially distinct, reversible fix with a new failing
+regression and an atomicity check. Five ends that episode; it is not a lifetime
+cap imposed by this workflow. Explicit task, host, provider, spending, safety and
+policy hard limits remain non-renewable by an ordinary continuation instruction.
+
+After exhaustion, a direct explicit user instruction to continue permits the
+supervisor to evaluate one new episode, not automatically mutate. A renewed episode
+allows at most two mutations by default. Record the authority locator, new evidence
+or diagnosis or authorized scope change, and a materially distinct causal strategy
+before opening it. A new model, session, command spelling, or scope name is not a
+new strategy. Automatic goal continuations do not authorize new episodes. If there
+is no distinct strategy, retain exhaustion and report the exact next decision once.
+
+Before every mutation, record a compact mutation brief: hypothesis, difference from
+prior attempts, evidence, failing regression, budget and rollback. For initial work,
+the regression is the acceptance test that fails without the change. Reuse recorded
+diagnoses; a repeated failure requires diagnosis before another mutation. Two
+substantive rejections within an episode trigger diagnosis, not another equivalent
+attempt. Close an episode early when no new evidence supports recovery.
+
+Keep `attempts` as monotone task/plan history. Checkpoints also retain `episodes`
+(append-only closed history plus the current entry) and `current_episode_id`.
+Each entry carries `id`, `authority`, `strategy`, `evidence`, `budget`,
+`baseline_attempts`, `attempts` (episode-local counters), and `status`.
+Opening a new entry never changes the task/scope identity or decrements historical
+counters. Older checkpoints without episodes enter the initial episode with their
+existing counters, not a fresh allowance. Splits inherit attributable history;
+renaming or splitting cannot bypass a hard cap. Macro checkpoints retain the
+phase episode metadata and cumulative plan totals.
+
+An active child or command is `IN_PROGRESS`, not a failed gate. Preserve the pending
+stage and `in_flight`; wait for its result with the native completion/wait mechanism
+when available. Do not dispatch an equivalent child, repeatedly audit unchanged
+state, consume mutation/rejection budget, or claim progress merely for waiting.
+Automatic continuations cannot turn waiting or terminal exhaustion into new work.
+Record actual dispatch/return/state changes; send one no-progress notice with the
+full evidence locator, then update only on changed evidence or a required deadline.
+These are portable instructions, not a runtime Goal Mode watchdog.
+
+On an authorized scope reduction, stop obsolete child work at a safe boundary,
+reconcile uncertain effects and resource ownership, and deliver only the accepted
+revision for the revised scope. Separate implemented, deferred and still-defective
+behavior. A reduced delivery does not complete the original plan. Verify the target
+revision and existing runtime evidence before deciding to build or deploy; a revision
+already deployed and verified is reused, not rebuilt or redeployed.
+
+## Deterministic supervision support
+
+`python3 <declared-fabric-root>/hooks/supervisor/support.py` consumes one JSON
+request on stdin and emits one JSON receipt (0 success, 1 fail-closed error).
+It is read-only: no ledger storage, dispatch, process signals, network, scheduler,
+episode creation or model selection. Supervisors supply the checkpoint loaded
+by `record-ledger`; record resulting transitions through that existing hook and
+its expected-version guard. Missing helper support must be disclosed, not treated
+as a completed preflight. Hosts may call this command from existing hooks.
+
+- `operation: command-identity`, `pid`, `dispatch_id`, `execution_root` captures
+  a Linux owned-command handle at launch: PID, `/proc` start ticks, boot ID and
+  UID, scoped to the recorded dispatch/root. The caller must establish ownership
+  before capture; observing an arbitrary PID does not grant ownership. Reconcile
+  compares all identity fields, not PID alone; exited/zombie/reused processes are
+  not live, unreadable or incomplete identity is a gap. Non-Linux hosts must
+  provide their own verified identity support; never degrade to PID-only checks.
+  Validate before probing: PID is a positive exact integer, UID a nonnegative
+  exact integer (booleans excluded), start ticks a nonempty ASCII decimal string,
+  boot ID a hyphenated hexadecimal UUID string. Missing/null/empty/ill-typed or
+  malformed fields return `IDENTITY_GAP` with `may_dispatch: false`; a complete,
+  valid identity differing from the observed process is not live (`UNAVAILABLE`
+  when no live child/other command or terminal report remains).
+- `operation: reconcile`, `checkpoint`, `session`, optional `report` inspects
+  one current host session observation and `in_flight.commands` handles once.
+  Session observations bind `dispatch_id`, `session_id`, `execution_root` and
+  `state: live|idle|unavailable|unknown`. Matching live child or verified live
+  command returns `WAIT/IN_PROGRESS` with the exact `pending_stage` (in-flight
+  stage, or checkpoint next_stage). A matching terminal report (`PASS|FAIL|BLOCKED`,
+  dispatch/session IDs, full locator) with idle/unavailable session returns
+  `RECONCILE_REPORT`, never acceptance or redispatch. Idle/unavailable with no
+  report/live command returns `UNAVAILABLE/DISPATCH_FAILURE`; unknown identity
+  returns `IDENTITY_GAP`, no duplicate setup. No outcome grants dispatch authority
+  (`may_dispatch: false`); supervisors reconcile effects and existing limits first.
+  Observations/reports are trusted host inputs, not inferred from ambient history.
+- `operation: fingerprint` requires `roots` (named absolute directories),
+  `revision`, nonempty `inputs` (`{root,path}` regular-file locators), `checks`
+  (`id`, exact `command`, object `context`, boolean `fresh_required`), and optional
+  `receipts`. SHA-256 covers named roots, revision and sorted actual file bytes,
+  including declared dirty files, specifications, config and QA inputs; each check
+  additionally covers its command/runtime/fixture context. All declared inputs
+  conservatively affect every assigned check. Ordering does not affect the digest.
+  Caller owns completeness, including submodule/removed-file state and external
+  runtime identity in context; HEAD alone is never adequate. Traversal, absolute
+  relative locators, symlinks, nonregular, missing or unreadable inputs fail closed.
+  A receipt (`check_id`, matching `digest`, `verified: true`, `status: PASS`,
+  readable `locator: {root,path}` and matching SHA-256 `log_digest`) allows `REUSE`
+  only without a fresh-run contract;
+  otherwise return `RUN`. No helper output is PASS; absent/unrun/deferred evidence
+  never satisfies mandatory gates. Verification flags are supervisor assertions,
+  not certification by this helper. Receipt logs must be preserved unchanged.
+- `operation: handoff`, `checkpoint`, `contract` produces a compact self-contained
+  packet, excluding the event journal but retaining current findings/blockers,
+  attempts, episodes, hard limits, continuation sessions, exact stage, owned handles,
+  revision/digest, QA/unrun checks and evidence/checkpoint locators when present.
+  Optional checkpoint fields `input_digest`, `inputs` (declared file locators),
+  `checks` (assigned check definitions), `receipts` (verified receipt assertions),
+  and `check_results` (fingerprint check decisions/digests/receipts) are retained
+  unchanged when present. `worktree_state` does not replace `input_digest`.
+  Together with contract roots and checkpoint revision, these support a fresh
+  fingerprint decision after handoff; carrying a receipt does not certify it.
+  Contract requires objective, non-goals, scope, authority, named roots, workspace
+  ownership, authoritative inputs (inline or file locators), permitted source/evidence
+  paths, commands, DoD, required evidence, rollback and unresolved-locator behavior.
+  Permitted paths and required evidence use `root-name:relative-path`; future
+  evidence destinations need not exist, but bare or escaping paths are refused.
+  Required inputs must resolve; checkpoint execution root must be declared. No
+  absent authority or unrun-check accounting may be invented. Preserve cumulative
+  counters/episode metadata; never reset hard limits or silently change models.
+
+Before broad QA, run a bounded readiness probe through the actual public command
+and verify observable behavior, not just green helper tests. Retain failed probes
+and unrun checks truthfully. Regression gate:
+`python3 -m unittest discover -s tests -p 'test_supervisor_support.py'` plus ledger
+tests and `go test ./...`.
+
+## Discretionary QA Contract
+
+QA is recommended, not mandatory. `loop-supervisor` owns the QA decision: run,
+skip, reuse, or defer. A plan supervisor may recommend surfaces and retry deferred
+QA at its discretion, without making QA dispatch a prerequisite for implementation.
+Blanket procedural requirements for independent QA do not override this policy;
+concrete product DoD, regression, safety and release requirements remain intact.
+
+The minimal loop is implementor-owned relevant tests, independent code review,
+then supervisor reconciliation. Dispatch QA only for assigned checks that add needed
+evidence; run pre/post-QA hooks only when that dispatch happens. Supply the original
+contract as reference and a bounded checklist, commands, revision/runtime, budget
+and evidence root. QA reports only the assigned checks, not whole-plan acceptance.
+It cannot add acceptance predicates, historical first-attempt-success requirements,
+or implementation work. Existing scripts and helpers take precedence over new tooling.
+
+Record `qa` with `decision`, `status` (`NOT_RUN|IN_PROGRESS|PASS|FAIL|SKIPPED|DEFERRED`),
+`assigned_checks`, `unverified_checks`, `reason`, `evidence` and `retry_owner`.
+A QA execution/setup/transport blocker becomes `DEFERRED`, with the exact cause,
+unrun checks and receipt communicated to the superior supervisor (or direct user
+when no parent exists). It does not stop remaining implementation, consume a product
+rejection, invalidate passing review, or force immediate QA recovery. The parent
+chooses whether/when to retry the same QA session with changed capability evidence.
+
+Keep implementation readiness separate from acceptance. A phase report may retain
+`IN_PROGRESS` for missing mandatory evidence while exposing `implementation_ready`
+and deferred QA; subsequent implementation can use independently verified functional
+prerequisites. An actual defect or unavailable functional prerequisite still blocks
+dependent work. Never label skipped, deferred or running checks PASS. Final acceptance
+requires evidence for substantive mandatory gates, obtained through authorized roles
+or existing valid receipts, not necessarily through `qa-runner`. No independent QA
+session is required for PASS, including integrated aggregate acceptance.
+
+## QA Startup Contract
+
+Before provisioning an environment or running acceptance flows, QA Runner reads
+the assigned checks against the original DoD and identifies the project's stack and QA surfaces from
+the packet's declared roots. It checks existing repository scripts, test/CI
+configuration, runbooks, and supported stack-native tools, in that order, stopping
+at the smallest suitable reproducible path. A documented command sequence or an
+existing test command is sufficient; a universal launcher, browser, container,
+authentication service, or database is not required when the task does not need it.
+
+A suitable path makes startup, readiness, required fixtures/authentication,
+verification, and task-owned cleanup reproducible where applicable. QA records
+the selected commands/tool versions and runs a bounded readiness probe against
+the intended revision/runtime before a full flow. Existing supported setup,
+locked dependency installation, free-port selection, and disposable fixtures
+remain autonomous within task authority. A failed probe does not prove a product
+defect; ordinary bounded recovery follows the existing recipe.
+
+If discovery and capability probes establish that no suitable path exists, or
+that it needs tooling/configuration changes rather than routine execution,
+QA returns `BLOCKED` with `QA_SETUP_REQUIRED` in the existing result
+summary. Its evidence names the stack, inspected paths/tools, failed or missing
+capability, affected DoD checks not run, and the smallest proposed reusable setup
+with permitted files, dependencies, readiness/cleanup checks, and rollback.
+It requests supervisor-owned setup or deferral; it does not engineer an ad-hoc
+replacement during QA. Unaffected
+checks may proceed with valid existing paths, but incomplete QA never yields PASS.
+
+The receiving supervisor records deferred QA and communicates it upward while
+continuing implementation. It chooses whether setup is worth pursuing. An
+implementation-capable role owns tooling changes under existing task authority;
+ask for approval only for scope, capability or policy not already authorized.
+Legacy `QA_SETUP_APPROVAL_REQUIRED` reports receive the same deferred handling;
+the marker alone is not evidence of a hard policy boundary. When setup is ready
+and a supervisor elects to retry, resume the same QA session with reusable commands.
+
+When a host/project supplies an isolated browser pool, QA uses an exclusive
+process/profile lease, publishes the human watch URL, and connects a dedicated
+client to the lease endpoint instead of a globally attached shared browser MCP.
+It maintains the lease, stops on takeover/disconnect, rechecks ownership and
+re-observes after reconnect, and releases in final cleanup. Uncertain side effects
+are not blindly replayed. Persistent identity browsers require explicit login
+scope. Host endpoints and checkout commands belong in the host skill/runbook,
+not the portable canonical role.
+
+Canonical definitions and adapter rendering checks preserve this instruction
+contract; they do not implement a runtime approval lock or prove model compliance.
+
 ## Supervisor Ledger Hook Contract & Curation Firewall
+
+### Outcome-first verification and bounded recovery
+
+Design-led UI acceptance requires authentic external design/node/export provenance,
+required copy/assets, viewport, and paired source/render evidence. QA distinguishes
+fidelity from regression against implementation-derived screenshots; promoting the
+latter cannot certify fidelity. Missing required source evidence precludes PASS.
+Placeholder permission covers explicitly missing content only. Supervisors require
+one representative source-matched page and publish its preview before replication,
+then retain full final coverage. Changed acceptance invalidates affected gates;
+children stop obsolete verification at a safe boundary before source mutation,
+while unaffected evidence remains reusable.
+
+The same failed prerequisite permits three materially distinct recovery attempts
+across roles, followed by one bounded diagnostic (or reuse) and one evidence-backed
+recovery per episode. Continued failure yields exhausted FAIL, or BLOCKED at the existing exact
+external/policy boundary. Infrastructure failures count here independently of
+substantive rejection counters. Rebriefs, new sessions and renamed scopes retain
+this history. Renewed episodes require the explicit authorization and distinct
+strategy above. For QA-only prerequisites, defer instead of stopping implementation.
+QA returns its recovery request after at most three attempts within its assigned budget;
+supervisors own the final diagnostic/recovery allowance. At tool/child boundaries,
+30 minutes without a newly verified criterion or restored prerequisite triggers a
+user-visible no-progress update with the full evidence locator before continuing;
+repeated unchanged notices are not progress.
+This is a portable instruction contract, not a runtime timer, enforced spending cap,
+or guarantee of model compliance. Required dispatch/return and transition ledger
+writes remain; unchanged observations do not generate redundant checkpoint writes.
 
 Canonical agents remain decoupled from host execution-ledger storage engines and databases.
 Storage for loop/plan execution ledgers is resolved exclusively through the declarative `<agent-hooks:invoke:record-ledger>`
@@ -363,6 +607,8 @@ identify exact command, execution root, input/runtime revision, result and full
 log locator; a summary is not proof. Reentry starts at `next_stage`; repeat only
 gates whose relevant inputs changed, or whose contract requires a fresh run.
 A QA-only environment failure preserves valid code review and static gates.
+New supervision checkpoints also retain `episodes`, `current_episode_id`, `qa`,
+and `implementation_ready`; the reference hook preserves these additive fields.
 Checkpoint metadata does not grant authority or certify evidence automatically.
 
 `hooks/supervisor/record-ledger.py` is an opt-in, host/tool-neutral POSIX reference
@@ -395,8 +641,9 @@ Supervisors act as an unbiased **Curation Firewall** across child dispatches:
 - **Reviewer Dispatches:** Supervisors preserve the original contract and forward the remediation diff and specific objective criteria from the ledger
   ("Verify whether finding F1 is resolved, without regressions"). Supervisors strictly suppress implementor rationalizations,
   apologies, or explanations that would soften adversarial review or prompt iterative goalpost-moving.
-- **QA Runner Dispatches:** Supervisors forward strictly original DoD, test commands, and workspace changes, filtering out
-  subjective code-quality opinions or developer commentary.
+- **QA Runner Dispatches:** Supervisors forward assigned checks, exact commands,
+  workspace/runtime changes and original DoD as reference, filtering out subjective
+  code-quality opinions or developer commentary. QA does not audit the entire plan.
 - **Expert Debugger Dispatches:** Supervisors forward strictly objective failing gate/test logs, breached contracts, and diffs,
   filtering out conversational histories.
 

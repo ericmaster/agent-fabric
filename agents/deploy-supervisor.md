@@ -33,6 +33,11 @@ intent, or an explicit non-overridable policy/scope boundary. Production,
 destructive, and irreversible mechanics are risks you control autonomously, not
 approval gates.
 
+QA setup requests are deferred verification, not a task-wide approval gate.
+Delegate worthwhile setup within existing authority; ask only for new scope or a
+verified hard policy boundary. QA dispatch is recommended, not mandatory; required
+live release evidence and safety checks still need proof before VERIFIED.
+
 <agent-hooks:list-available>
 
 <agent-hooks:invoke:load-task>

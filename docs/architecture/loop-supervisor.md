@@ -38,15 +38,25 @@ flowchart TD
 
         REV["③ Independent code-reviewer\nresume its own review session\n(original contract + delta + evidence)"]
 
-        QA["④ Dispatch qa-runner\n(validated packet · runtime, persistence,\npayload + visual evidence)"]
+        QA_DECIDE{"④ QA adds needed evidence?\nloop-supervisor discretion"}
+        QA["Optional qa-runner\nassigned checks only · existing tooling"]
+        DEFER["Record deferred QA\ncause + unrun checks + receipt\ncommunicate upward; continue implementation"]
+        WAIT["IN_PROGRESS · wait for native completion\nno duplicate dispatch or unchanged audit"]
 
         RECONCILE["⑤ Reconcile all reports\nagainst original task\n(runtime facts authoritative for behavior;\nstatic analysis for code contracts)"]
     end
 
     BRIEF -->|"validated implementor packet"| IMPL
     IMPL -->|"validated review packet"| REV
-    REV -->|"validated QA packet"| QA
-    QA --> RECONCILE
+    REV --> QA_DECIDE
+    QA_DECIDE -->|"run · validated QA packet"| QA
+    QA_DECIDE -->|"skip / reuse / defer"| RECONCILE
+    QA -->|"assigned evidence"| RECONCILE
+    QA -->|"execution blocker"| DEFER --> RECONCILE
+    IMPL -->|"still running"| WAIT
+    QA -->|"still running"| WAIT
+    WAIT -->|"implementor result arrives · resume recorded stage"| REV
+    WAIT -->|"QA result arrives · resume recorded stage"| RECONCILE
 
     subgraph "Outcome"
         RESULT{Verdict?}
@@ -69,7 +79,7 @@ flowchart TD
     RESULT -- "FAIL / BLOCKED" --> PRESERVE
     PRESERVE -->|"validated recovery packet"| DIAG_CTX
     PRESERVE -->|"known defect: resume author"| REBR
-    PRESERVE -->|"QA environment repaired: resume QA"| QA
+    PRESERVE -->|"QA-only capability failure"| DEFER
     PRESERVE -->|"context / authority / quota unavailable"| REPORT
     DIAG_CTX --> ATOMIC
     ATOMIC -- Yes --> SPLIT --> REPORT
@@ -122,8 +132,8 @@ flowchart LR
 | `post-delegate-implementor` | After implementor | Optional result handling before review |
 | `pre-delegate-code-reviewer` | Before code review | Optional task-specific preparation |
 | `post-delegate-code-reviewer` | After code review | Optional finding handling before QA |
-| `pre-delegate-qa-runner` | Before QA | Optional task-specific preparation |
-| `post-delegate-qa-runner` | After QA | Optional evidence handling before reconciliation |
+| `pre-delegate-qa-runner` | Only before selected QA dispatch | Optional task-specific preparation |
+| `post-delegate-qa-runner` | Only after selected QA return | Optional evidence handling before reconciliation |
 | `pre-delegate-expert-debugger` | Before diagnostic | Optional recovery preparation |
 | `post-delegate-expert-debugger` | After diagnostic | Optional remediation-brief handling |
 
@@ -139,7 +149,7 @@ Curation Firewall across all subagent dispatches:
 
 - **Implementor Packets:** Forward only objective finding definitions (`F1: lease boundary equality in path:line`) and failing test gates; strip subjective reviewer rhetoric.
 - **Code Reviewer Packets:** Forward only remediation diff and objective criteria to verify ("Verify whether finding F1 is resolved, without regressions"); suppress developer rationalizations or apologies.
-- **QA Runner Packets:** Forward strictly original DoD, test commands, and workspace changes; filter out subjective code-quality opinions.
+- **QA Runner Packets:** Forward assigned checks, commands and runtime changes, with original DoD as reference; filter subjective code-quality opinions.
 - **Expert Debugger Packets:** Forward strictly objective failing gate/test logs, breached contracts, and diffs; filter out conversational history.
 
 ```json
@@ -148,7 +158,7 @@ Curation Firewall across all subagent dispatches:
   "task_id": "<atomic-task-id>",
   "iteration": 1,
   "phase": "implementation|code_review|qa|diagnostic|reconciliation",
-  "status": "PASS|FAIL|BLOCKED",
+  "status": "PASS|FAIL|BLOCKED|IN_PROGRESS",
   "mutation_count": 1,
   "review_rejections": 0,
   "findings": [
@@ -180,5 +190,9 @@ Curation Firewall across all subagent dispatches:
 ```
 
 `PASS` requires every original DoD item and every mandatory gate to have concrete passing evidence.
-An exhausted atomic scope returns terminal `FAIL` with `recovery.mode: exhausted`;
-budget exhaustion alone is never an external blocker.
+An exhausted episode returns `FAIL` with `recovery.mode: exhausted`; explicit user
+continuation may authorize evaluation of a distinct two-mutation episode. Historical
+counters and hard caps remain. QA is recommended, not mandatory: record run/skip/reuse/
+defer, preserve unverified checks and expose implementation readiness separately from
+acceptance. Running children are IN_PROGRESS. Reduced delivery reuses the accepted,
+verified deployed revision and declares implemented/deferred/still-defective behavior.

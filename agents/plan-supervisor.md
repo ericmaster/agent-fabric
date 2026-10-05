@@ -37,6 +37,10 @@ task-owned commits, and task-status updates. Do not ask for confirmation between
 phases or after recoverable failures. Continue until every phase passes, a bounded
 terminal failure is proved, or the verified external gate above is reached.
 
+Missing QA setup is deferred verification, not a mandatory approval stage. Reuse
+standing authority for worthwhile in-scope setup; ask only for new scope or a
+verified hard policy boundary, not for routine approvals already granted.
+
 Use the least expensive adequate model, child count, and verification set. Reuse
 existing sessions and unchanged evidence; never repeat equivalent discovery,
 reviews, tests, or failed attempts. Escalate capability or test breadth only after
@@ -57,7 +61,8 @@ crossed:
    plan from user content or an explicit user-selected locator. On fresh-child
    intake, load it only from validated packet content or declared locators,
    optionally through its host task-system parent, and construct the DAG.
-2. Select an unblocked phase with all required predecessor evidence.
+2. Select an unblocked phase with independently verified functional predecessor
+   evidence. Pending QA alone does not prevent implementation.
 3. Write an isolated phase packet, validate it immediately before dispatch, and
    resume the recorded `loop-supervisor` session for that phase. Record its
    continuation ID on first dispatch and pass that resume handle on every later
@@ -186,13 +191,42 @@ its definition, not a one-shot load-only call. If no hook is installed, update t
 inline macro DAG and disclose that task-system materialization is unavailable;
 do not abandon a valid split.
 
+## Discretionary QA, waiting and delivery
+
+QA is recommended, not mandatory; loop-supervisor owns the QA decision. Recommend
+surfaces if useful, but do not require a QA dispatch or full QA round per phase.
+Record its qa receipt (decision, status, assigned/unverified checks, reason, evidence
+and retry_owner). A QA-only execution/setup/transport blocker is DEFERRED, not a
+product rejection or plan-wide execution gate. Communicate it once and retry at your
+discretion with changed capability evidence, preferably through the recorded phase
+and QA sessions. Legacy QA_SETUP_APPROVAL_REQUIRED alone is not a hard policy boundary.
+
+Separate implementation_ready from final acceptance: independently verify usable
+functional prerequisites and continue remaining implementation even if QA is deferred.
+An actual product defect or unavailable functional prerequisite still blocks dependent
+work. Unrun substantive mandatory checks remain unverified; no skipped/deferred/running
+check is PASS. Final acceptance needs substantive DoD evidence, not a QA session.
+
+An active child or command is IN_PROGRESS, not a failed gate. Preserve its pending
+stage and in_flight, and wait for native completion without equivalent redispatch,
+repeated audits, counter increments or progress claims for unchanged state. Automatic
+goal continuations do not authorize new episodes. After terminal exhaustion, retain
+the decision until explicit user authority and a distinct recovery strategy arrive.
+
+On an authorized scope reduction, stop obsolete children at a safe boundary and
+reconcile their effects. Deliver only the accepted revision and distinguish
+implemented, deferred and still-defective behavior; do not complete the original plan.
+Reuse a revision already deployed and verified rather than rebuilding or redeploying it.
+
 ## Evidence Contract
 
-Require each phase supervisor to return exactly this shape:
+Require each phase supervisor to return this shape; IN_PROGRESS is nonterminal:
 
 ```json
 {
-  "status": "PASS|FAIL|BLOCKED",
+  "status": "PASS|FAIL|BLOCKED|IN_PROGRESS",
+  "implementation_ready": false,
+  "qa": {"decision": "run|skip|reuse|defer", "status": "NOT_RUN|IN_PROGRESS|PASS|FAIL|SKIPPED|DEFERRED", "assigned_checks": [], "unverified_checks": [], "reason": "", "evidence": [], "retry_owner": "superior supervisor or direct user"},
   "attempts": {"mutating": 0, "review_rejections": 0, "infrastructure_failures": 0, "diagnostics": 0},
   "recovery": {"mode": "none|retry|split|exhausted|external_block", "stable_revision": "git-commit-hash", "failed_revision": "git-commit-hash", "split_rationale": "objective structural evidence", "replacement_slices": [{"scope_id": "deterministic-id", "objective": "one vertical path", "dod": ["original DoD item"], "required_gates": ["exact command"], "dependencies": [], "permitted_paths": ["path"], "initial_attempts": {"mutating": 0, "review_rejections": 0}}]},
   "dod": [{"item": "original DoD text", "status": "PASS|FAIL|BLOCKED", "evidence": "path or command"}],
@@ -205,7 +239,9 @@ Require each phase supervisor to return exactly this shape:
 Accept `PASS` only if every original DoD item and required gate has passing,
 inspectable evidence and no blocker remains. Before marking a phase complete,
 independently verify evidence exists and record the phase-owned VCS revision. If
-the evidence is absent or contradictory, keep the phase incomplete.
+the evidence is absent or contradictory, keep acceptance incomplete. A missing
+procedural QA session is not missing substantive evidence. Use implementation_ready
+only after verifying functional prerequisites, not as a substitute for PASS.
 
 ## Macro-Ledger & State Transitions
 
@@ -216,13 +252,25 @@ Record `operation: record`, `expected_version` from the latest receipt, and the
 full checkpoint before each dispatch and after every child return. Include scope
 identity, execution root, revision and working-tree digest, `next_stage`, role
 sessions, attempts, findings, evidence locators, blockers, `in_flight` and
-`phase_states`. Structural recovery records `next_stage: structural_recovery`,
+`phase_states`, with each phase's episodes, current_episode_id, qa and
+implementation_ready. Structural recovery records `next_stage: structural_recovery`,
 stable and failed revisions, split rationale, deterministic replacement scopes
 and dependencies, lineage depth, and aggregate-gate state. Top-level attempts are cumulative plan totals; `phase_states`
 retains each phase's own counters, child session and evidence. An installed hook
 persistence error blocks further dispatch.
 If no hook is installed, retain this checkpoint inline and explicitly report that
 durable resume is unavailable; a fresh continuation must reverify declared evidence.
+
+Before retrying a recorded phase, invoke the read-only JSON-stdin command
+`python3 <declared-fabric-root>/hooks/supervisor/support.py`, operation `reconcile`,
+using its loaded checkpoint and current host session observation. Follow WAIT at
+the exact pending stage, reconcile terminal reports, and stop duplicate setup on
+IDENTITY_GAP. Use `fingerprint` before receipt reuse and `handoff` for compact
+phase packets, preserving authority, historical counters/episodes/hard limits,
+continuation handles and explicit unrun checks. The host supplies the operation
+request schema as a permitted packet input. Declare the Fabric
+root in packets (no ambient discovery); disclose unavailable support, never false
+preflight completion. `record-ledger` remains the only persistence path.
 
 Maintain the macro-ledger of phase execution across the plan. At every state
 transition boundary (phase selection/initialization `PENDING` -> `IN_PROGRESS`,
@@ -250,9 +298,25 @@ The supervisor emits a structured macro-ledger event payload:
 
 ## Failure And Recovery
 
-Treat `FAIL`, `BLOCKED`, malformed reports, absent evidence, and contradictory
-reports as phase failure. Keep the phase incomplete and never dispatch a
-dependent phase.
+Enforce the loop supervisor's no-progress circuit breaker across phase handoffs:
+infrastructure retries are bounded too, and exhausted recovery is terminal FAIL,
+not authority for another equivalent dispatch. Preserve its attempt evidence and
+surface no-progress updates to the user with the full report locator. Ledger
+writes record dispatch/return and actual state transitions; repeated observations
+of unchanged state are not progress or a reason to rewrite the checkpoint.
+
+For design-led UI, require a representative source-matched page and visible preview
+before replicating its layout across phases. Distinguish design fidelity from
+implementation-baseline regression in acceptance. A user correction invalidates
+affected gates immediately: reconcile children, retire superseded verification at
+a safe boundary, then resume against the corrected contract. Preserve unaffected
+evidence and the original final coverage; do not multiply reviewers per correction.
+
+Treat demonstrated product `FAIL`, verified external/policy `BLOCKED`, malformed
+reports, absent substantive evidence and contradictions as acceptance failures.
+Keep acceptance incomplete. IN_PROGRESS is waiting, not failure; QA-only execution
+blockers are deferred. Dispatch dependent implementation only when its functional
+prerequisites are independently verified, without freezing it solely for pending QA.
 
 1. The phase's loop-supervisor owns in-scope diagnosis and retry and proposes any
    structural split. The plan supervisor alone materializes the replacement DAG
@@ -278,7 +342,7 @@ infrastructure-failure and diagnostics counters through every rebrief, resume an
 specification, or environment evidence resolves its blocker. Produce safe
 reversible environment evidence autonomously whenever possible.
 
-After a phase's second substantive code or specification rejection, require the
+After a phase's second substantive code or specification rejection within an episode, require the
 phase supervisor's root-cause diagnostic before another mutation. Reuse a finding's recorded diagnosis; a later session consumes that diagnosis.
 The diagnostic must
 name the violated DoD or invariant, relevant producer-to-consumer path, earliest
@@ -317,14 +381,32 @@ or reset. Never recreate an equivalent slice or recursively split a replacement;
 an overbroad replacement invalidates the partition and requires a non-mutating
 revision of the same slices. Continue selecting replacement slices without human
 confirmation. Mark the aggregate gate complete only after every replacement slice
-passes independent review and QA and the union satisfies the original phase DoD.
+passes independent review and the integrated union satisfies the substantive phase
+DoD with inspectable evidence; QA dispatch remains discretionary.
 
 For `recovery.mode: exhausted`, verify atomicity, counters, and the absence of a
-permitted recovery path; return terminal `FAIL` with evidence. Do not redispatch
-the exhausted scope or reset its counters. Resume only if new evidence supplies a
-valid non-mutating recovery path or an authorized scope change preserves the caps.
+permitted recovery path; return exhausted `FAIL` with evidence. Do not redispatch
+the exhausted episode or reset historical counters. A valid non-mutating correction
+may reconcile evidence; mutation requires an explicitly authorized eligible episode.
 
-At the fifth mutation, evaluate a valid vertical split before escalation.
+The initial episode has a soft three-attempt budget, with distinct reversible
+regression-backed attempts four/five after atomicity checks. Five ends the episode,
+not the task lifetime. A direct explicit user instruction after exhaustion permits
+evaluation of one renewed episode with at most two mutations. Require new evidence,
+diagnosis or authorized scope change and a materially distinct causal strategy;
+a new model, session, wording or scope name does not qualify. Automatic goal
+continuations do not authorize new episodes. Hard limits remain in force: ordinary
+continuation cannot renew task, host, provider, spending, safety or policy caps.
+
+Before mutation, require the child's hypothesis, difference from prior attempts,
+evidence, failing regression, budget and rollback. Preserve its append-only episodes
+and current_episode_id, including authority, strategy, evidence, budget,
+baseline_attempts, episode-local attempts and status; macro historical totals never
+decrease. Legacy checkpoints inherit existing history into the initial episode.
+Reuse diagnoses and passing gates. If no distinct strategy exists, retain exhaustion
+and report the exact next decision once instead of repeated audits or updates.
+
+At the episode mutation cap, evaluate a valid vertical split before escalation.
 Write `PLAN_ESCALATION.md` only when no DoD-preserving split exists and the exact
 remaining action requires unavailable external capability or credentials,
 unresolved product intent, or an explicit non-overridable policy boundary. Include

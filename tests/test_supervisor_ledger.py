@@ -63,6 +63,51 @@ class LedgerTests(unittest.TestCase):
                 self.assertEqual(restored["checkpoint"], self.request["checkpoint"])
                 self.request["expected_version"] = receipt["version"]
 
+    # Spec: docs/specs/agent-fabric.md — episodes, deferred QA and waiting
+    def test_renewed_episode_preserves_history_and_deferred_qa(self):
+        checkpoint = self.request["checkpoint"]
+        checkpoint["attempts"]["mutating"] = 5
+        checkpoint["episodes"] = [{
+            "id": "episode-1", "authority": "original-request",
+            "strategy": "initial implementation", "evidence": [], "budget": 5,
+            "baseline_attempts": {key: 0 for key in ledger.COUNTERS},
+            "attempts": copy.deepcopy(checkpoint["attempts"]), "status": "exhausted",
+        }]
+        checkpoint["current_episode_id"] = "episode-1"
+        self.run_hook(self.request)
+        self.request["expected_version"] = 1
+        checkpoint["episodes"].append({
+            "id": "episode-2", "authority": "explicit-user-message-2",
+            "strategy": "stable row identity instead of position",
+            "evidence": ["evidence/root-cause.log"], "budget": 2,
+            "baseline_attempts": copy.deepcopy(checkpoint["attempts"]),
+            "attempts": {key: 0 for key in ledger.COUNTERS}, "status": "active",
+        })
+        checkpoint["current_episode_id"] = "episode-2"
+        checkpoint["qa"] = {
+            "decision": "defer", "status": "DEFERRED",
+            "assigned_checks": ["browser row identity"],
+            "unverified_checks": ["browser row identity"],
+            "reason": "browser unavailable", "evidence": ["evidence/qa.log"],
+            "retry_owner": "plan-supervisor",
+        }
+        checkpoint["implementation_ready"] = True
+        checkpoint["next_stage"] = "implementation"
+        checkpoint["in_flight"] = {"dispatch_id": "fix-2", "role": "implementor", "session_id": "worker-1"}
+        receipt = self.run_hook(self.request)
+        restored = self.run_hook({"operation": "load", "tier": "micro", "task_id": "TASK-1"})
+        self.assertEqual(restored["checkpoint"], checkpoint)
+        self.assertEqual(restored["checkpoint"]["attempts"]["mutating"], 5)
+        self.assertEqual(restored["checkpoint"]["episodes"][1]["attempts"]["mutating"], 0)
+        self.assertEqual(restored["checkpoint"]["sessions"]["implementor"], "worker-1")
+        state = json.loads(Path(receipt["path"]).read_text())
+        self.assertEqual(state["version"], 2)
+        self.assertEqual(state["events"][0]["status"], "PASS")
+        self.request["expected_version"] = 2
+        checkpoint["attempts"]["mutating"] = 0
+        with self.assertRaisesRegex(ValueError, "cannot decrease"):
+            self.run_hook(self.request)
+
     # Spec: docs/specs/agent-fabric.md via stale-write rejection
     def test_stale_writer_and_counter_reset_leave_state_unchanged(self):
         receipt = self.run_hook(self.request)

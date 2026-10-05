@@ -30,7 +30,7 @@ flowchart TD
     LT --> PREVAL --> DEC
 
     subgraph "Phase Selection Loop"
-        SEL["② Select unblocked phase\nwith all predecessor evidence ready"]
+        SEL["② Select unblocked implementation\nwith verified functional prerequisites"]
         BRIEF["Write and validate\nself-locating phase packet"]
         DISPATCH["③ Resume recorded loop-supervisor\nnew session only on new resolving authority / approved scope identity change / unavailable recorded continuation\ncontext length: resume or BLOCKED\nvalidated packet + checkpoint"]
     end
@@ -44,6 +44,10 @@ flowchart TD
     end
 
     DISPATCH --> VERIFY --> RESULT
+    RESULT -->|"IN_PROGRESS · active child"| WAIT["Preserve in-flight receipt\nwait for completion without duplicate audits"]
+    WAIT -->|"result arrives"| VERIFY
+    RESULT -->|"implementation_ready + QA deferred"| QA_PENDING["Keep acceptance incomplete\nrecord QA receipt; discretionary retry"]
+    QA_PENDING --> SEL
 
     subgraph "Recovery"
         FAIL_CLASS["Classify failure\nenvironment · defect · spec-drift · flaky"]
@@ -126,7 +130,9 @@ The Plan Supervisor acts as a curation firewall between phases:
 |---|---|
 | Successful non-final phase | Continue immediately — no human pause |
 | Phase explicitly `operator-required` | Pause and wait for human action |
-| Recovery budget exhausted | Evaluate stable-base split; if still atomic, terminal FAIL with exhausted disposition |
+| Episode budget exhausted | Preserve history; explicit user continuation may open a distinct bounded episode; hard limits remain |
+| QA execution blocker | Record deferred checks; retry at discretion, continue implementation with verified functional prerequisites |
+| Child or command still running | IN_PROGRESS; wait, no equivalent dispatch or repeated audits |
 | No DoD-preserving split and verified external gate | Produce `PLAN_ESCALATION.md`; stop |
 | Irreversible mechanics within scope | Apply proportional controls; stop only for a verified external boundary or terminal failure |
 
@@ -145,4 +151,7 @@ The Plan Supervisor acts as a curation firewall between phases:
 
 The plan supervisor integrates accepted slice outputs into one recorded revision;
 dependent slices consume verified predecessor changes. Aggregate acceptance runs
-against that integrated revision. Exhausted atomic scopes are not redispatched.
+against that integrated revision. Exhausted episodes are not redispatched without
+eligible explicit user authority. QA is recommended and owned by loop-supervisor;
+acceptance requires substantive evidence, not a QA session. Reduced delivery reuses
+the verified deployed revision and declares deferred and defective behavior.

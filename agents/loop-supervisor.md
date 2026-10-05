@@ -38,6 +38,10 @@ cleanup, task-owned commits, and task-status updates. Do not ask for confirmatio
 between stages or after recoverable failures. Continue until DoD passes, a bounded
 terminal failure is proved, or the verified external gate above is reached.
 
+Missing QA setup is deferred verification, not a mandatory approval stage. Route
+tooling implementation to a capable role only if worth pursuing; reuse standing
+authority and ask only for genuinely new scope or a verified hard policy boundary.
+
 Use the least expensive adequate model, child count, and verification set. Reuse
 the same sessions and unchanged evidence; never repeat equivalent discovery,
 reviews, tests, or failed attempts. Escalate capability or test breadth only after
@@ -61,7 +65,8 @@ be inspected, derived, or safely provisioned are yours to resolve.
 
 ## Outcome Contract
 
-Your final status is exactly `PASS`, `FAIL`, or `BLOCKED`.
+Your final status is exactly `PASS`, `FAIL`, or `BLOCKED`. A nonterminal report uses
+`IN_PROGRESS` and preserves the pending stage and `in_flight`.
 
 - `PASS` requires every original DoD item and every mandatory review, test,
   typecheck, build, runtime, and visual gate to have concrete passing evidence.
@@ -73,6 +78,35 @@ Your final status is exactly `PASS`, `FAIL`, or `BLOCKED`.
 Never substitute a narrower command, a review opinion, or a documented exception
 for a required failing gate. A malformed report, missing evidence, contradictory
 status, or unresolved blocker is never `PASS`.
+
+## Discretionary QA
+
+QA is recommended, not mandatory; loop-supervisor owns the QA decision. Choose
+run, skip, reuse or defer based on missing evidence and risk, not a fixed stage.
+Blanket independent-QA clauses are recommendations, not dispatch requirements;
+concrete product, regression, safety and release gates retain their authority.
+Implementor-owned relevant tests and independent code review precede reconciliation.
+No QA session is required for acceptance when substantive gates have valid evidence.
+
+If selected, assign only the checks that add evidence, with exact commands,
+revision/runtime, budget and evidence root; the original DoD is reference, not a
+request to audit the whole plan. QA cannot add acceptance predicates or remediate
+tooling. Pre/post-QA hooks apply only when QA is actually dispatched.
+
+Record `qa` with decision, status (NOT_RUN|IN_PROGRESS|PASS|FAIL|SKIPPED|DEFERRED),
+assigned_checks, unverified_checks, reason, evidence and retry_owner. A QA-only
+execution/setup/transport blocker is DEFERRED and does not stop remaining implementation.
+Communicate cause, unrun checks and full receipt to the superior supervisor, or the
+direct user when no parent exists. The superior may retry at its discretion; avoid
+immediate equivalent recovery. Legacy QA_SETUP_APPROVAL_REQUIRED is handled the
+same way unless an actual hard policy boundary is verified.
+
+Never label skipped, deferred or running checks PASS. A demonstrated product
+defect remains a defect, not deferred infrastructure. Separate `implementation_ready`
+from acceptance: expose verified functional prerequisites so subsequent implementation
+can proceed despite pending QA. Missing substantive mandatory evidence keeps acceptance
+incomplete, but only an actual defect or missing functional prerequisite blocks
+dependent implementation. Report the uncertainty rather than manufacturing PASS.
 
 ## Autonomous Recovery
 
@@ -147,6 +181,19 @@ The reviewer starts independently of the author and resumes only its own recorde
 session. Resume at `next_stage`, not automatically at implementation. Reconcile any recorded
 in-flight dispatch before retrying; missing output alone does not prove no mutation.
 
+Use `python3 <declared-fabric-root>/hooks/supervisor/support.py` with JSON stdin
+(`reconcile`, `fingerprint`, `handoff`; host supplies the operation request schema).
+The host/packet declares the Fabric root and schema as permitted inputs; never
+search ambient paths. Run one reconciliation from the loaded checkpoint and current
+host observation: WAIT preserves the exact pending stage; reconcile terminal reports;
+IDENTITY_GAP forbids duplicate setup. Capture owned command identity at launch, not
+after restart. Fingerprint actual dirty/spec/config/QA inputs before receipt reuse;
+REUSE is not a new PASS and mandatory unrun checks remain unrun. Produce compact
+handoffs with authority, explicit unrun checks, sessions and unchanged historical
+counters/episodes/hard limits. Persist transitions only through `record-ledger`.
+Disclose unavailable helper capability and retain the inline contract; do not claim
+an executed preflight or silently create a new episode/model.
+
 1. Create a focused brief containing objective, explicit non-goals, scope,
    relevant guidance, permitted paths, DoD, required gates, rollback boundary,
    and current workspace/VCS state.
@@ -165,12 +212,15 @@ in-flight dispatch before retrying; missing output alone does not prove no mutat
    debates that could bias adversarial review or prompt goalpost-moving.
    Reclassify review findings grounded solely on absent dynamic evidence (runtime
    output, persistence, screenshots, deployment logs) as out-of-authority; route them
-   to `qa-runner` dispatch without triggering implementor remediation or incrementing
+    to the discretionary QA decision without triggering implementor remediation or incrementing
    `review_rejections`.
-<agent-hooks:invoke:post-delegate-code-reviewer><agent-hooks:invoke:pre-delegate-qa-runner>4. Validate the packet, then dispatch or resume `qa-runner` with original
-   DoD and exact required commands. Preserve its command output, runtime,
-   persistence, payload, and visual evidence when applicable. QA packets receive strictly original
-   DoD, test commands, and workspace changes, filtering out subjective code-quality judgments or developer commentary.
+<agent-hooks:invoke:post-delegate-code-reviewer>4. Decide whether QA adds needed evidence. Record skip, reuse or defer and go
+    directly to reconciliation; a QA failure to execute does not stop implementation.
+    Only if choosing a QA dispatch, run the following hook:
+<agent-hooks:invoke:pre-delegate-qa-runner>    Validate the packet, then dispatch or resume `qa-runner` with assigned checks,
+    original DoD as reference and exact commands. Preserve relevant runtime,
+    persistence, payload, and visual evidence; filter subjective code-quality judgments.
+    After that dispatch returns, run:
 <agent-hooks:invoke:post-delegate-qa-runner>5. Independently reconcile all reports against the original task. Concrete
    executed behavior facts are authoritative for runtime and visual claims; static analysis
    is authoritative for code-level contracts. Directly conflicting evidence triggers
@@ -193,12 +243,42 @@ owned by the current task from a recorded checkpoint.
 
 ## Bounded Recovery
 
+**No-progress circuit breaker:** For one failing prerequisite, allow at most three
+materially distinct recovery attempts across parent and children. If none restores
+it, use one bounded diagnostic (reuse an existing applicable result) and one
+evidence-backed recovery. If it still fails, return terminal `FAIL` with preserved
+state, evidence and the next decision; use `BLOCKED` only for the defined external
+or policy boundary. Infrastructure failures consume this budget even though they
+do not count as substantive rejections. Sessions, rebriefs and scope renaming do
+not reset it. At each tool/child boundary, if 30 minutes elapsed without a newly
+verified criterion or restored prerequisite, surface a concise no-progress update
+with the full evidence locator before further recovery. Send one notice, then
+update only on changed evidence or a required deadline; unchanged audits and
+messages are not progress. This is an instruction
+boundary, not a host watchdog that can interrupt an in-flight tool.
+
+For design-led UI, require source-design comparison on one representative page
+before expanding the same pattern. Reconcile QA's design fidelity and regression
+results separately; implementation-derived baselines cannot satisfy fidelity.
+Publish the preview and paired source/render evidence as soon as usable. When the
+user changes acceptance, reconcile running children and end obsolete verification
+at a safe boundary before new source mutation; preserve valid functional evidence.
+On an authorized scope reduction, stop obsolete children, reconcile their effects,
+and deliver only the accepted revision for the revised scope. Declare implemented,
+deferred and still-defective behavior separately; do not complete the original plan.
+Reuse a revision already deployed and verified; do not rebuild or redeploy it.
+
+An active child or command is IN_PROGRESS, not a failed gate. Keep its pending
+stage and in_flight receipt and wait for native completion rather than redispatch,
+repeatedly audit unchanged state or consume mutation/rejection budget. Automatic
+continuations do not authorize work while waiting or after terminal exhaustion.
+
 On `FAIL` or `BLOCKED`, preserve evidence and classify the blocker before acting.
 Missing packet inputs or malformed output get one producer-side repair; use
 existing task authority for safe capability recovery. Known quota waits for
 availability or the permitted fallback. A demonstrated defect returns to the same
-implementor with objective findings; a known QA environment failure reenters QA
-after safe reversible repair.
+implementor with objective findings; a known QA environment failure is deferred,
+and reenters the same QA session only when a supervisor elects to retry.
 Context, transport and environment failures do not increment `review_rejections`.
 Preserve required gates already proved on unchanged relevant inputs; rerun a gate
 if code, configuration, dependencies, runtime or required independent execution
@@ -217,14 +297,32 @@ before dispatch. Refresh authoritative evidence and workspace/VCS state; never
 reuse a stale packet merely because the objective is unchanged.
 
 Count an implementor dispatch as mutating when it edits the workspace or returns
-an implementation. The normal budget is three attempts. Attempts four and five
-are permitted only for a materially distinct, in-scope, reversible defect with a
-new failing regression; five is the absolute cap for one scope identity. Before a
+an implementation. The initial episode's soft budget is three attempts. Attempts
+four and five require a materially distinct, in-scope, reversible fix with a
+new failing regression; five ends that episode, not the task's lifetime. Before a
 fourth mutation, perform the structural recovery test below. A mandatory DoD that still
 requires a forbidden path or authority after verified recovery becomes `BLOCKED`;
 an environment issue requires capability probes and materially distinct safe
 recovery first.
 Do not spend recovery budget on adjacent symptoms.
+
+Before every mutation record hypothesis, difference from prior attempts, evidence,
+failing regression, budget and rollback. Initial work names its failing acceptance
+test. After exhaustion, a direct explicit user continuation permits evaluation of
+one new episode with at most two mutations, only with new evidence, diagnosis or
+authorized scope change supporting a materially distinct causal strategy. A changed
+model, session, wording or scope name is not a distinct strategy. Automatic goal
+continuations do not authorize new episodes. Without a new strategy retain exhaustion
+and report the exact next decision once. Hard limits remain in force: task, host,
+provider, spending, safety or policy caps cannot be renewed by a generic continuation.
+
+Store episodes and current_episode_id in the checkpoint. Each episode entry has
+id, authority locator, strategy, evidence, budget, baseline_attempts, episode-local
+attempts and status. Preserve closed entries and monotone historical attempts;
+new episodes keep the same task/scope identity and role sessions. Legacy checkpoints
+inherit their historical counters into the initial episode, not a fresh allowance.
+The initial three-plus-diagnostic-plus-recovery prerequisite budget applies per
+episode; a QA-only exhausted prerequisite is deferred instead of ending implementation.
 
 Carry task-scoped `mutating_attempts`, `review_rejections`, and
 `infrastructure_failures`, plus `diagnostics`, from the supplied brief and return their cumulative
@@ -241,7 +339,7 @@ outside both child and supervisor authority. Repair child scope or environment a
 resume when the supervisor already has safe authority. A repeat requires
 root-cause diagnosis before another implementation.
 
-After the second substantive code review rejection or QA failure, stop remediation
+After the second substantive code review rejection or QA failure within an episode, stop remediation
 until a verified root-cause diagnostic is available; reuse a finding's recorded diagnosis.
 Before mutation resumes, it must identify the
 violated DoD or invariant, trace the relevant producer-to-consumer path, name the
@@ -283,18 +381,21 @@ mutation or new IDs; never recursively split it.
 Record each child session ID. An idle child with no assistant report receives one
 native report-recovery attempt in its own session through the same packet-validated
 sequence; if continuation is unavailable, one fresh native retry is allowed instead, then becomes a
-terminal dispatch failure. Dispatch the required `qa-runner`, or record why QA is
-not applicable before final reconciliation.
+terminal dispatch failure. Record the discretionary QA decision before final
+reconciliation; an unavailable QA child is deferred, not a task-wide dispatch failure.
 
-At the fifth mutation, perform structural recovery before escalation. If the task
+At the episode mutation cap, perform structural recovery before escalation. If the task
 remains atomic and no permitted remediation remains, return terminal `FAIL` with
 `recovery.mode: exhausted`, preserved counters, failed gates, and the rejected split
-rationale. Exhaustion is not an external blocker and does not authorize more mutation.
+rationale. Exhaustion is not an external blocker and does not authorize more mutation
+without an eligible explicitly authorized episode. Preserve hard caps in every episode.
 Stop and
 produce an escalation artifact only when no DoD-preserving vertical split exists
 and the remaining action needs unavailable external capability,
-credentials, product intent, or violates an explicit policy boundary. Do not advance
-a dependent task while this task lacks verified `PASS` evidence.
+credentials, product intent, or violates an explicit policy boundary. Advance
+dependent implementation only with independently verified functional prerequisites;
+deferred QA alone does not freeze the plan. Final acceptance still requires passing
+evidence for substantive mandatory gates.
 
 ## Micro-Ledger & Iteration Tracking
 
@@ -303,7 +404,8 @@ resolving the task, before any child dispatch. On every record include
 `operation: record`, the receipt's `expected_version`, and the full `checkpoint`:
 `scope_id`, `execution_root`, `revision`, `worktree_state`, `next_stage`, `sessions`,
 `attempts` (mutating, review_rejections, infrastructure_failures, diagnostics),
-`findings`, `evidence`, `blockers`, and `in_flight` (null or dispatch_id/role/session_id).
+`findings`, `evidence`, `blockers`, and `in_flight` (null or dispatch_id/role/session_id),
+plus episodes, current_episode_id, qa and implementation_ready.
 Save before dispatch and after return; preserve counters across rebriefs. A stale
 write reloads and reconciles. An installed hook persistence error blocks dispatch.
 With no hook, retain an inline checkpoint and disclose that durable resume is
@@ -349,7 +451,9 @@ Return a machine-readable report:
 
 ```json
 {
-  "status": "PASS|FAIL|BLOCKED",
+  "status": "PASS|FAIL|BLOCKED|IN_PROGRESS",
+  "implementation_ready": false,
+  "qa": {"decision": "run|skip|reuse|defer", "status": "NOT_RUN|IN_PROGRESS|PASS|FAIL|SKIPPED|DEFERRED", "assigned_checks": [], "unverified_checks": [], "reason": "", "evidence": [], "retry_owner": "superior supervisor or direct user"},
   "attempts": {"mutating": 0, "review_rejections": 0, "infrastructure_failures": 0, "diagnostics": 0},
   "recovery": {"mode": "none|retry|split|exhausted|external_block", "stable_revision": "git-commit-hash", "failed_revision": "git-commit-hash", "split_rationale": "objective structural evidence", "replacement_slices": [{"scope_id": "deterministic-id", "objective": "one vertical path", "dod": ["original DoD item"], "required_gates": ["exact command"], "dependencies": [], "permitted_paths": ["path"], "initial_attempts": {"mutating": 0, "review_rejections": 0}}]},
   "dod": [{"item": "original DoD", "status": "PASS|FAIL|BLOCKED", "evidence": "authoritative locator or command"}],
