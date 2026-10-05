@@ -1,0 +1,64 @@
+# Task retrospective — planning evidence and decisions
+
+## Current approved scope — supersedes earlier four-phase discussion
+
+User instruction: “leave the claude code adapter (phase 4) for a postponed future outside of the plan. Aside from that plan looks ok, so proceed projecting children.” The current canonical plan therefore contains only Phases 1–3. Claude observation/native tests/cross-adapter acceptance are deferred outside this plan, with no child or prerequisite. Preserve harness-neutral contracts; do not implement another harness speculatively. Phase 1–3 implementation blocks and DoDs are unchanged from the independently accepted body; only the leaf Phase 4 and parent scope/completion/baseline text changed. Reuse prior review coverage; the two-pass review cap is exhausted and no third review was requested.
+
+Refinement eligibility checked before writes: live parent `dd890ab6-9752-4f29-a538-331429744480` still carried `plan:proposed`, project child listing had one total item and zero children, no approved/projected label. Refreshed repository HEAD `e07752c889d00993f086bb83f81f337b158dd401`; user adapter edits and additional `docs/specs/agent-fabric.md` changes are preserved. An untracked `.agents/` exists and is not planner-owned. This message is explicit approval for projection of Phases 1–3; hook receipt must quote the authority and affected phases. No live activation/deployment authority is implied.
+
+Projection receipt: stored three-phase body validated with SHA256 `ad21367d997c4569a768bbbb9c186763ca2f8b29a43bef68d6e7253d2e6dbcac`; post-plan updated the same parent. First decompose invocation found missing board labels `plan:approved` and `triage:blocked`; created those exact required labels through the first-party Plane client, then retried. Decompose validated the Plane-normalized body (SHA256 `6fd9cfc4d8870cf056da054756e136686c076db6807fb2ae0d71b61143ca4dea`) and returned `phases=3 existing=0 to_create=3 projected=True`. Hook-managed receipts are under R/.agents/task-retrospective-projection; planner did not inspect their storage or execution ledgers.
+
+Live API read-back: project identifier AGF; parent AGF-1 (`dd890ab6-9752-4f29-a538-331429744480`); Phase 1 AGF-2 (`72bbe5e0-d075-472e-bd25-4a6392fced5d`); Phase 2 AGF-3 (`4dad9df1-fc70-47da-9906-e9d790b60b5e`); Phase 3 AGF-4 (`4a8ec686-f06f-4980-a5ff-8068b9abe3e1`). Fully paginated child listing has exactly three children and no Claude child. Native relations verify AGF-3 blocked_by AGF-2, AGF-4 blocked_by AGF-3. Parent now carries `triage:blocked`. The projector summary uses generic `plan-2/3/4` text; use the verified IDs above, not those summary aliases. Handoff task identifier is AGF-1. Current operator request is projection; supervisor reconciliation is read-only, not permission to start implementation or activate the feature.
+
+Projection-only supervisor reconciliation: native general carrier loaded the canonical plan-supervisor role with a read-only packet (session `ses_f0c31b189ffePfe0bBr3tCgjaY`). PASS: exactly three children, correct title/spec/implementation scope, 14/14 matching DoDs and correct native dependency edges. No implementation/state changes. Caveat: host projection omits phase-specific rollback/risk fields and condenses the parent into a summary. Any future execution handoff MUST include the complete canonical R/.artifacts-manager/plan-task-retrospective.md in addition to Plane IDs, not rely on child descriptions alone. Claude remains excluded. No new review pass was conducted.
+
+## Authority and destination
+
+Direct user request in this conversation: make an implementation plan for Agent Fabric. No request to execute this plan or deploy now. Future feature authority: automatic text corrections in a visible root session, but verified harness/tool bugs require suggestions for review. User accepted recommendations except where the subsequent questionnaire overrides them.
+
+Root R: `/home/ericmaster/tools/agent-fabric`; HEAD `151a77d1114ed7b565a8a0f25540b1260ae0c26c`. Shared checkout, no isolated implementation workspace. Preexisting modifications: `adapters/codex.json`, `adapters/kilo.json`, `adapters/opencode.json`; do not absorb or overwrite them. This planning session owns only the new questionnaire, plan, this evidence note and corresponding artifact registration.
+
+## Authoritative questionnaire answers (verbatim)
+
+- Q1: “For determining task success it should only be user messages + final response + last 10 steps. If task success then send full redacted trace in paginated batches depending on Jev context window allowance. Keep it simple.”
+- Q2: “Global opt-in, all text corrections. Keep it simple.”
+
+Interpretation: no per-project enrollment or per-skill allowlist. One explicit global enable applies across owned accessible workspaces and canonical instruction sources. “All text corrections” refers to the already-established context/instructions/system-prompts/skill/runbook domain, not arbitrary application source merely stored as text. Do not weaken permissions, approval requirements or safety policy to make failures disappear. Execution bugs remain review-only even if a workaround could be described in a document. Unknown attribution remains advisory.
+
+User's success-only second-stage policy overrides the earlier suggestion to analyze failed/abandoned tasks. Final-answer-only success is replaced by the exact requested three-part payload. A success verdict is a learning gate, not a supervisor acceptance certificate. If that bounded evidence cannot establish success, abstain; do not fetch more evidence for the first-stage model request.
+
+## Grounding
+
+- R/AGENTS.md and R/docs/specs/agent-fabric.md: portable provider-neutral canonical agents, adapter-owned model mappings, guarded install/sync, canonical-source editing; no runtime dispatch engine currently.
+- R/cmd/agent-fabric/main.go: `install` (~862), `renderHookPlaceholders` (~638), `expectedManagedPath` (~818), `commitWrites` (~1060), `mergeManifest` (~1131), `uninstall` (~1277), `doctor` (~1322). Current manifest identity assumes target + agent; runtime assets need explicit identities and safe ownership handling, not fake agents.
+- R/internal/adapter/adapter.go: generic one-agent-file rendering; no existing plugin installer or native root-session creator. R/internal/agent/model.go and tests: schema/profile validation and canonical role contracts.
+- R/scripts/release.sh bundles hooks; R/scripts/bootstrap.sh currently copies agents/adapters, requiring packaging coverage for new runtime assets.
+- R/docs/specs/agent-fabric.md:306–381: supervisor persistence is not an event observer; preserve separation and do not use execution ledgers as the retrospective database.
+- Existing `/home/ericmaster/.agents/skills/auto-learn/SKILL.md`: skill-only changes with human confirmation; create a distinct portable `learning-corrector` role instead of silently altering that existing skill.
+- Read-only discovery child `ses_f0e969c68ffe83pv8u7c6Vso7W` supplied the code/test evidence map. No code changes or test execution by that child.
+- Local `opencode --version`: `1.18.32`. Current online docs span versions; implementation must pin and fixture-test adapter schemas, not combine incompatible SDK generations.
+- OpenCode docs: https://opencode.ai/docs/plugins/ and https://opencode.ai/docs/server/ — events trigger observation; POST /session supports optional parentID; omit parentID to create a root, read back to verify. Idle also follows failure/abort, so idle alone is never success.
+- Claude Code docs: https://code.claude.com/docs/en/hooks — Stop is per-turn, not guaranteed task success; PostToolUse/PostToolUseFailure and transcript_path support collection. This plan does not assert that Claude Code has a browser root-session creation API.
+- TypeSafe https://docs.typesafe.ai/models.md retrieved 2026-09-30: `jev-1.13.0`, 64k tokens state + all questions; 32k state + longest question. Versioned ID accepted; aliases can drift. https://docs.typesafe.ai/api and /primitives/choice: choice/probabilities/confidence; Jev does not generate prose diagnoses or patches. Confidence is not proof of correctness.
+
+## Selected smallest design and exclusions
+
+- Existing Go CLI owns normalized replay, Jev HTTP evaluation and a local spool worker. No new always-on service, message broker, web UI, MCP server or general workflow engine.
+- OpenCode TypeScript plugin and Claude native command hook are thin event/transcript adapters. All business rules and counters live once in Go.
+- First supported correction-session transport is a configured OpenCode server, regardless of observation source. This fulfills visible root sessions in the existing OpenCode/OpenChamber UI without inventing Claude browser APIs or using forbidden Claude autonomous delegation on this host. Transport has a small documented request/receipt contract; native Claude correction UI and other harness collectors are explicitly deferred.
+- Installation and activation are separate. Global enable is supported; no live enable, real transcript upload, production restart, release or deployment occurs during planning.
+- No hidden chain-of-thought collection. “Full trace” means all available observable task messages/actions/results plus relevant source provenance, with redaction and completeness accounting. No silent sampling.
+- Percentage counts unique tool attempts, not streamed update events. Missed requirements are separately classified because an omitted action cannot honestly be added to the tool-call denominator. Cross-page uncertainty must not become a fabricated exact percentage.
+- Root worker investigates cited sources independently, updates canonical files only, performs independent review and verification without a human approval pause for ordinary text fixes, and emits rollback evidence. Correction sessions/descendants do not recursively trigger learning.
+
+## Review and publication
+
+Canonical candidate: R/.artifacts-manager/plan-task-retrospective.md. Pre-plan and post-plan are host dispatchers under `/home/ericmaster/.agent-hooks/`; their contracts live in `/home/ericmaster/nimbler-ops/docs/specs/orchestrator-plan-hook.md` and `plan-artifacts.md`. Publication is proposal only; no decomposition/execution authority is inferred from future correction permissions.
+
+Independent review pass 1: `ses_f0dda2fbbffexDjDgTiYGJprl6`, PASS with medium improvements. Adopted: Phase 4 now explicitly consumes Phase 3's OpenCode decoder for cross-adapter acceptance rather than claiming independence; it provisions a native Claude fixture container/script for an authorized external test host. Actual native hook evidence remains mandatory and capability failure remains a named blocker, never replay-only acceptance. Host policy still forbids autonomous Claude delegation here. Review also noted the hook receipt digest differs from raw-file SHA256; revalidate the exact stored candidate after revisions and record the serialization distinction rather than asserting they are identical.
+
+Digest clarification: inspected host `orchestrator/plan_hook.py::validate_plan_body` (117–187) and `orchestrator/plan_parser.py::_html_to_text` (68–78) via graph tools. Markdown receipts hash `unescape(_html_to_text(body))`, not raw bytes when angle brackets invoke HTML parsing. Removed angle-bracket CLI placeholders and comparison text from the candidate so publication cannot silently lose argument names. Subsequent validation runs against the revised stored file. This is a planning-body correction, not an implementation fix to the host parser.
+
+Final independent review: resumed `ses_f0dda2fbbffexDjDgTiYGJprl6`, pass 2 ACCEPT/PASS, no remaining findings, all four phases passing. Final deterministic stored-body validation: VALIDATION_PASS, four phases, normalized body SHA256 `0036dff438b60576fbc95f25380bd3e65ef3f69e42a1d070f044b5e5de92a727`. Artifacts Manager static validation passed; local Playwright verified the canonical plan viewer returns HTTP 200 and shows the plan, and the questionnaire preserves both authoritative Other answers with two rendered diagrams and no page errors.
+
+Post-plan dispatcher returned status `ok`, parent UUID `dd890ab6-9752-4f29-a538-331429744480`, project UUID `918a0989-e8e4-4c22-8930-98454a497d26`, URL https://plane.nimblersoft.com/nimblersoft/projects/918a0989-e8e4-4c22-8930-98454a497d26/issues/dd890ab6-9752-4f29-a538-331429744480/ . Read-back confirmed that parent/project and stored name `plan-task-retrospective`, sequence 1. API identifier and plan_status fields were null; no fabricated short identifier or independently verified custom publication state is claimed. No children were projected, no execution dispatched, and no AGENT_TASK_IDENTIFIER was supplied by the hook. This receipt records planning publication only.

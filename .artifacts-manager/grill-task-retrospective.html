@@ -1,0 +1,92 @@
+<!-- Planning questionnaire; adapted from with-artifact/assets/grill-questionnaire.html. -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Agent Fabric — Task Retrospective Decisions</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <style>
+    body{background:#090d16;color:#f8fafc;font-family:system-ui;margin:0;padding:1.25rem}
+    .grill-card{background:#131b2e;border:1px solid #334155;border-radius:12px;padding:1.25rem;margin:1rem 0;min-width:0}
+    .grill-choice{display:block;padding:.75rem;border:1px solid #475569;border-radius:8px;cursor:pointer;margin:.5rem 0}
+    .grill-choice:has(input:checked){border-color:#818cf8;background:#312e8133}
+    .mermaid-container{overflow:auto;max-width:100%;padding:.5rem;background:#0f172a;border-radius:8px}
+    .mermaid-container svg{display:block;width:auto!important;height:auto!important;max-width:none!important}
+    pre.mermaid{white-space:pre-wrap}.mermaid[data-mermaid-state="error"]{color:#fca5a5}
+    textarea{width:100%;background:#0f172a;border:1px solid #475569;border-radius:8px;padding:.7rem;color:white;box-sizing:border-box}
+    button{background:#4f46e5;padding:.7rem 1rem;border-radius:8px}button:disabled{opacity:.5}
+  </style>
+</head>
+<body><main class="max-w-4xl mx-auto">
+  <h1 class="text-2xl font-bold">Task retrospectives → automatic instruction repair</h1>
+  <p class="text-slate-300 mt-3">Planning intake • Round 1 resolved. User answers below supersede the recommendations. No implementation, installation, or remote transcript submission has occurred.</p>
+  <section class="grill-card"><h2 class="font-bold text-cyan-300">Already settled</h2>
+    <ul class="list-disc pl-5 mt-2 space-y-1">
+      <li>Portable analyzer and correcting agent in Agent Fabric, with an OpenCode adapter. Subsequent user approval postpones the Claude Code adapter outside this plan.</li>
+      <li>Corrector starts as a separate, visible root session, not a hidden subagent. No silent headless fallback when UI visibility cannot be verified.</li>
+      <li>Automatic, evidence-backed corrections to canonical context, instructions, prompts and skill definitions; no repeated human approval for those scoped fixes.</li>
+      <li>Verified harness/tool bugs produce reviewable suggestions only. Uncertain attribution is not permission to edit.</li>
+      <li>Separate task success from process quality; include successful wrong-direction calls and failed/abandoned tasks. Treat reasonable exploration and expected test failures fairly.</li>
+      <li>Deduplicate findings, prevent learning loops, preserve unrelated edits, test repairs and retain rollback evidence. Never weaken security/approval policy to suppress a failure.</li>
+    </ul>
+  </section>
+  <header id="frontier-lock" data-locked="true" class="grill-card border-amber-600">
+    <strong class="text-amber-300">Frontier lock</strong><p class="text-sm mt-1">Only the two independent policy decisions below remain open. Recommended options are preselected, not yet approved. Copying exports answers only; it does not activate the feature.</p>
+    <label class="block mt-3"><input id="frontier-locked" type="checkbox" checked> Lock this round's scope</label>
+  </header>
+  <section id="questions"></section>
+  <footer class="grill-card">
+    <button id="copy-export" type="button">Copy answers</button><span id="export-status" role="status" class="ml-3 text-cyan-300"></span>
+    <p class="text-sm text-slate-400 mt-3">Paste the export in chat, or say “use the recommended choices.” Other answers are authoritative and need not match a listed choice.</p>
+    <label class="block mt-3 text-sm" for="export-preview">Export fallback — fenced Markdown plus JSON</label><textarea id="export-preview" rows="5" readonly></textarea>
+  </footer>
+  <section class="grill-card text-sm text-slate-300"><h2 class="font-bold">Grounding and proposed engineering defaults</h2>
+    <p class="mt-2">Agent Fabric is currently a compiler/installer, not a session runtime. Its prompt-time hooks are distinct from native runtime hooks. Root-session visibility therefore needs explicit integration tests, not just an agent's primary-mode label.</p>
+    <p class="mt-2">Proposed defaults: configurable avoidable-action rate above 5%, a minimum sample and repetition/severity exceptions; typed Jev judgments with uncertainty; deterministic counting; task-scoped evidence with source versions; asynchronous dispatch with budgets and no self-trigger. Exact numeric defaults will be specified and tested in the plan rather than guessed by an implementer.</p>
+    <p class="mt-2">Evidence: AGENTS.md; docs/specs/agent-fabric.md; internal/adapter/adapter.go; cmd/agent-fabric/main.go; current auto-learn skill (approval-gated and skill-only, so the new role must have its own explicit contract). Existing adapter edits are outside this planning change.</p>
+  </section>
+</main>
+<template id="diagram-fallbacks">
+  <pre class="mermaid" data-mermaid-source="flowchart TD&#10;decision[&quot;Data sent to Jev&quot;] --&gt; bounded[&quot;Bounded evidence&quot;]&#10;decision --&gt; full[&quot;Full redacted task trace&quot;]&#10;decision --&gt; local[&quot;No transcript text to hosted Jev&quot;]&#10;decision --&gt; other[&quot;Other&quot;]">flowchart TD
+decision["Data sent to Jev"] --> bounded["Bounded evidence"]
+decision --> full["Full redacted task trace"]
+decision --> local["No transcript text to hosted Jev"]
+decision --> other["Other"]</pre>
+  <pre class="mermaid" data-mermaid-source="flowchart TD&#10;decision[&quot;Automatic correction scope&quot;] --&gt; scoped[&quot;Project opt-in and shared-source allowlist&quot;]&#10;decision --&gt; project[&quot;Project-local corrections only&quot;]&#10;decision --&gt; global[&quot;Global opt-in&quot;]&#10;decision --&gt; other[&quot;Other&quot;]">flowchart TD
+decision["Automatic correction scope"] --> scoped["Project opt-in and shared-source allowlist"]
+decision --> project["Project-local corrections only"]
+decision --> global["Global opt-in"]
+decision --> other["Other"]</pre>
+</template>
+<script>
+  const questions = [
+    {id:'Q1',title:'Data sent to Jev',body:'How much session evidence may the feature send to TypeSafe’s hosted API? Tool outputs, project context and prompt text can contain proprietary information even after secrets are removed.',recommended:'Opted-in projects only; send bounded redacted evidence and relevant instruction excerpts, not raw session dumps. Skip remote evaluation when safe extraction is uncertain.',choices:[
+      ['bounded','Bounded evidence (recommended)','Permit task objective, final answer, normalized actions and relevant source excerpts after local redaction; keep full evidence local under restricted access and retention limits.'],
+      ['full','Full redacted task trace','Allow the complete task transcript after local secret/PII filtering; higher context, cost and residual disclosure risk.'],
+      ['local','No transcript text to hosted Jev','Only local deterministic collection until an acceptable evaluation/data-sharing arrangement is chosen; semantic auto-correction cannot activate yet.'],
+      ['other','Other','Specify permitted data, projects or provider restrictions below.']]},
+    {id:'Q2',title:'Automatic correction scope',body:'Which enrolled workspaces may launch automatic correcting root sessions and which canonical instruction sources may they edit? A project run can expose an issue in shared global skills or agent prompts.',recommended:'Explicitly enroll projects; allow repairs to each enrolled project plus an explicit allowlist of shared canonical skill/agent sources. Everything else remains a suggestion. Installing Fabric alone must not enable automatic mutation.',choices:[
+      ['scoped','Project opt-in + shared-source allowlist (recommended)','Install portable support for both harnesses; activate only for enrolled projects. Permit vetted shared canonical definitions as explicit targets, with validation and rollback.'],
+      ['project','Project-local corrections only','Enroll projects but do not automatically change global skills or shared agent definitions; suggest shared-source fixes instead.'],
+      ['global','Global opt-in','One explicit host-level opt-in enrolls all owned projects and configured canonical sources; excludes secrets, policy weakening, generated copies and unrelated files.'],
+      ['other','Other','Describe the activation and source-ownership boundaries you want.']]}
+  ];
+  const root = document.getElementById('questions');
+  const escapeHTML=s=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function diagram(q,value){return 'flowchart TD\n  decision["'+q.title+'"]'+q.choices.map((c,i)=>'\n  decision --> n'+i+'["'+c[1]+'"]').join('')+'\n  classDef selected fill:#312e81,stroke:#818cf8,stroke-width:2px,color:#fff;\n  class n'+q.choices.findIndex(c=>c[0]===value)+' selected;';}
+  for(const q of questions){const source=diagram(q,q.choices[0][0]);root.insertAdjacentHTML('beforeend',`<article class="grill-card question" data-id="${q.id}"><h2 class="text-xl font-bold">${q.id} — ${escapeHTML(q.title)}</h2><p class="mt-3">${escapeHTML(q.body)}</p><p class="mt-3 text-cyan-300">Recommended: ${escapeHTML(q.recommended)}</p><fieldset class="choices mt-4"><legend class="sr-only">${escapeHTML(q.title)}</legend>${q.choices.map((c,i)=>`<label class="grill-choice"><input type="radio" name="${q.id}-choice" value="${c[0]}" ${i===0?'checked':''}> <strong>${escapeHTML(c[1])}</strong><span class="block text-sm text-slate-300 mt-1">${escapeHTML(c[2])}</span></label>`).join('')}</fieldset><div id="${q.id}-slot" class="mermaid-container my-4" tabindex="0" aria-label="${q.id} decision diagram"></div><label for="${q.id}-free" class="block mb-2">Free text — authoritative when Other is selected</label><textarea id="${q.id}-free" rows="3"></textarea></article>`);const pre=document.createElement('pre');pre.className='mermaid';pre.id=q.id+'-mermaid';pre.dataset.mermaidSource=source;pre.textContent=source;document.getElementById(q.id+'-slot').append(pre);}
+  const accepted={Q1:'For determining task success it should only be user messages + final response + last 10 steps. If task success then send full redacted trace in paginated batches depending on Jev context window allowance. Keep it simple.',Q2:'Global opt-in, all text corrections. Keep it simple.'};
+  for(const [id,answer] of Object.entries(accepted)){document.querySelector(`input[name="${id}-choice"][value="other"]`).checked=true;document.getElementById(id+'-free').value=answer;const el=document.getElementById(id+'-mermaid');el.dataset.mermaidSource=diagram(questions.find(q=>q.id===id),'other');el.textContent=el.dataset.mermaidSource;}
+  document.querySelector('#frontier-lock p').textContent='Both policy decisions are resolved. Other/free-text answers shown below are authoritative. Planning proceeds without another interview round.';
+  const lockBox=document.getElementById('frontier-locked');lockBox.addEventListener('change',()=>{document.getElementById('frontier-lock').dataset.locked=String(lockBox.checked);});
+  window.collect=()=>({schema:1,kind:'grill-session',session_slug:'task-retrospective',round:1,frontier_locked:lockBox.checked,questions:questions.map(q=>{const choice=document.querySelector(`input[name="${q.id}-choice"]:checked`).value;const free_text=document.getElementById(q.id+'-free').value;return {...q,choices:q.choices.map(c=>c[0]),choice,free_text,answer:choice==='other'?free_text:choice,mermaid:diagram(q,choice)};})});
+  document.getElementById('copy-export').addEventListener('click',async()=>{const data=collect();if(data.questions.some(q=>q.choice==='other'&&!q.free_text.trim())){document.getElementById('export-status').textContent='Please explain each Other choice.';return;}const payload='```markdown\n# Task retrospective — round 1\n'+data.questions.map(q=>'- '+q.id+' '+q.title+': '+q.answer+(q.choice!=='other'&&q.free_text?' — '+q.free_text:'')).join('\n')+'\n```\n\n```json\n'+JSON.stringify(data,null,2)+'\n```';document.getElementById('export-preview').value=payload;try{await navigator.clipboard.writeText(payload);document.getElementById('export-status').textContent='Copied — paste in chat.';}catch{document.getElementById('export-status').textContent='Select and copy the export below.';document.getElementById('export-preview').select();}});
+</script>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.17.1/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'dark',flowchart:{htmlLabels:false,useMaxWidth:false,wrappingWidth:240},sequence:{useMaxWidth:false},class:{useMaxWidth:false},state:{useMaxWidth:false},er:{useMaxWidth:false},gantt:{useMaxWidth:false}});
+  let seq=0;let pending=Promise.resolve();
+  async function render(element,source){element.dataset.mermaidSource=source;try{await mermaid.parse(source);const {svg}=await mermaid.render('grill-task-'+(++seq),source);element.innerHTML=svg;element.dataset.mermaidState='rendered';}catch(error){element.textContent=source;element.dataset.mermaidState='error';console.error(error);}}
+  for(const q of questions){const el=document.getElementById(q.id+'-mermaid');await render(el,el.dataset.mermaidSource);document.querySelectorAll(`input[name="${q.id}-choice"]`).forEach(radio=>radio.addEventListener('change',()=>{pending=pending.then(()=>render(el,diagram(q,radio.value)));}));}
+</script>
+</body></html>

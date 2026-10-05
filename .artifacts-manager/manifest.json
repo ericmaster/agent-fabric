@@ -20,6 +20,49 @@
       ],
       "createdAt": "2026-09-01T16:16:44.484Z",
       "updatedAt": "2026-09-15T22:32:21.000Z"
+    },
+    {
+      "id": "task-retrospective-planning-decisions",
+      "title": "Task Retrospective — Planning Decisions",
+      "type": "html",
+      "file": "grill-task-retrospective.html",
+      "description": "Remaining data-sharing and activation decisions for portable automatic instruction repair",
+      "tags": [
+        "planning",
+        "grilling",
+        "tailwind",
+        "mermaid"
+      ],
+      "createdAt": "2026-09-30T08:28:09.226Z",
+      "updatedAt": "2026-09-30T08:28:09.226Z"
+    },
+    {
+      "id": "agent-fabric-task-retrospective-implementation-plan",
+      "title": "Agent Fabric — Task Retrospective Implementation Plan",
+      "type": "markdown",
+      "file": "plan-task-retrospective.md",
+      "description": "Approved three-phase plan for success-gated Jev retrospectives and visible automatic instruction correction; Claude adapter deferred",
+      "tags": [
+        "planning",
+        "agents",
+        "retrospective"
+      ],
+      "createdAt": "2026-09-30T11:54:28.624Z",
+      "updatedAt": "2026-09-30T11:54:28.624Z"
+    },
+    {
+      "id": "task-retrospective-decisions-and-evidence",
+      "title": "Task Retrospective — Decisions and Evidence",
+      "type": "markdown",
+      "file": "task-retrospective-decisions.md",
+      "description": "User policy decisions, source evidence, scope boundaries and independent review",
+      "tags": [
+        "planning",
+        "decisions",
+        "evidence"
+      ],
+      "createdAt": "2026-09-30T11:54:29.071Z",
+      "updatedAt": "2026-09-30T11:54:29.071Z"
     }
   ]
 }
