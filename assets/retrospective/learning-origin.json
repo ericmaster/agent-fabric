@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "resource": "retrospective-learning-origin",
+  "marker_prefix": "agf-learning-origin:v1:",
+  "description": "Trusted learning-origin identity. A session listed in the dispatch origins directory, or whose title contains the marker prefix, is excluded from retrospective capture. Descendants are sessions whose parent chain reaches one of those sessions. The dispatch store is authoritative; the title is only the reconciliation echo."
+}

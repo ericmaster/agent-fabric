@@ -35,7 +35,7 @@ document's home is ambiguous, and apply the frontmatter from §4.
 ## Specs
 
 - [`specs/agent-fabric.md`](specs/agent-fabric.md) — Portable agent schema, multi-harness adapter rendering, and manifest tracking.
-- [`specs/task-retrospective.md`](specs/task-retrospective.md) — Phase 1 task-retrospective replay: trace schema v1, redaction, gated Jev evaluation, paginated stage two, counting, and report contract.
+- [`specs/task-retrospective.md`](specs/task-retrospective.md) — Task retrospective replay, report schema v1, and Phase 2 dispatch/repair.
 
 ## Runbooks
 

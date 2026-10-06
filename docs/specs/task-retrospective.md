@@ -2,17 +2,18 @@
 title: "Spec: Task Retrospective"
 type: spec
 status: active
-covers: internal/retrospective, cmd/agent-fabric (retrospective analyze)
+covers: internal/retrospective, cmd/agent-fabric (retrospective), agents/learning-corrector.md
 last_checked: 2026-10-06
 ---
 
-# Task Retrospective — Phase 1 (replay analysis)
+# Task Retrospective
 
-Opt-in, harness-neutral, offline replay of one normalized task trace into an
-evidence-linked report. Standard library only, no daemon, database, UI, MCP
-server, and no mutation outside the requested report file. Native hooks,
-dispatch, storage retention, and OpenCode decoding belong to later phases; this
-phase owns the shared trace/evaluation/report contract.
+Opt-in, harness-neutral replay of one normalized task trace into an
+evidence-linked report, then one visible correcting root for an eligible report.
+Standard library only. No daemon, database, new UI, or MCP server. Phase 1
+writes only the requested report file. Phase 2 adds dispatch, local state, and
+verified text repair. OpenCode observation remains a later phase. Supervisor
+ledgers are not a retrospective database.
 
 Canonical plan: `.artifacts-manager/plan-task-retrospective.md` (Phase 1).
 Supervisor persistence is separate: `docs/specs/agent-fabric.md` (supervisor
@@ -27,7 +28,11 @@ ledgers are never a retrospective database).
 - `internal/retrospective/jev.go` — Jev client (HTTP, retries, size-rejection splitting interface).
 - `internal/retrospective/evaluate.go` — stage one gate, stage two pagination, counting, triggers.
 - `internal/retrospective/report.go` — report assembly and atomic write.
-- `cmd/agent-fabric/retrospective.go` — `agf retrospective analyze` CLI wiring.
+- `internal/retrospective/store.go` — local state, locks, retention, settings entry.
+- `internal/retrospective/dispatch.go` — session dispatch, canonical resolution, repair.
+- `cmd/agent-fabric/retrospective.go` — `analyze`, `dispatch`, `status`, `enable`, `disable`.
+- `agents/learning-corrector.md` — portable public primary correcting role.
+- `assets/retrospective/learning-origin.json` — optional owned runtime asset.
 
 Every file carries `// Spec: docs/specs/task-retrospective.md`; helpers carry
 `// Spec: docs/specs/task-retrospective.md via <parent>`.
@@ -320,7 +325,9 @@ probability` (0.90), `minimum confidence` (0.80), `minimum calls for rate`
 Duration fields (`http_timeout`, `backoff_base`, `backoff_max`) are
 unit-suffixed strings. A bare number is rejected; it is not interpreted as
 nanoseconds.
-No other file duplicates these defaults; later phases read the same contract.
+No other file duplicates these defaults. Phase 2 reads this struct and adds the
+dispatch keys in the Phase 2 config section. The pinned Jev model is not a
+config key; a `model` key remains unknown.
 
 ## Testing contract
 
@@ -333,3 +340,187 @@ No other file duplicates these defaults; later phases read the same contract.
 - `go test ./internal/retrospective/... ./cmd/agent-fabric/...` plus the repo
   regression `go test ./...`, `go build ./cmd/agent-fabric`, and
   `python3 -m unittest discover -s tests -p 'test_supervisor_ledger.py'` stay green.
+- Phase 2 session tests use `httptest` only. They never dial a real OpenCode server.
+
+## Phase 2 — dispatch and verified text repair
+
+Turn one eligible report into one visible correcting root that either applies a
+verified text repair or records a review-only suggestion. Disabled is the
+default and performs no network call and no mutation.
+
+### Global enable
+
+`retrospective.enabled` lives in the user Agent Fabric config
+(`AGF_CONFIG`, else `$XDG_CONFIG_HOME/agent-fabric/config.json`, else
+`~/.config/agent-fabric/config.json`) as:
+
+```json
+{"retrospective": {"enabled": false}}
+```
+
+Absent file or absent key means false. `enable` and `disable` rewrite only
+that key. Other top-level keys and sibling keys inside `retrospective` are
+preserved. This is not a shared-settings takeover. The analyze config file
+cannot enable dispatch.
+
+### Dispatch config keys
+
+Added to the same `Config` struct, not a second defaults table:
+
+| key | default | meaning |
+|---|---|---|
+| `dispatch_server` | empty | OpenCode server base URL. Empty queues; it is not the Jev `endpoint`. |
+| `dispatch_ui_template` | empty | `http` or `https` URL with exactly one `{id}`, no userinfo. |
+| `dispatch_model` | empty | Optional host model string sent to the server. Never copied into canonical agent text. |
+| `dispatch_directory` | empty | Directory recorded on the root. Falls back to the report execution root. |
+| `dispatch_timeout` | `"30s"` | Per create/read/list/prompt timeout. Unit-suffixed string. |
+| `canonical_roots` | empty | Absolute editable roots. No project or skill enrollment list. |
+| `reviewer` | empty | Coordinator-supplied independent reviewer. Must not be `learning-corrector`. |
+| `state_dir` | empty | Overrides the user state directory. |
+| `max_repair_attempts` | 2 | One initial correcting run plus one repair attempt per finding/source version. |
+
+A canonical root of `/`, a relative path, or a symlink is unsafe and rejected.
+There is no per-source human approval gate.
+
+### State
+
+Default directory: `AGF_RETROSPECTIVE_STATE`, else
+`$XDG_STATE_HOME/agent-fabric/retrospective`, else
+`~/.local/state/agent-fabric/retrospective`. Directory mode `0700`, file mode
+`0600`, writes are temp-file plus rename. A single-host exclusive lock covers
+claim and session creation. This directory is not a supervisor ledger.
+
+Redacted report and trace copies under `reports/` and `traces/` are deleted
+after 30 days. Compact finding/source-hash records and dispatch receipts are
+kept until that source hash changes. `--retry` does not create a second root
+for the same report and task, does not re-apply a successful repair of the
+same source hash, and does not post again after an ambiguous create or prompt.
+A finding that already used `max_repair_attempts` is exhausted.
+
+### Learning-origin identity
+
+Format: `agf-learning-origin:v1:` plus 64 lowercase hex characters, the SHA-256
+of `learning-origin\n` concatenated with the incident id. The incident id is
+the SHA-256 of `report-file-sha256\n` concatenated with the task id.
+
+The marker file is persisted before `POST /session`. The session title is
+`learning: <task> [<marker>]`. After read-back, `origins/<session-id>` stores
+the marker. The store is authoritative. The title is the reconciliation echo.
+
+Phase 3 capture must ignore a session whose id is in `origins/` or whose title
+contains `agf-learning-origin:v1:`, and every descendant whose parent chain
+reaches such a session. Worker sessions created here carry the marker.
+Dispatch does not capture them.
+
+### OpenCode session transport
+
+Fixture-tested HTTP, no other UI:
+
+- `POST /session` body `{"title","directory"}`. The `parentID` key is absent.
+- `GET /session/{id}` must echo the marker in `title` and return an empty
+  `parentID`. A non-empty `parentID` is rejected.
+- `GET /session` returns a JSON array used only to reconcile a timeout.
+- `POST /session/{id}/prompt` body `{"parts":[{"type":"text","text":"..."}],"marker","agent":"learning-corrector"}`.
+  Optional `model` is included only when `dispatch_model` is set.
+- HTTP 404 or 501 queues the report with an actionable error. No child session
+  and no CLI fallback.
+- A timeout lists or reads before any retry. Zero or many marker matches stay
+  `pending`. An ambiguous create or prompt is not posted again.
+
+The receipt records root id, project, directory, title, UI URL from the
+validated template, report locator, and status
+(`queued`, `pending`, `submitted`, `repaired`, `suggested`, `conflict`,
+`exhausted`, `suppressed`).
+
+### Canonical resolution
+
+Follow Fabric manifest ownership, `.skills-manager/ownership.json`, and
+symlinks. Edit only the owning canonical file inside a canonical root.
+Generated copies and skill-manager caches are not edited. `immutable: true`
+or a directory `.immutable` marker produces a suggestion to update the upstream
+source. Two different canonical owners are an ambiguity and are rejected.
+A symlink whose target leaves the allowed roots is rejected.
+
+Skill ownership shape:
+
+```json
+{"schema":1,"skills":{"name":{"canonical":"/abs/SKILL.md","installed":"/abs/cache/SKILL.md","immutable":false}}}
+```
+
+### Repair
+
+`findings[]` on a report are optional dispatch evidence. Analyze does not emit
+them. A finding is applied only when the cause is `stale-instruction`, the
+instruction version equals the source hash, failed behavior and recovery are
+both present, the source was not merely read, an independent reviewer is
+configured, the excerpt is unique, and the on-disk hash still matches
+immediately before the write. The write replaces that excerpt only, preserves
+mode, and refuses symlinks and executable files.
+
+Other causes do not write:
+
+- `tool-bug` and `implementation-bug` — review-only suggestion. No documentation workaround.
+- `instructions-ignored` — workflow suggestion.
+- `transient` and `uncertain` — advisory suggestion.
+- `prompt-injection`, or injection text in the finding or replacement — no write.
+- hash mismatch — conflict; unrelated bytes stay.
+- non-owned or immutable — suggestion to update upstream.
+
+Every result records the reviewer and `self_certified: false`. A repair records
+the exact excerpt diff, preimage hash, postimage hash, and a `0600` preimage.
+If validation fails and the current hash is still the postimage, only that
+repair is restored. A later user edit is a conflict, not an overwrite.
+
+Protected paths (learning policy, hook trees, origin markers, state files,
+executables) are never edited. Transcript text cannot authorize those edits.
+Dispatch does not commit, push, force-sync, or change permissions.
+
+After a validated repair of a canonical agent definition, unchanged
+manifest-owned generated copies may be refreshed through the injected renderer.
+Copies whose bytes no longer match the manifest hash are left in place and
+reported.
+
+### Correcting role
+
+`agents/learning-corrector.md` is a public primary role on the existing
+`worker` profile. The body is provider-neutral. It validates a self-locating
+intake packet before edits, treats the correction as a new scope, and does not
+change the original task acceptance state. The intake prompt carries the report
+locator, finding summary, source identity and hash, verified behavior, and the
+prohibitions above.
+
+### CLI
+
+```
+agf retrospective dispatch --report report.json [--config file] [--retry]
+agf retrospective status [--config file]
+agf retrospective enable
+agf retrospective disable
+```
+
+`dispatch` validates report schema, `evaluation.trigger.eligible`,
+`dispatch.eligible`, complete coverage (`undelivered_records == 0`),
+`redaction.materially_incomplete == false`, task id, execution root, and source
+hashes before any session call. Exit 0 when a receipt is written, including
+queued and pending. Exit 1 when disabled, the report is ineligible or malformed,
+or config is invalid. No receipt is written in those exit-1 cases.
+
+### Optional asset
+
+Resource identity `retrospective-learning-origin` is not an agent id. Source
+discovery reads `assets/retrospective/learning-origin.json` from the packaged
+source root. `install`/`sync --assets retrospective` owns
+`<scope>/retrospective/learning-origin.json` through the manifest, using the
+existing guarded write. Omission is opt-out. Doctor, sync, and uninstall keep
+modified copies and remove only unchanged owned copies.
+
+### Phase 2 tests
+
+- Disabled dispatch makes no client call and creates no state or source file.
+- Duplicate and concurrent dispatch create one root.
+- A lost create or prompt response reconciles from the server and does not post again.
+- Unsafe roots, escaping symlinks, and canonical ambiguities are rejected.
+- Stale-runbook and shared-skill fixtures apply a minimal repair without a prompt.
+- Tool-bug, non-owned, instructions-ignored, dirty-target, and prompt-injection fixtures do not write.
+- Reviewer and rollback evidence are recorded. Validation failure restores only the repair.
+- Install, sync, doctor, and uninstall cover the optional asset.

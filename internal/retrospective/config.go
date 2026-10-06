@@ -63,6 +63,26 @@ type Config struct {
 	// RedactPatterns are additional configured sensitive patterns (regular
 	// expressions) beyond the built-in rails. Defaults cannot be removed.
 	RedactPatterns []string `json:"redact_patterns,omitempty"`
+	// DispatchServer is the OpenCode server base URL. It is not the Jev endpoint.
+	// Empty means the correcting-session capability is missing.
+	DispatchServer string `json:"dispatch_server,omitempty"`
+	// DispatchUITemplate is an http(s) URL template containing exactly one {id}.
+	DispatchUITemplate string `json:"dispatch_ui_template,omitempty"`
+	// DispatchModel is an optional host-owned model id sent to the server.
+	// The JSON key is not "model"; that name stays unknown.
+	DispatchModel string `json:"dispatch_model,omitempty"`
+	// DispatchDirectory is the directory recorded on the correcting root.
+	DispatchDirectory string `json:"dispatch_directory,omitempty"`
+	// DispatchTimeout bounds one session create, read, list, or prompt call.
+	DispatchTimeout time.Duration `json:"dispatch_timeout,omitempty"`
+	// CanonicalRoots are absolute editable roots. There is no enrollment list.
+	CanonicalRoots []string `json:"canonical_roots,omitempty"`
+	// Reviewer is the coordinator-supplied independent reviewer identity.
+	Reviewer string `json:"reviewer,omitempty"`
+	// StateDir overrides the user state directory.
+	StateDir string `json:"state_dir,omitempty"`
+	// MaxRepairAttempts caps one initial run plus one repair per source version.
+	MaxRepairAttempts int `json:"max_repair_attempts,omitempty"`
 }
 
 // DefaultConfig returns the conservative defaults of the config contract.
@@ -86,6 +106,8 @@ func DefaultConfig() *Config {
 		RedundantAttemptsRequired: 3,
 		TailSteps:                 10,
 		RedactPatterns:            nil,
+		DispatchTimeout:           30 * time.Second,
+		MaxRepairAttempts:         2,
 	}
 }
 
@@ -143,6 +165,30 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("retrospective config: redact_patterns entries must be non-empty")
 		}
 	}
+	if c.MaxRepairAttempts < 1 {
+		return fmt.Errorf("retrospective config: max_repair_attempts must be >= 1")
+	}
+	if c.DispatchTimeout <= 0 {
+		return fmt.Errorf("retrospective config: dispatch_timeout must be positive")
+	}
+	if c.DispatchServer != "" {
+		if err := validateHTTPBase(c.DispatchServer); err != nil {
+			return fmt.Errorf("retrospective config: dispatch_server: %w", err)
+		}
+	}
+	if c.DispatchUITemplate != "" {
+		if err := ValidateUITemplate(c.DispatchUITemplate); err != nil {
+			return fmt.Errorf("retrospective config: dispatch_ui_template: %w", err)
+		}
+	}
+	if c.Reviewer == LearningCorrectorID {
+		return fmt.Errorf("retrospective config: reviewer must not be the learning-corrector role")
+	}
+	for _, root := range c.CanonicalRoots {
+		if err := checkCanonicalRoot(root); err != nil {
+			return fmt.Errorf("retrospective config: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -155,6 +201,9 @@ var configJSONKeys = map[string]struct{}{
 	"retry_after_max_seconds": {}, "min_success_probability": {}, "min_confidence": {},
 	"min_count_for_rate": {}, "rate_threshold": {}, "redundant_attempts_required": {},
 	"tail_steps": {}, "redact_patterns": {},
+	"dispatch_server": {}, "dispatch_ui_template": {}, "dispatch_model": {},
+	"dispatch_directory": {}, "dispatch_timeout": {}, "canonical_roots": {},
+	"reviewer": {}, "state_dir": {}, "max_repair_attempts": {},
 }
 
 // UnmarshalJSON decodes a config document over the receiver so omitted keys
@@ -225,6 +274,30 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	if err := assign("redact_patterns", &c.RedactPatterns); err != nil {
 		return err
 	}
+	if err := assign("dispatch_server", &c.DispatchServer); err != nil {
+		return err
+	}
+	if err := assign("dispatch_ui_template", &c.DispatchUITemplate); err != nil {
+		return err
+	}
+	if err := assign("dispatch_model", &c.DispatchModel); err != nil {
+		return err
+	}
+	if err := assign("dispatch_directory", &c.DispatchDirectory); err != nil {
+		return err
+	}
+	if err := assign("canonical_roots", &c.CanonicalRoots); err != nil {
+		return err
+	}
+	if err := assign("reviewer", &c.Reviewer); err != nil {
+		return err
+	}
+	if err := assign("state_dir", &c.StateDir); err != nil {
+		return err
+	}
+	if err := assign("max_repair_attempts", &c.MaxRepairAttempts); err != nil {
+		return err
+	}
 	if value, ok := raw["http_timeout"]; ok {
 		parsed, err := parseConfigDuration("http_timeout", value)
 		if err != nil {
@@ -245,6 +318,13 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		c.BackoffMax = parsed
+	}
+	if value, ok := raw["dispatch_timeout"]; ok {
+		parsed, err := parseConfigDuration("dispatch_timeout", value)
+		if err != nil {
+			return err
+		}
+		c.DispatchTimeout = parsed
 	}
 	return nil
 }

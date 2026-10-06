@@ -9,8 +9,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"path/filepath"
+	"time"
 
+	"github.com/ericmaster/agent-fabric/internal/adapter"
+	"github.com/ericmaster/agent-fabric/internal/agent"
 	"github.com/ericmaster/agent-fabric/internal/retrospective"
 )
 
@@ -22,8 +27,16 @@ func runRetrospective(args []string) error {
 	switch sub {
 	case "analyze":
 		return runRetrospectiveAnalyze(args)
+	case "dispatch":
+		return runRetrospectiveDispatch(args)
+	case "status":
+		return runRetrospectiveStatus(args)
+	case "enable":
+		return runRetrospectiveEnabled(args, true)
+	case "disable":
+		return runRetrospectiveEnabled(args, false)
 	default:
-		fmt.Fprintln(os.Stderr, "retrospective supports: analyze")
+		fmt.Fprintln(os.Stderr, "retrospective supports: analyze, dispatch, status, enable, disable")
 		return fmt.Errorf("unknown retrospective command %q", sub)
 	}
 }
@@ -100,4 +113,144 @@ func buildRetrospectiveClient(cfg *retrospective.Config, apiKey string) retrospe
 		return nil
 	}
 	return retrospective.NewJevClient(cfg.Endpoint, apiKey, cfg)
+}
+
+// runRetrospectiveDispatch creates one visible correcting root for an eligible report.
+// Spec: docs/specs/task-retrospective.md
+func runRetrospectiveDispatch(args []string) error {
+	fs := flag.NewFlagSet("retrospective dispatch", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var reportPath, configPath string
+	var retry bool
+	fs.StringVar(&reportPath, "report", "", "eligible retrospective report JSON")
+	fs.StringVar(&configPath, "config", "", "optional retrospective config JSON")
+	fs.BoolVar(&retry, "retry", false, "explicit retry for an existing finding/source version")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected arguments: %s", fs.Args()[0])
+	}
+	if reportPath == "" {
+		return errors.New("retrospective dispatch requires --report")
+	}
+	cfg, err := retrospective.LoadConfig(configPath)
+	if err != nil {
+		return err
+	}
+	if cfg.StateDir == "" {
+		cfg.StateDir, err = retrospective.DefaultStateDir()
+		if err != nil {
+			return err
+		}
+	}
+	enabled, err := retrospective.Enabled("")
+	if err != nil {
+		return err
+	}
+	var client retrospective.SessionClient
+	if enabled && cfg.DispatchServer != "" {
+		client = &retrospective.HTTPSessionClient{
+			BaseURL: cfg.DispatchServer,
+			HTTP:    &http.Client{Timeout: cfg.DispatchTimeout + time.Second},
+		}
+	}
+	receipt, err := retrospective.Dispatch(context.Background(), retrospective.DispatchOptions{
+		Enabled:    enabled,
+		Config:     cfg,
+		ReportPath: reportPath,
+		Client:     client,
+		Retry:      retry,
+		RenderCopy: retrospectiveCopyRenderer(),
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("retrospective dispatch status=%s root=%s url=%s\n", receipt.Status, receipt.RootID, receipt.UIURL)
+	if receipt.Error != "" {
+		fmt.Printf("retrospective dispatch error=%s\n", receipt.Error)
+	}
+	return nil
+}
+
+// runRetrospectiveStatus prints local enablement and receipt counts. It does not call the network.
+// Spec: docs/specs/task-retrospective.md
+func runRetrospectiveStatus(args []string) error {
+	fs := flag.NewFlagSet("retrospective status", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var configPath string
+	fs.StringVar(&configPath, "config", "", "optional retrospective config JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected arguments: %s", fs.Args()[0])
+	}
+	cfg, err := retrospective.LoadConfig(configPath)
+	if err != nil {
+		return err
+	}
+	stateDir := cfg.StateDir
+	if stateDir == "" {
+		stateDir, err = retrospective.DefaultStateDir()
+		if err != nil {
+			return err
+		}
+	}
+	summary, err := retrospective.Status("", stateDir)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("retrospective.enabled=%t receipts=%d\n", summary.Enabled, len(summary.Errors)+countReceipts(summary))
+	for status, count := range summary.Counts {
+		fmt.Printf("status %s=%d\n", status, count)
+	}
+	for _, item := range summary.Errors {
+		fmt.Printf("queued %s\n", item)
+	}
+	return nil
+}
+
+// countReceipts sums status counts.
+// Spec: docs/specs/task-retrospective.md via runRetrospectiveStatus
+func countReceipts(summary *retrospective.StatusSummary) int {
+	total := 0
+	for _, count := range summary.Counts {
+		total += count
+	}
+	return total
+}
+
+// runRetrospectiveEnabled merges only retrospective.enabled into the user config.
+// Spec: docs/specs/task-retrospective.md
+func runRetrospectiveEnabled(args []string, enabled bool) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unexpected arguments: %s", args[0])
+	}
+	if err := retrospective.SetEnabled("", enabled); err != nil {
+		return err
+	}
+	fmt.Printf("retrospective.enabled=%t\n", enabled)
+	return nil
+}
+
+// retrospectiveCopyRenderer refreshes an unchanged generated copy from the canonical role.
+// Spec: docs/specs/task-retrospective.md via runRetrospectiveDispatch
+func retrospectiveCopyRenderer() retrospective.CopyRenderer {
+	return func(agentID, target, managedPath string) ([]byte, error) {
+		root, err := sourceDir(options{})
+		if err != nil {
+			return nil, err
+		}
+		definition, err := agent.ParseFile(filepath.Join(root, "agents", agentID+".md"))
+		if err != nil {
+			return nil, err
+		}
+		mapping, err := mapping(root, target)
+		if err != nil {
+			return nil, err
+		}
+		body, _, _, err := adapter.Render(adapterTarget(target), definition, mapping, false)
+		return []byte(body), err
+	}
 }

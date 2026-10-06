@@ -26,7 +26,7 @@ cmd/agent-fabric/        CLI commands (install, sync, validate, doctor, hub, uni
 internal/agent/          Agent definition parsing, validation, and hook schema checking
 internal/adapter/        Multi-harness rendering engine and format converters
 internal/manifest/       Atomic state tracking (.agent-fabric-manifest.json)
-internal/retrospective/  Offline task retrospective replay (trace -> redaction -> Jev -> report)
+internal/retrospective/  Task retrospective replay and opt-in dispatch/repair
 docs/                    Versioned wiki (docs-organization-blueprint.md, specs/, adr/)
 fixtures/                Golden test fixtures for adapter rendering
 scripts/                 Release packaging and bootstrap tooling
@@ -70,7 +70,7 @@ go build -o agent-fabric ./cmd/agent-fabric
 
 - Unit tests in `internal/agent`, `internal/adapter`, `internal/manifest`, `internal/retrospective`, and `cmd/agent-fabric`.
 - Golden fixture comparison in `internal/adapter/adapter_test.go` checks rendered output against `fixtures/`.
-- Retrospective tests use recorded local mock HTTP and synthetic traces only; they never call the real Jev API.
+- Retrospective tests use recorded local mock HTTP and synthetic traces only; they never call the real Jev API or a real OpenCode server.
 - Run `go test ./...` before committing.
 
 ## Secrets

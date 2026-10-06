@@ -2,8 +2,10 @@
 package retrospective
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -317,6 +319,22 @@ type ReportDispatch struct {
 	Reasons  []string `json:"reasons,omitempty"`
 }
 
+// Finding is optional dispatch evidence. Analyze does not emit it. A source
+// that was merely read is not causation.
+// Spec: docs/specs/task-retrospective.md via Report
+type Finding struct {
+	ID                 string `json:"id"`
+	SourcePath         string `json:"source_path"`
+	SourceSHA256       string `json:"source_sha256"`
+	Cause              string `json:"cause"`
+	InstructionVersion string `json:"instruction_version,omitempty"`
+	FailedBehavior     string `json:"failed_behavior,omitempty"`
+	Recovery           string `json:"recovery,omitempty"`
+	MerelyRead         bool   `json:"merely_read,omitempty"`
+	Excerpt            string `json:"excerpt,omitempty"`
+	Replacement        string `json:"replacement,omitempty"`
+}
+
 // Report is the versioned deliverable written by `agf retrospective analyze`.
 // Spec: docs/specs/task-retrospective.md
 type Report struct {
@@ -334,6 +352,7 @@ type Report struct {
 	Redaction         ReportRedaction  `json:"redaction"`
 	Usage             ReportUsage      `json:"usage"`
 	Dispatch          ReportDispatch   `json:"dispatch"`
+	Findings          []Finding        `json:"findings,omitempty"`
 }
 
 // WriteReport atomically persists the report (temp file inside the output
@@ -369,3 +388,23 @@ func WriteReport(path string, report *Report) error {
 
 // now is the wall clock used by Analyze (injectable for tests).
 var now = func() time.Time { return time.Now().UTC() }
+
+// LoadReport strict-decodes a report file. Unknown fields and trailing values fail.
+// Spec: docs/specs/task-retrospective.md via Report
+func LoadReport(path string) (*Report, []byte, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read report: %w", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	report := &Report{}
+	if err := decoder.Decode(report); err != nil {
+		return nil, nil, fmt.Errorf("decode report %s: %w", path, err)
+	}
+	var trailing struct{}
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return nil, nil, fmt.Errorf("decode report %s: trailing data", path)
+	}
+	return report, body, nil
+}
