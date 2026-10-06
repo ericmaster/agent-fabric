@@ -206,8 +206,11 @@ Pagination:
   Splitting never omits or trims records. A successful page restores the
   configured budgets for the next page.
 - Every record is covered exactly once in coverage accounting; overlap
-  repeats are marked and counted once (dedup counter). Overlaps are record
-  tails, never partial fragments.
+  repeats are marked and counted once (dedup counter). Overlap re-presents
+  the previous page's tail item, id-linked pieces included (marked
+  part/total + overlapped).
+- Overlap is omitted for a page when it would prevent a record that fits
+  alone from being delivered without trimming.
 - A record's classification question is sent once, on the page where its last
   fragment appears (after its fragments are reconciled), so cross-page
   recoveries are classified only when the related fragments are visible together.
@@ -219,6 +222,10 @@ Pagination:
 - Budget exhaustion, repeated 429/unavailable, or a malformed response stops
   the run and saves a report with `status: "incomplete"`, the exact reasons,
   and no correction. Requests are counted across both stages and retries.
+- If every stage-two dispatch was size-rejected and no page was delivered,
+  the report is `status: "incomplete"` with reason `persistent size rejection`.
+  Per-record unknowns stay recorded; the incomplete reason distinguishes a
+  persistent server size fault from a record that was locally oversized.
 
 ## Counting, rate, and trigger
 
@@ -295,6 +302,8 @@ agf retrospective analyze --input trace.json --output report.json [--config task
   invalid config, or another pre-delivery failure; no report is written.
 - Trace JSON is decoded strictly (`DisallowUnknownFields`). Unknown fields or
   trailing values fail closed before any network call or report write.
+- Config JSON uses the same fail-closed decode: unknown fields or a trailing
+  value after the config object are rejected.
 - The host supplies `TYPESAFE_API_KEY` from the environment; it is never logged
   or persisted. Config never contains credentials.
 

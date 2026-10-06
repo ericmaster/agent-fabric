@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -285,10 +285,14 @@ func LoadConfig(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read retrospective config: %w", err)
 	}
-	decoder := json.NewDecoder(strings.NewReader(string(b)))
+	decoder := json.NewDecoder(bytes.NewReader(b))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(cfg); err != nil {
 		return nil, fmt.Errorf("decode retrospective config %s: %w", path, err)
+	}
+	var trailing struct{}
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return nil, fmt.Errorf("decode retrospective config %s: trailing data", path)
 	}
 	return cfg, cfg.Validate()
 }

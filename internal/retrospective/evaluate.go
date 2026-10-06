@@ -528,6 +528,12 @@ func (a *analysis) runStageTwo(ctx context.Context) {
 			previousTail = overlappedGramsOf(*last)
 		}
 	}
+	// Every dispatch was size-rejected and nothing was delivered. Per-record
+	// unknowns stay; the run is incomplete so a persistent server fault is not
+	// reported as a successful local size decision.
+	if len(a.pages) == 0 && a.sizeRepacks > 0 {
+		a.halt("persistent size rejection")
+	}
 }
 
 // overlappedGramsOf re-renders one item's recordgrams as the next page's

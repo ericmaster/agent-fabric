@@ -109,6 +109,17 @@ func TestLoadConfigDurationRequiresUnitSuffix(t *testing.T) {
 	}
 }
 
+func TestLoadConfigRejectsTrailingData(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "trailing.json")
+	if err := os.WriteFile(path, []byte(`{"endpoint":"https://x"}{"endpoint":"https://y"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadConfig(path); err == nil {
+		t.Fatal("trailing config object was accepted")
+	}
+}
+
 func TestLoadConfigMissingFileFailsClosed(t *testing.T) {
 	if _, err := LoadConfig(filepath.Join(t.TempDir(), "absent.json")); err == nil {
 		t.Fatal("missing config file was accepted")

@@ -2,6 +2,7 @@
 package retrospective
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -9,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"unicode/utf8"
 )
 
 // bigFixture builds a valid single-task trace with many paired calls, a
@@ -258,18 +258,6 @@ func hugeFixtureID(calls int) string {
 	return "c" + strconv.Itoa(index)
 }
 
-// parsePage extracts the flat page number from one recorded request body.
-// Spec: docs/specs/task-retrospective.md
-func parsePage(body []byte) int {
-	var decoded struct {
-		State struct {
-			Page int `json:"page"`
-		} `json:"state"`
-	}
-	_ = json.Unmarshal(body, &decoded)
-	return decoded.State.Page
-}
-
 // wireRequest is one recorded stage-two (or stage-one) choice request.
 // Spec: docs/specs/task-retrospective.md
 type wireRequest struct {
@@ -303,23 +291,17 @@ func (w wireRequest) stageTwo() bool {
 	return false
 }
 
-// assertPieceUTF8 unmarshals every recorded text field and requires valid UTF-8.
+// assertPieceUTF8 rejects a marshaled body containing U+FFFD. encoding/json
+// replaces an invalid UTF-8 cut with that character, so the check has to scan
+// the raw body; unmarshalling first would hide the cut. Rune-boundary slicing
+// itself is covered by TestSafeUnicodeSplittingKeepsRuneBoundaries.
 // Spec: docs/specs/task-retrospective.md
 func assertPieceUTF8(t *testing.T, calls []*recordedCall) {
 	t.Helper()
+	replacement := []byte("\uFFFD")
 	for _, call := range calls {
-		decoded := decodeWire(t, call.Body)
-		check := func(label, text string) {
-			if text != "" && !utf8.ValidString(text) {
-				t.Fatalf("%s is not valid UTF-8: %q", label, text)
-			}
-		}
-		for _, record := range decoded.records() {
-			check(record.ID+" input", record.Input)
-			check(record.ID+" text", record.Text)
-			for _, fragment := range record.Result {
-				check(fragment.ID, fragment.Text)
-			}
+		if bytes.Contains(call.Body, replacement) {
+			t.Fatalf("recorded body contains a UTF-8 replacement character")
 		}
 	}
 }

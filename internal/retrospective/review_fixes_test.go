@@ -323,6 +323,33 @@ func TestMissingProbabilityAbstains(t *testing.T) {
 	}
 }
 
+// TestPersistentSizeRejectionMarksRunIncomplete records an incomplete reason
+// when every stage-two dispatch is size-rejected, and keeps the per-record
+// unknowns.
+// Spec: docs/specs/task-retrospective.md
+func TestPersistentSizeRejectionMarksRunIncomplete(t *testing.T) {
+	responses := map[int]mockResponse{}
+	for index := 2; index <= 80; index++ {
+		responses[index] = mockResponse{status: http.StatusRequestEntityTooLarge}
+	}
+	report, _ := runEndToEnd(t, responses, baseFixture(2), nil)
+	if report.Status != ReportStatusIncomplete {
+		t.Fatalf("status = %q, reasons = %v", report.Status, report.IncompleteReasons)
+	}
+	if !containsString(report.IncompleteReasons, "persistent size rejection") {
+		t.Fatalf("persistent size rejection missing: %v", report.IncompleteReasons)
+	}
+	unknowns := 0
+	for _, row := range report.Coverage.Records {
+		if strings.HasPrefix(row.Disposition, "unknown:") {
+			unknowns++
+		}
+	}
+	if unknowns == 0 {
+		t.Fatal("per-record unknowns were dropped")
+	}
+}
+
 // TestUnknownResponseFieldIsMalformed rejects extra response fields.
 // Spec: docs/specs/task-retrospective.md
 func TestUnknownResponseFieldIsMalformed(t *testing.T) {
@@ -461,6 +488,10 @@ func stageTwoWires(t *testing.T, calls []*recordedCall) []wireRequest {
 	return out
 }
 
+// assertPayloadOnQuestionPage requires the full marker on the page that sends
+// the question. It would not match a marker split across pieces; callers use
+// short unsplit records.
+// Spec: docs/specs/task-retrospective.md
 func assertPayloadOnQuestionPage(t *testing.T, pages []wireRequest, subject, payload string) {
 	t.Helper()
 	primary := 0
