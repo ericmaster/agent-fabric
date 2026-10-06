@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -68,8 +69,14 @@ func runRetrospectiveAnalyze(args []string) error {
 		return fmt.Errorf("read trace input: %w", err)
 	}
 	trace := &retrospective.Trace{}
-	if err := json.Unmarshal(rawInput, trace); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(rawInput))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(trace); err != nil {
 		return fmt.Errorf("decode trace %s: %w", options.input, err)
+	}
+	var trailing struct{}
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return fmt.Errorf("decode trace %s: trailing data", options.input)
 	}
 	client := buildRetrospectiveClient(cfg, os.Getenv("TYPESAFE_API_KEY"))
 	report, err := retrospective.Analyze(context.Background(), cfg, trace, rawInput, client)

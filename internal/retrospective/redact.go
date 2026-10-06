@@ -4,6 +4,7 @@ package retrospective
 import (
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // Redaction markers are distinct per rail so downstream consumers know which
@@ -128,9 +129,22 @@ func (r *Redactor) Env(values map[string]string) map[string]string {
 	return out
 }
 
+// SecretFileBodyAbsent reports a secret-file reference whose body was not
+// recorded (empty or whitespace-only excerpt). Path patterns and the
+// secret_file flag both identify a secret file. An absent body cannot be
+// certified redacted and is materially incomplete.
+// Spec: docs/specs/task-retrospective.md via Redactor
+func SecretFileBodyAbsent(ref SourceRef) bool {
+	if !ref.SecretFile && !secretFilePathPattern.MatchString(ref.Path) {
+		return false
+	}
+	return strings.TrimSpace(ref.Excerpt) == ""
+}
+
 // SourceFile redacts a source-file reference: secret-file bodies are fully
 // redacted, other excerpts go through the redaction rails. Both paths and
-// digests are preserved verbatim for provenance.
+// digests are preserved verbatim for provenance. An empty secret-file body
+// is not a successful redaction; SecretFileBodyAbsent flags it.
 // Spec: docs/specs/task-retrospective.md via Redactor
 func (r *Redactor) SourceFile(ref SourceRef) SourceRef {
 	out := ref
@@ -158,6 +172,7 @@ func (r *Redactor) Record(record *Record) *Record {
 	switch record.Kind {
 	case RecordUserMessage, RecordAssistantMessage, RecordAssistantFinal:
 		out.Text = r.Text(record.Text)
+		out.Env = r.Env(record.Env)
 	case RecordToolCall:
 		out.Input = r.Text(record.Input)
 		out.Result = make([]Fragment, len(record.Result))

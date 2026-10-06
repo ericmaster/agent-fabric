@@ -83,8 +83,8 @@ func (mock *mockServer) handler() http.Handler {
 					RequestID:   question.ID,
 					Subject:     question.Subject,
 					Choice:      question.Choices[0],
-					Probability: 0.9,
-					Confidence:  0.9,
+					Probability: f64(0.9),
+					Confidence:  f64(0.9),
 				}
 			}
 			answers = append(answers, scriptedAnswer)
@@ -111,14 +111,9 @@ func (mock *mockServer) recorded() []*recordedCall {
 	return append([]*recordedCall(nil), mock.calls...)
 }
 
-func scriptedAnswerOK(id, choice, subject string, probability, confidence float64) string {
-	encoded, _ := json.Marshal(ChoiceResponse{Responses: []Answer{{
-		RequestID: id, Subject: subject, Choice: choice,
-		Probability: probability, Confidence: confidence,
-	}}})
-	return string(encoded)
-}
-
+// newJev builds a JevClient against the mock endpoint with an injectable
+// sleep function (deterministic retry-elapsed assertions).
+// Spec: docs/specs/task-retrospective.md
 func newJev(t *testing.T, cfg *Config, sleep func(d time.Duration)) *JevClient {
 	t.Helper()
 	if cfg.Endpoint == "" {

@@ -60,10 +60,14 @@ func (client *scriptedClient) sizeRejects() int {
 	return rejections
 }
 
+// f64 returns a pointer to the given float (test helper for answer values).
+// Spec: docs/specs/task-retrospective.md
+func f64(v float64) *float64 { return &v }
+
 // confidentAnswer helper builder.
 // Spec: docs/specs/task-retrospective.md
 func confidentAnswer(subject, choice string) Answer {
-	return Answer{RequestID: "q-" + subject, Subject: subject, Choice: choice, Probability: 0.95, Confidence: 0.92}
+	return Answer{RequestID: "q-" + subject, Subject: subject, Choice: choice, Probability: f64(0.95), Confidence: f64(0.92)}
 }
 
 // baseFixture builds a complete single-task trace with a final response and
@@ -81,14 +85,12 @@ func baseFixture(calls int) *Trace {
 	}
 	for i := 1; i <= calls; i++ {
 		id := "c" + itoa(i)
-		previous := i
 		trace.Calls = append(trace.Calls, CallRecord{
 			ID: id, Seq: 10 + i, Tool: "bash",
 			Status: StatusSuccess, ExitCode: &zero2, Input: "cmd " + id,
 			Result: []Fragment{{ID: id + "-r1", Text: "out " + id}},
 			Prereq: "prereq-" + itoa(i%2),
 		})
-		_ = previous
 	}
 	return trace
 }
@@ -118,7 +120,7 @@ func analyze(t *testing.T, cfg *Config, trace *Trace, client ChoiceClient) *Repo
 }
 
 func successfulOutcome() *Answer {
-	return &Answer{RequestID: outcomeQuestionID, Subject: "task", Choice: "succeeded", Probability: 0.97, Confidence: 0.93}
+	return &Answer{RequestID: outcomeQuestionID, Subject: "task", Choice: "succeeded", Probability: f64(0.97), Confidence: f64(0.93)}
 }
 
 func TestStageOneRequestCarriesExactThreeFieldPayload(t *testing.T) {
@@ -202,47 +204,52 @@ func TestStageOneRequestCarriesExactThreeFieldPayload(t *testing.T) {
 }
 
 func TestLastTenStepsFewerExactlyMoreThanTen(t *testing.T) {
-	baseTrace := baseFixture(0)
-	cases := map[int][]int{}
 	for _, count := range []int{5, 10, 12} {
-		trace := baseTrace
-		trace.Calls = nil
-		for i := 1; i <= count; i++ {
-			trace.Calls = append(trace.Calls, CallRecord{
-				ID: "c" + itoa(i), Seq: 10 + i, Tool: "bash", Status: StatusSuccess,
-				Input: "cmd", Result: []Fragment{{ID: "r", Text: "ok"}},
-			})
-		}
-		client := &scriptedClient{outcome: successfulOutcome(), classifications: map[string]Answer{}}
-		report := analyze(t, DefaultConfig(), trace, client)
-		payload := oneEvidence{}
-		if err := json.Unmarshal(client.requests[0].Requests[0].Evidence, &payload); err != nil {
-			t.Fatal(err)
-		}
-		want := []int{count, 10, 10}
-		if count == 12 {
-			want = []int{12, 10, 10}
-		}
-		cases[count] = []int{len(payload.Steps), report.StageOne.UserMessages, report.StageOne.Steps[0].Fragments}
-		if count == 5 && len(cases[5]) > 0 {
-			// fewer than ten: all five steps, in order.
-			if len(payload.Steps) != 5 || payload.Steps[0].ID != "c1" || payload.Steps[4].ID != "c5" {
-				t.Fatalf("fewer-than-ten steps wrong: %+v", payload.Steps)
+		t.Run(itoa(count), func(t *testing.T) {
+			trace := baseFixture(0)
+			trace.Calls = nil
+			for i := 1; i <= count; i++ {
+				trace.Calls = append(trace.Calls, CallRecord{
+					ID: "c" + itoa(i), Seq: 10 + i, Tool: "bash", Status: StatusSuccess,
+					Input: "cmd", Result: []Fragment{{ID: "r", Text: "ok"}},
+				})
 			}
-		}
-		if count == 12 {
-			if len(payload.Steps) != 10 || payload.Steps[0].ID != "c3" || payload.Steps[9].ID != "c12" {
-				t.Fatalf("more-than-ten steps must carry exactly the last ten: %+v", payload.Steps)
+			client := &scriptedClient{outcome: successfulOutcome(), classifications: map[string]Answer{}}
+			report := analyze(t, DefaultConfig(), trace, client)
+			if len(client.requests) == 0 || len(client.requests[0].Requests) == 0 {
+				t.Fatal("stage-one request missing")
 			}
-			for _, step := range payload.Steps {
-				if step.ID == "c1" || step.ID == "c2" {
-					t.Fatal("early steps beyond the last ten leaked into the payload")
+			payload := oneEvidence{}
+			if err := json.Unmarshal(client.requests[0].Requests[0].Evidence, &payload); err != nil {
+				t.Fatal(err)
+			}
+			want := count
+			if count > 10 {
+				want = 10
+			}
+			if len(payload.Steps) != want || len(report.StageOne.Steps) != want {
+				t.Fatalf("steps = payload %d report %d, want %d", len(payload.Steps), len(report.StageOne.Steps), want)
+			}
+			switch count {
+			case 5:
+				if payload.Steps[0].ID != "c1" || payload.Steps[4].ID != "c5" {
+					t.Fatalf("fewer-than-ten steps wrong: %+v", payload.Steps)
+				}
+			case 10:
+				if payload.Steps[0].ID != "c1" || payload.Steps[9].ID != "c10" {
+					t.Fatalf("exactly-ten steps wrong: %+v", payload.Steps)
+				}
+			case 12:
+				if payload.Steps[0].ID != "c3" || payload.Steps[9].ID != "c12" {
+					t.Fatalf("more-than-ten steps must carry exactly the last ten: %+v", payload.Steps)
+				}
+				for _, step := range payload.Steps {
+					if step.ID == "c1" || step.ID == "c2" {
+						t.Fatal("early steps beyond the last ten leaked into the payload")
+					}
 				}
 			}
-		}
-		if want[0] != count {
-			t.Fatalf("want mismatch: %v", want)
-		}
+		})
 	}
 }
 
@@ -275,12 +282,12 @@ func TestNoStageTwoRequestForAnyNonSuccessOutcome(t *testing.T) {
 	} {
 		t.Run(kick.name, func(t *testing.T) {
 			trace := baseFixture(4)
-			answer := &Answer{RequestID: outcomeQuestionID, Subject: "task", Choice: kick.choice, Probability: 0.99, Confidence: 0.99}
+			answer := &Answer{RequestID: outcomeQuestionID, Subject: "task", Choice: kick.choice, Probability: f64(0.99), Confidence: f64(0.99)}
 			if kick.name == "low-probability" {
-				answer.Probability = 0.89
+				answer.Probability = f64(0.89)
 			}
 			if kick.name == "low-confidence" {
-				answer.Confidence = 0.79
+				answer.Confidence = f64(0.79)
 			}
 			client := &scriptedClient{outcome: answer}
 			report := analyze(t, DefaultConfig(), trace, client)

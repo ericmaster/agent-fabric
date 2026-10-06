@@ -14,6 +14,10 @@ import (
 	"github.com/ericmaster/agent-fabric/internal/retrospective"
 )
 
+// f64 returns a pointer to the given float (test helper for answer values).
+// Spec: docs/specs/task-retrospective.md
+func f64(v float64) *float64 { return &v }
+
 // newJevMockServer answers every question with its first listed choice at
 // 0.9/0.9 so the analyze flow completes without touching the real API.
 // Spec: docs/specs/task-retrospective.md
@@ -27,7 +31,7 @@ func newJevMockServer(t *testing.T, _ map[string]string) *httptest.Server {
 		for _, question := range decoded.Requests {
 			answers = append(answers, retrospective.Answer{
 				RequestID: question.ID, Subject: question.Subject,
-				Choice: question.Choices[0], Probability: 0.9, Confidence: 0.9,
+				Choice: question.Choices[0], Probability: f64(0.9), Confidence: f64(0.9),
 			})
 		}
 		writer.Header().Set("Content-Type", "application/json")
@@ -112,6 +116,34 @@ func TestRetrospectiveAnalyzeWritesVersionedReport(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("report mode = %v", info.Mode().Perm())
+	}
+}
+
+func TestRetrospectiveAnalyzeRejectsUnknownTraceFields(t *testing.T) {
+	dir := t.TempDir()
+	tracePath := e2eTrace(t, dir)
+	body, err := os.ReadFile(tracePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	decoded["not_a_trace_field"] = true
+	rewritten, err := json.Marshal(decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tracePath, rewritten, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outputPath := filepath.Join(dir, "report.json")
+	if err := runRetrospectiveAnalyze([]string{"--input", tracePath, "--output", outputPath}); err == nil {
+		t.Fatal("unknown trace field was accepted")
+	}
+	if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
+		t.Fatalf("report written for rejected trace: %v", err)
 	}
 }
 

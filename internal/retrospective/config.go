@@ -2,6 +2,7 @@
 package retrospective
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -31,15 +32,19 @@ type Config struct {
 	// RequestBudget is the maximum number of HTTP requests per task run,
 	// counted across both stages, retries, and size-rejection splits.
 	RequestBudget int `json:"request_budget,omitempty"`
-	// HTTPTimeout is the per-request timeout.
+	// HTTPTimeout is the per-request timeout. JSON config accepts a
+	// unit-suffixed string ("30s"); a bare number is rejected so 30 cannot
+	// silently become 30ns.
 	HTTPTimeout time.Duration `json:"http_timeout,omitempty"`
 	// MaxAttemptsPerRequest caps attempts (initial + retries) per request.
 	MaxAttemptsPerRequest int `json:"max_attempts_per_request,omitempty"`
 	// MinFragmentBytes is the smallest permitted split fragment size.
 	MinFragmentBytes int `json:"min_fragment_bytes,omitempty"`
 	// BackoffBase is the first backoff delay for retryable transport errors.
+	// JSON config accepts a unit-suffixed string ("300ms").
 	BackoffBase time.Duration `json:"backoff_base,omitempty"`
-	// BackoffMax caps the exponential backoff delay.
+	// BackoffMax caps the exponential backoff delay. JSON config accepts a
+	// unit-suffixed string ("4s").
 	BackoffMax time.Duration `json:"backoff_max,omitempty"`
 	// RetryAfterMaxSeconds caps an honored Retry-After seconds value.
 	RetryAfterMaxSeconds int `json:"retry_after_max_seconds,omitempty"`
@@ -141,9 +146,135 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// configJSONKeys are the only keys a config file may set. Duration keys are
+// decoded as unit-suffixed strings, never as bare nanosecond integers.
+var configJSONKeys = map[string]struct{}{
+	"endpoint": {}, "request_limit_bytes": {}, "state_question_limit_bytes": {},
+	"request_budget": {}, "http_timeout": {}, "max_attempts_per_request": {},
+	"min_fragment_bytes": {}, "backoff_base": {}, "backoff_max": {},
+	"retry_after_max_seconds": {}, "min_success_probability": {}, "min_confidence": {},
+	"min_count_for_rate": {}, "rate_threshold": {}, "redundant_attempts_required": {},
+	"tail_steps": {}, "redact_patterns": {},
+}
+
+// UnmarshalJSON decodes a config document over the receiver so omitted keys
+// keep their defaults. Duration fields must be unit-suffixed strings
+// ("30s", "300ms"); a bare number is rejected.
+// Spec: docs/specs/task-retrospective.md via Config
+func (c *Config) UnmarshalJSON(data []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	var raw map[string]json.RawMessage
+	if err := dec.Decode(&raw); err != nil {
+		return err
+	}
+	for key := range raw {
+		if _, ok := configJSONKeys[key]; !ok {
+			return fmt.Errorf("json: unknown field %q", key)
+		}
+	}
+	assign := func(key string, dst any) error {
+		value, ok := raw[key]
+		if !ok {
+			return nil
+		}
+		if err := json.Unmarshal(value, dst); err != nil {
+			return fmt.Errorf("%s: %w", key, err)
+		}
+		return nil
+	}
+	if err := assign("endpoint", &c.Endpoint); err != nil {
+		return err
+	}
+	if err := assign("request_limit_bytes", &c.RequestLimitBytes); err != nil {
+		return err
+	}
+	if err := assign("state_question_limit_bytes", &c.StateQuestionLimitBytes); err != nil {
+		return err
+	}
+	if err := assign("request_budget", &c.RequestBudget); err != nil {
+		return err
+	}
+	if err := assign("max_attempts_per_request", &c.MaxAttemptsPerRequest); err != nil {
+		return err
+	}
+	if err := assign("min_fragment_bytes", &c.MinFragmentBytes); err != nil {
+		return err
+	}
+	if err := assign("retry_after_max_seconds", &c.RetryAfterMaxSeconds); err != nil {
+		return err
+	}
+	if err := assign("min_success_probability", &c.MinSuccessProbability); err != nil {
+		return err
+	}
+	if err := assign("min_confidence", &c.MinConfidence); err != nil {
+		return err
+	}
+	if err := assign("min_count_for_rate", &c.MinCountForRate); err != nil {
+		return err
+	}
+	if err := assign("rate_threshold", &c.RateThreshold); err != nil {
+		return err
+	}
+	if err := assign("redundant_attempts_required", &c.RedundantAttemptsRequired); err != nil {
+		return err
+	}
+	if err := assign("tail_steps", &c.TailSteps); err != nil {
+		return err
+	}
+	if err := assign("redact_patterns", &c.RedactPatterns); err != nil {
+		return err
+	}
+	if value, ok := raw["http_timeout"]; ok {
+		parsed, err := parseConfigDuration("http_timeout", value)
+		if err != nil {
+			return err
+		}
+		c.HTTPTimeout = parsed
+	}
+	if value, ok := raw["backoff_base"]; ok {
+		parsed, err := parseConfigDuration("backoff_base", value)
+		if err != nil {
+			return err
+		}
+		c.BackoffBase = parsed
+	}
+	if value, ok := raw["backoff_max"]; ok {
+		parsed, err := parseConfigDuration("backoff_max", value)
+		if err != nil {
+			return err
+		}
+		c.BackoffMax = parsed
+	}
+	return nil
+}
+
+// parseConfigDuration accepts a JSON string such as "30s" and rejects bare
+// numbers, which encoding/json would otherwise treat as nanoseconds.
+// Spec: docs/specs/task-retrospective.md via Config
+func parseConfigDuration(name string, raw json.RawMessage) (time.Duration, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || raw[0] != '"' {
+		return 0, fmt.Errorf("%s must be a unit-suffixed string such as \"30s\", not %s", name, raw)
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil {
+		return 0, fmt.Errorf("%s: %w", name, err)
+	}
+	parsed, err := time.ParseDuration(text)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", name, err)
+	}
+	if parsed <= 0 {
+		return 0, fmt.Errorf("%s must be positive", name)
+	}
+	return parsed, nil
+}
+
 // LoadConfig reads an optional JSON config file over DefaultConfig. Unknown
 // or mis-typed keys fail closed; credentials are accepted only from the host
-// environment, never from a config file.
+// environment, never from a config file. Duration fields are unit-suffixed
+// strings.
 // Spec: docs/specs/task-retrospective.md via Config
 func LoadConfig(path string) (*Config, error) {
 	cfg := DefaultConfig()

@@ -20,6 +20,10 @@ var (
 	ErrBudgetExhausted = errors.New("jev: request budget exhausted")
 	// ErrSizeRejected is returned on HTTP 413 size rejection.
 	ErrSizeRejected = errors.New("jev: request size rejected")
+	// ErrContentOverBudget is returned when a locally measured page still
+	// exceeds its serialized budgets at dispatch; the caller re-packs it
+	// with halved content budgets instead of halting.
+	ErrContentOverBudget = errors.New("jev: page exceeds the serialized budget")
 	// ErrRateLimited is returned when HTTP 429 persists across all attempts.
 	ErrRateLimited = errors.New("jev: rate limited")
 	// ErrUnavailable is returned when the service/transport stays unavailable.
@@ -59,15 +63,17 @@ type ChoiceRequest struct {
 	Overlaps []evidenceRecord `json:"overlap,omitempty"`
 }
 
-// Answer is one returned choice over a supplied request id.
+// Answer is one returned choice over a supplied request id. Probability and
+// confidence are pointers: an absent value stays distinguishable from a zero
+// value and abstains.
 // Spec: docs/specs/task-retrospective.md via ChoiceResponse
 type Answer struct {
 	RequestID   string   `json:"request_id"`
 	Subject     string   `json:"subject"`
 	Choice      string   `json:"choice"`
 	Labels      []string `json:"labels,omitempty"`
-	Probability float64  `json:"probability"`
-	Confidence  float64  `json:"confidence"`
+	Probability *float64 `json:"probability"`
+	Confidence  *float64 `json:"confidence"`
 }
 
 // ChoiceResponse is the decoded Jev response document.
@@ -208,7 +214,14 @@ func (j *JevClient) attempt(ctx context.Context, body []byte) (*ChoiceResponse, 
 		return nil, true, ErrMalformedResponse
 	}
 	decoded := &ChoiceResponse{}
-	if err := json.Unmarshal(payload, decoded); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(decoded); err != nil {
+		// Unknown/extra response fields or wrong types abstain as malformed.
+		return nil, true, ErrMalformedResponse
+	}
+	var trailing struct{}
+	if err := decoder.Decode(&trailing); err != io.EOF {
 		return nil, true, ErrMalformedResponse
 	}
 	return decoded, false, nil

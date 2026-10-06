@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // bigFixture builds a valid single-task trace with many paired calls, a
@@ -134,7 +135,7 @@ func TestOversizedUnicodeResultSplitsIntoIDLinkedFragments(t *testing.T) {
 	mock, cfg := newMockServer(t, nil)
 	mock.answersByID["q-"+hugeFixtureID(25)] = Answer{
 		RequestID: "q-" + hugeFixtureID(25), Subject: hugeFixtureID(25),
-		Choice: "expected-failure", Probability: 0.95, Confidence: 0.93,
+		Choice: "expected-failure", Probability: f64(0.95), Confidence: f64(0.93),
 	}
 	client := newJev(t, cfg, nil)
 	source, err := json.Marshal(trace)
@@ -186,22 +187,32 @@ func TestOversizedUnicodeResultSplitsIntoIDLinkedFragments(t *testing.T) {
 	questionSends := 0
 	finalPage := pageContents[len(pageContents)-1]
 	for _, call := range calls {
-		body := string(call.Body)
-		if strings.Contains(body, `"subject":"`+hugeID+`"`) {
-			questionSends++
-			index := strings.Index(body, `"page":`) // request page id
-			if index < 0 {
-				t.Fatal("page id missing")
+		decoded := decodeWire(t, call.Body)
+		hasQuestion := false
+		for _, question := range decoded.Requests {
+			if question.Subject == hugeID && question.Scope == ScopeCallClassification {
+				hasQuestion = true
 			}
-			_ = index
-			if parsePage(call.Body) != finalPage {
-				t.Fatalf("classification question did not ride the final fragment: page %d want %d", parsePage(call.Body), finalPage)
+		}
+		if !hasQuestion {
+			continue
+		}
+		questionSends++
+		if decoded.State.Page != finalPage {
+			t.Fatalf("classification question did not ride the final fragment: page %d want %d", decoded.State.Page, finalPage)
+		}
+		marked := false
+		for _, record := range decoded.State.Records {
+			if record.ID != hugeID || record.Piece == nil || record.Overlapped {
+				continue
 			}
-			var pages []PageRecordProbe
-			_ = json.Unmarshal(call.Body, &pages)
-			if strings.Contains(body, `"overlapped":false,`) && strings.Contains(body, `"part":{"part"`) == false {
-				t.Fatal("piece markers missing")
+			marked = true
+			if record.PieceSource == "" {
+				t.Fatalf("piece missing provenance: %+v", record)
 			}
+		}
+		if !marked {
+			t.Fatal("piece markers missing on the question page")
 		}
 	}
 	if questionSends != 1 {
@@ -226,26 +237,15 @@ func TestOversizedUnicodeResultSplitsIntoIDLinkedFragments(t *testing.T) {
 	if report.Coverage.CoveredRecords != report.Coverage.TotalRecords {
 		t.Fatalf("partial coverage: %+v", report.Coverage)
 	}
+	if !report.Evaluation.StageTwoRan || report.Usage.Splits < 1 {
+		t.Fatalf("split accounting missing: stage_two_ran=%t usage=%+v", report.Evaluation.StageTwoRan, report.Usage)
+	}
 	for _, page := range report.Coverage.Pages {
 		if page.Bytes.Request > 24_000 || page.Bytes.State+page.Bytes.LongestQuestion > 16_000 {
 			t.Fatalf("byte budgets broken: %+v", page.Bytes)
 		}
 	}
-	// Every transmitted piece is valid UTF-8 (no mid-rune cuts).
-	for _, call := range calls {
-		key := map[string]any{}
-		if err := json.Unmarshal(call.Body, &key); err != nil {
-			continue // binary scripts are the 5xx probes
-		}
-		for _, value := range strings.Split(string(call.Body), `"text":"`) {
-			if tail, _, _ := strings.Cut(value, `"`); tail != "" {
-				if _, err := strconv.Unquote(`"` + strings.ReplaceAll(tail, `\`, `\\`) + `"`); err != nil {
-					_, _ = value, tail
-					continue
-				}
-			}
-		}
-	}
+	assertPieceUTF8(t, calls)
 }
 
 // hugeFixtureID is the oversized record's id of bigFixture.
@@ -270,9 +270,59 @@ func parsePage(body []byte) int {
 	return decoded.State.Page
 }
 
-// PageRecordProbe is a page-record fragment used in probes; its marker only.
+// wireRequest is one recorded stage-two (or stage-one) choice request.
 // Spec: docs/specs/task-retrospective.md
-type PageRecordProbe []map[string]any
+type wireRequest struct {
+	State struct {
+		Page    int              `json:"page"`
+		Records []evidenceRecord `json:"records"`
+	} `json:"state"`
+	Overlap  []evidenceRecord `json:"overlap"`
+	Requests []Question       `json:"requests"`
+}
+
+func decodeWire(t *testing.T, body []byte) wireRequest {
+	t.Helper()
+	var decoded wireRequest
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("decode recorded request: %v", err)
+	}
+	return decoded
+}
+
+func (w wireRequest) records() []evidenceRecord {
+	return append(append([]evidenceRecord{}, w.State.Records...), w.Overlap...)
+}
+
+func (w wireRequest) stageTwo() bool {
+	for _, question := range w.Requests {
+		if question.Scope == ScopeCallClassification || question.Scope == ScopeRequirementOmission {
+			return true
+		}
+	}
+	return false
+}
+
+// assertPieceUTF8 unmarshals every recorded text field and requires valid UTF-8.
+// Spec: docs/specs/task-retrospective.md
+func assertPieceUTF8(t *testing.T, calls []*recordedCall) {
+	t.Helper()
+	for _, call := range calls {
+		decoded := decodeWire(t, call.Body)
+		check := func(label, text string) {
+			if text != "" && !utf8.ValidString(text) {
+				t.Fatalf("%s is not valid UTF-8: %q", label, text)
+			}
+		}
+		for _, record := range decoded.records() {
+			check(record.ID+" input", record.Input)
+			check(record.ID+" text", record.Text)
+			for _, fragment := range record.Result {
+				check(fragment.ID, fragment.Text)
+			}
+		}
+	}
+}
 
 func TestPageDeliveryRetriesTransientFailure(t *testing.T) {
 	report, calls := runEndToEnd(t, map[int]mockResponse{

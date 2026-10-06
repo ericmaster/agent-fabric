@@ -97,28 +97,32 @@ type SourceRef struct {
 // coverage reason but remain visible in coverage accounting.
 // Spec: docs/specs/task-retrospective.md via Trace
 type Message struct {
-	ID     string `json:"id"`
-	Seq    int    `json:"seq"`
-	Role   string `json:"role"`           // user | assistant
-	Kind   string `json:"kind,omitempty"` // "" | final | action | reasoning | unsupported
-	Text   string `json:"text,omitempty"`
-	Hidden bool   `json:"hidden,omitempty"`
-	Binary bool   `json:"binary,omitempty"`
+	ID     string            `json:"id"`
+	Seq    int               `json:"seq"`
+	Role   string            `json:"role"`           // user | assistant
+	Kind   string            `json:"kind,omitempty"` // "" | final | action | reasoning | unsupported
+	Text   string            `json:"text,omitempty"`
+	Hidden bool              `json:"hidden,omitempty"`
+	Binary bool              `json:"binary,omitempty"`
+	Env    map[string]string `json:"env,omitempty"`
 }
 
-// CallRecord is one tool call; status "" is an unresolved running tool.
+// CallRecord is one tool call; status "" is an unresolved running tool. An
+// input_omitted call was recorded by the collector with the input content
+// withheld; it is never a paired step.
 // Spec: docs/specs/task-retrospective.md via Trace
 type CallRecord struct {
-	ID         string            `json:"id"`
-	Seq        int               `json:"seq"`
-	Tool       string            `json:"tool"`
-	Status     string            `json:"status,omitempty"`
-	ExitCode   *int              `json:"exit_code,omitempty"`
-	Input      string            `json:"input,omitempty"`
-	Result     []Fragment        `json:"result,omitempty"`
-	Env        map[string]string `json:"env,omitempty"`
-	Prereq     string            `json:"prereq_fingerprint,omitempty"`
-	SourceRefs []SourceRef       `json:"source_refs,omitempty"`
+	ID           string            `json:"id"`
+	Seq          int               `json:"seq"`
+	Tool         string            `json:"tool"`
+	Status       string            `json:"status,omitempty"`
+	ExitCode     *int              `json:"exit_code,omitempty"`
+	Input        string            `json:"input,omitempty"`
+	InputOmitted bool              `json:"input_omitted,omitempty"`
+	Result       []Fragment        `json:"result,omitempty"`
+	Env          map[string]string `json:"env,omitempty"`
+	Prereq       string            `json:"prereq_fingerprint,omitempty"`
+	SourceRefs   []SourceRef       `json:"source_refs,omitempty"`
 }
 
 // Requirement is one explicit task requirement statement for omission
@@ -164,29 +168,29 @@ type Record struct {
 	Seq       int
 	SessionID string
 	// Message fields.
-	Text      string
-	Hidden    bool
-	Binary    bool
-	Reasoning bool
+	Text        string
+	Hidden      bool
+	Binary      bool
+	Reasoning   bool
+	Unsupported bool
 	// Call fields.
-	Tool       string
-	Status     string
-	ExitCode   *int
-	Input      string
-	Result     []Fragment
-	Env        map[string]string
-	Prereq     string
-	SourceRefs []SourceRef
+	Tool         string
+	Status       string
+	ExitCode     *int
+	Input        string
+	InputOmitted bool
+	Result       []Fragment
+	Env          map[string]string
+	Prereq       string
+	SourceRefs   []SourceRef
 }
 
-// HasInput reports whether the collector recorded an (possibly empty) input.
-// Spec: docs/specs/task-retrospective.md via Record
-func (r *Record) HasInput() bool { return r.Kind == RecordToolCall }
-
-// Paired reports whether a terminal tool call has paired input/result evidence.
+// Paired reports whether a terminal tool call has paired input/result
+// evidence; a call whose input was omitted by the collector is never a paired
+// step.
 // Spec: docs/specs/task-retrospective.md via Record
 func (r *Record) Paired() bool {
-	return r.Kind == RecordToolCall && len(r.Result) > 0
+	return r.Kind == RecordToolCall && !r.InputOmitted && len(r.Result) > 0
 }
 
 // Terminal reports whether the call has a terminal status.
@@ -312,14 +316,26 @@ func (n *Normalized) LastSteps(count int) []*Step {
 	return append([]*Step(nil), n.Steps[len(n.Steps)-count:]...)
 }
 
-// FinalResponse returns the interval's final assistant response record when present.
+// FinalResponse returns the interval's final assistant response record when
+// present: the last assistant message inside the resolved interval that is
+// visible, decodable, and not private reasoning or unsupported content.
+// Out-of-interval records and hidden/binary/reasoning/unsupported records are
+// never eligible, so a previous task's final or a hidden reasoning record can
+// never be transmitted as this task's final response.
 // Spec: docs/specs/task-retrospective.md via Normalized
 func (n *Normalized) FinalResponse() *Record {
 	var last *Record
 	for _, record := range n.Records {
-		if record.Kind == RecordAssistantMessage || record.Kind == RecordAssistantFinal {
-			last = record
+		if !n.InInterval(record) {
+			continue
 		}
+		if record.Kind != RecordAssistantMessage && record.Kind != RecordAssistantFinal {
+			continue
+		}
+		if record.Hidden || record.Binary || record.Reasoning || record.Unsupported {
+			continue
+		}
+		last = record
 	}
 	return last
 }
@@ -415,6 +431,9 @@ func walk(trace *Trace, depth int, sessionID string, state *normalization) error
 		if err := state.validateMessage(m); err != nil {
 			return err
 		}
+		// Messages share one registration kind so a repeated id deduplicates
+		// across roles; the record itself still carries the role-specific kind.
+		// A call or requirement reusing the id remains a kind collision.
 		isNew, err := state.register(m.ID, RecordUserMessage)
 		if err != nil {
 			return err
@@ -508,7 +527,10 @@ func messageRecord(m *Message, sessionID string) *Record {
 	if kind == "" {
 		kind = "message"
 	}
-	record := &Record{ID: m.ID, Seq: m.Seq, SessionID: sessionID, Text: m.Text, Hidden: m.Hidden, Binary: m.Binary}
+	record := &Record{
+		ID: m.ID, Seq: m.Seq, SessionID: sessionID,
+		Text: m.Text, Hidden: m.Hidden, Binary: m.Binary, Env: m.Env,
+	}
 	switch {
 	case m.Role == "user":
 		record.Kind = RecordUserMessage
@@ -517,6 +539,9 @@ func messageRecord(m *Message, sessionID string) *Record {
 	case kind == "reasoning":
 		record.Kind = RecordAssistantMessage
 		record.Reasoning = true
+	case kind == "unsupported":
+		record.Kind = RecordAssistantMessage
+		record.Unsupported = true
 	default:
 		record.Kind = RecordAssistantMessage
 	}
@@ -550,7 +575,7 @@ func callRecord(c *CallRecord, sessionID string) *Record {
 	return &Record{
 		ID: c.ID, Kind: RecordToolCall, Seq: c.Seq, SessionID: sessionID,
 		Tool: c.Tool, Status: status, ExitCode: c.ExitCode,
-		Input: c.Input, Result: c.Result, Env: c.Env,
+		Input: c.Input, InputOmitted: c.InputOmitted, Result: c.Result, Env: c.Env,
 		Prereq: c.Prereq, SourceRefs: c.SourceRefs,
 	}
 }
@@ -665,7 +690,7 @@ func buildSteps(n *Normalized) {
 		switch {
 		case record.Kind == RecordToolCall && record.Terminal() && record.Paired():
 			n.Steps = append(n.Steps, &Step{ID: record.ID, Kind: StepToolAttempt, Record: record})
-		case record.Kind == RecordAssistantMessage && !record.Reasoning && !record.Hidden && !record.Binary:
+		case record.Kind == RecordAssistantMessage && !record.Reasoning && !record.Hidden && !record.Binary && !record.Unsupported:
 			n.Steps = append(n.Steps, &Step{ID: record.ID, Kind: StepAction, Record: record})
 		}
 	}

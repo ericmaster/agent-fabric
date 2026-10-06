@@ -29,11 +29,11 @@ func TestForgedCitationsAndInvalidProbabilitiesAbstain(t *testing.T) {
 		classifications: classifications,
 		extra: []Answer{
 			// Forged subject on a valid request reference: abstains.
-			{RequestID: "q-c1", Subject: "invented-c-id", Choice: "avoidable-error", Probability: 0.99, Confidence: 0.99},
+			{RequestID: "q-c1", Subject: "invented-c-id", Choice: "avoidable-error", Probability: f64(0.99), Confidence: f64(0.99)},
 			// Valid subject, invented classification: abstains.
-			{RequestID: "q-c2", Subject: "c2", Choice: "totally-forged", Probability: 0.99, Confidence: 0.99},
+			{RequestID: "q-c2", Subject: "c2", Choice: "totally-forged", Probability: f64(0.99), Confidence: f64(0.99)},
 			// Valid subject and choice, invalid probability: abstains.
-			{RequestID: "q-c4", Subject: "c4", Choice: "wrong-direction", Probability: 1.5, Confidence: 0.95},
+			{RequestID: "q-c4", Subject: "c4", Choice: "wrong-direction", Probability: f64(1.5), Confidence: f64(0.95)},
 		},
 	}
 	report := analyze(t, DefaultConfig(), trace, client)
@@ -71,10 +71,10 @@ func TestStageOneInvalidOutcomeAnswerAbstains(t *testing.T) {
 		name    string
 		outcome *Answer
 	}{
-		{"forged outcome id", &Answer{RequestID: outcomeQuestionID, Subject: "task", Choice: "victorious", Probability: 0.99, Confidence: 0.99}},
-		{"probability outside range", &Answer{RequestID: outcomeQuestionID, Subject: "task", Choice: "succeeded", Probability: 1.2, Confidence: 0.99}},
-		{"confidence outside range", &Answer{RequestID: outcomeQuestionID, Subject: "task", Choice: "succeeded", Probability: 0.99, Confidence: -0.5}},
-		{"wrong request id", &Answer{RequestID: "q-invented", Subject: "task", Choice: "succeeded", Probability: 0.99, Confidence: 0.99}},
+		{"forged outcome id", &Answer{RequestID: outcomeQuestionID, Subject: "task", Choice: "victorious", Probability: f64(0.99), Confidence: f64(0.99)}},
+		{"probability outside range", &Answer{RequestID: outcomeQuestionID, Subject: "task", Choice: "succeeded", Probability: f64(1.2), Confidence: f64(0.99)}},
+		{"confidence outside range", &Answer{RequestID: outcomeQuestionID, Subject: "task", Choice: "succeeded", Probability: f64(0.99), Confidence: f64(-0.5)}},
+		{"wrong request id", &Answer{RequestID: "q-invented", Subject: "task", Choice: "succeeded", Probability: f64(0.99), Confidence: f64(0.99)}},
 	}
 	for _, tested := range cases {
 		t.Run(tested.name, func(t *testing.T) {

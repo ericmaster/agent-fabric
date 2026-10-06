@@ -81,22 +81,24 @@ compacted-away evidence (gap `kind: "compacted"`); missing final assistant
 response in the interval.
 
 Step definition: a step is a terminal tool attempt with paired input/result
-(`input` present and `len(result) > 0`) or a non-final visible assistant action
-message. User messages, the final assistant response, hidden reasoning, and
-unpaired terminal calls are not steps. `last_ten_steps` = the last ten of the
-stable ordered deduped steps.
+(`input` present, `input_omitted` false, and `len(result) > 0`) or a non-final
+visible assistant action message. User messages, the final assistant response,
+hidden reasoning, unsupported or binary messages, and unpaired or
+`input_omitted` terminal calls are not steps. `last_ten_steps` = the last ten
+of the stable ordered deduped steps.
 
 ## Redaction (before HTTP and before any persisted derived evidence)
 
 Local-only redactor applies, in order:
 
-1. Env values of records whose key name matches
+1. Env values of records (calls and messages) whose key name matches
    `(?i)(password|secret|token|Api[-_]?Key|Auth|Credential|Passphrase)` → `[REDACTED:env:<name>]`.
-2. Secret-file bodies: `source_files` entries whose path matches secret-file
-   patterns (`.env`, `id_rsa`, `id_ed25519`, `.pem`, `.p12`, `.pfx`,
-   `credentials`, `secrets`) have their excerpt fully redacted; an unreadable or
-   absent secret-file body is a materially incomplete redaction and blocks
-   automatic correction.
+2. Secret-file bodies: `source_files` entries and record `source_refs` whose
+   path matches secret-file patterns (`.env`, `id_rsa`, `id_ed25519`, `.pem`,
+   `.p12`, `.pfx`, `credentials`, `secrets`) or that set `secret_file` have
+   their excerpt fully redacted; an unreadable or absent secret-file body
+   (empty excerpt) is a materially incomplete redaction and blocks automatic
+   correction.
 3. Credential/auth/cookie/private-key content patterns (default rails):
    private-key PEM blocks, `Authorization`/`Api-Key`/`X-Api-Key` and
    bearer/basic credentials, cookie values, JSON/string password/secret/token
@@ -122,10 +124,14 @@ Redaction counters (per pattern kind) are recorded; never the original values.
 - Wire contract: `POST {endpoint}/v1/choices` with JSON
   `{model, state, overlap?, requests:[{id, subject, scope, text, choices:[...], evidence?}]}`;
   response `{responses:[{request_id, subject, choice, labels?, probability, confidence}]}`.
+  Stage-two `state.records` carries the page's redacted recordgrams (the
+  record content). `overlap` repeats the previous page's tail with
+  `overlapped: true` and is the only other place that content appears.
 - Both model limits are honored with conservative byte budgets (bytes are not
   claimed to be tokens): serialized request ≤ **24,000 UTF-8 bytes** and
-  `state + longest question` ≤ **16,000 bytes**. Measurements happen before any
-  send; a too-large request is split, never trimmed.
+  `state + longest question` ≤ **16,000 bytes**. Measurements include question
+  envelopes and recordgrams and happen before any send; a too-large request is
+  split, never trimmed.
 - Transport failure (HTTP 5xx/network/timeout), HTTP 429 (with Retry-After or
   capped backoff), HTTP 413 (size rejection), and unparseable responses are
   retryable/size-handled per the client contract below; stubborn 4xx failures
@@ -136,7 +142,10 @@ Redaction counters (per pattern kind) are recorded; never the original values.
 One request. Evidence contains exactly the three prescribed fields, redacted:
 
 1. `user_messages` — all interval user messages (id + text).
-2. `final_assistant_response` — the interval's final assistant message (id + text).
+2. `final_assistant_response` — the last visible assistant message inside the
+   resolved interval (id + text). Out-of-interval finals, and hidden, binary,
+   reasoning, or unsupported records, are not eligible and are never
+   transmitted as this task's final.
 3. `last_ten_steps` — the last ten steps (id, kind, session/tool/status/
    exit_code/input/result fragments for tool attempts; id/text for assistant actions).
 
@@ -179,17 +188,23 @@ action/final messages, terminal tool calls, explicit requirements — including
 linked descendants, deduplicated by id once. Hidden reasoning, unsupported, and
 binary records are excluded with coverage reasons (never transmitted). Records
 larger than a page become stable id-linked fragments
-(`<record>#<n>/<total>` in evidence `fragment`/`continues_from`); `state +
+(`part`/`total` on the piece, same record id). Each piece's `piece_source`
+is the source segment (`input` or `result:<fragment id>`) that covers the
+piece's start offset, not the cut index. `state +
 longest question` limits apply to fragment questions. Requests carry `state`
 (task/boundary metadata, page number, fragment references), `overlap` (the
 previous page's tail records, flagged `overlap: true`), and `requests`.
 
 Pagination:
 
-- Packed deterministically by `(seq, id)` with the two byte limits.
-- On HTTP 413 the page is re-packed with halved page budget until it fits or a
-  single record cannot (then that record is unknown `oversized_indivisible`).
-  Splitting never omits or trims records.
+- Packed deterministically by `(seq, id)` with the two byte limits. Fit checks
+  measure the serialized request the way dispatch will send it, including
+  question envelopes and recordgrams.
+- On a local over-budget measurement or HTTP 413 the page is re-packed with a
+  halved page budget until it fits or a single record cannot (then that record
+  is unknown `oversized_indivisible` and the rest of the run continues).
+  Splitting never omits or trims records. A successful page restores the
+  configured budgets for the next page.
 - Every record is covered exactly once in coverage accounting; overlap
   repeats are marked and counted once (dedup counter). Overlaps are record
   tails, never partial fragments.
@@ -216,9 +231,11 @@ Pagination:
 - Confident avoided waste (`avoidable-error`, `wrong-direction`, `redundant`)
   needs `probability >= 0.90` and `confidence >= 0.80`; dedup multiple waste
   labels per call id (union counted once).
-- `counts.raw_errors` counts terminal calls with `status == "error"` (or
-  `failed`), split into `recovered_or_expected` / `avoidable` / `unclassified`
-  so recovered and expected red-test/no-match outcomes stay distinct from waste.
+- `counts.raw_errors` counts terminal calls whose status is `error`, `failed`,
+  or `aborted`, and terminal calls with a recorded nonzero exit code, split
+  into `recovered_or_expected` / `avoidable` / `unclassified` so recovered and
+  expected red-test/no-match outcomes stay distinct from waste. The superset
+  (aborted status and nonzero exit, not only `error|failed`) is intentional.
 - Required-step omissions from requirement verdicts `omitted` /
   `omitted-high-impact` (confident) are reported separately, never folded into
   the call denominator.
@@ -235,8 +252,9 @@ Pagination:
 - `schema_version: 1`; `generated_at` (UTC RFC 3339).
 - `status` `complete|incomplete` + `incomplete_reasons[]`;
   `model: {model: "jev-1.13.0", rubric: "task-retrospective-rubric-1"}`.
-- `trace` — source identities, boundary resolution, gap redaction (details redacted
-  only if the gap text carries secrets), input `sha256`, `source_files`
+- `trace` — source identities, boundary resolution, gap redaction (gap `detail`
+  and other collector free text pass through the redactor before persistence),
+  input `sha256`, `source_files`
   (path + sha256; secret-file bodies never persisted), `child_refs`,
   coverage of descendant sessions included in the interval, digest of records included,
   and namespace dedup counters.
@@ -252,10 +270,15 @@ Pagination:
   digests, record dedup counters.
 - `redaction` — pattern list, counts (substitutions, partial/env/secret counts),
   and the `correction_safe` verdict (false when materially incomplete).
-- `usage` — HTTP requests used, retries, splits, `budget` size, exhausted flag.
+- `usage` — HTTP requests used, retries, splits (content fragmentations plus
+  size-rejection re-packs), `budget` size, exhausted flag.
+  `evaluation.stage_two_ran` is true only when at least one stage-two page
+  was delivered.
 - `dispatch` — `eligible` (an eligible trigger + complete coverage + safe
   redaction), reasons when not eligible. Stage two eligibility additionally
-  requires every page delivered.
+  requires every page delivered. Materially incomplete redaction (an excluded
+  binary record, or a secret-file ref with an empty/unreadable body) sets
+  `eligible` false with an explicit reason.
 
 Report files are written atomically (temp file + rename in the output directory)
 with mode 0600. A report is ALWAYS written for a structurally valid trace even
@@ -270,19 +293,24 @@ agf retrospective analyze --input trace.json --output report.json [--config task
 - Exit 0: report written (any report status).
 - Exit 1: unreadable/malformed trace input, missing/invalid `--input`/`--output`,
   invalid config, or another pre-delivery failure; no report is written.
+- Trace JSON is decoded strictly (`DisallowUnknownFields`). Unknown fields or
+  trailing values fail closed before any network call or report write.
 - The host supplies `TYPESAFE_API_KEY` from the environment; it is never logged
   or persisted. Config never contains credentials.
 
 ## Config contract (one place)
 
 `internal/retrospective/config.go` owns all defaults and thresholds:
-`model`, `rubric_version`, `endpoint`, `http_timeout` (30s),
+`model`, `rubric_version`, `endpoint`, `http_timeout` (`"30s"`),
 `maximum_attempts` (3), `request_budget` (100), `page size budget_bytes`
 (24,000 request / 16,000 state+longest), `minimum fragment bytes` (1,024),
-`backoff base/max` (300ms/4s), `retry-after max` (30s), `minimum success
+`backoff base/max` (`"300ms"` / `"4s"`), `retry-after max` (30s), `minimum success
 probability` (0.90), `minimum confidence` (0.80), `minimum calls for rate`
 (20), `rate threshold` (0.05 exclusive), `redundant attempts required` (3),
 `steps tail size` (10), and additive `redact_patterns`.
+Duration fields (`http_timeout`, `backoff_base`, `backoff_max`) are
+unit-suffixed strings. A bare number is rejected; it is not interpreted as
+nanoseconds.
 No other file duplicates these defaults; later phases read the same contract.
 
 ## Testing contract

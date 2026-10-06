@@ -84,6 +84,31 @@ func TestLoadConfigRejectsUnknownAndInvalidKeys(t *testing.T) {
 	}
 }
 
+func TestLoadConfigDurationRequiresUnitSuffix(t *testing.T) {
+	dir := t.TempDir()
+	bare := filepath.Join(dir, "bare.json")
+	if err := os.WriteFile(bare, []byte(`{"http_timeout":30}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadConfig(bare); err == nil {
+		t.Fatal("bare http_timeout number was accepted as nanoseconds")
+	}
+	good := filepath.Join(dir, "good.json")
+	if err := os.WriteFile(good, []byte(`{"http_timeout":"30s","backoff_base":"300ms","backoff_max":"4s"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HTTPTimeout.String() != "30s" || cfg.BackoffBase.String() != "300ms" || cfg.BackoffMax.String() != "4s" {
+		t.Fatalf("durations = %s %s %s", cfg.HTTPTimeout, cfg.BackoffBase, cfg.BackoffMax)
+	}
+	if cfg.RequestBudget != 100 {
+		t.Fatalf("omitted budget was not preserved: %d", cfg.RequestBudget)
+	}
+}
+
 func TestLoadConfigMissingFileFailsClosed(t *testing.T) {
 	if _, err := LoadConfig(filepath.Join(t.TempDir(), "absent.json")); err == nil {
 		t.Fatal("missing config file was accepted")

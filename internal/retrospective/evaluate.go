@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -127,6 +128,9 @@ type analysis struct {
 	questionScope   map[string]*Question // sent question metadata by question id
 	pageOfAnswer    map[string]int       // dispatched page of each answered question id
 	answers         map[string]*Answer
+	redaction       ReportRedaction
+	contentSplits   int // records split into id-linked pieces
+	sizeRepacks     int // page re-packs after size rejection
 	usage           JevUsage
 }
 
@@ -250,12 +254,13 @@ func localOutcomeChoice(n *Normalized) string {
 	return "incomplete"
 }
 
-// outcomeReasons renders the local material reasons.
+// outcomeReasons renders the local material reasons with redacted detail
+// text (gap details and provenance strings are collector free text).
 // Spec: docs/specs/task-retrospective.md via runStageOne
 func (a *analysis) outcomeReasons() []string {
 	rows := []string{}
 	for _, reason := range a.normalized.Reasons {
-		rows = append(rows, reason.Kind+": "+reason.Detail)
+		rows = append(rows, reason.Kind+": "+a.redactor.Text(reason.Detail))
 	}
 	return rows
 }
@@ -351,7 +356,8 @@ func (a *analysis) stageIdentityState(extra map[string]any) []byte {
 }
 
 // outcomeFromResponse validates the stage-one answer over the supplied
-// choice ids; constraint violations abstain (unknown with the reason).
+// choice ids; constraint violations — unknown choice ids, missing or
+// out-of-range probability/confidence — abstain (unknown with the reason).
 // Spec: docs/specs/task-retrospective.md via runStageOne
 func outcomeFromResponse(response *ChoiceResponse) ReportOutcome {
 	if response == nil || len(response.Responses) != 1 {
@@ -364,14 +370,17 @@ func outcomeFromResponse(response *ChoiceResponse) ReportOutcome {
 	if !containsString(outcomeChoices, answer.Choice) {
 		return ReportOutcome{Source: "model", Choice: "unknown", Reasons: []string{"answer choice is outside the supplied ids"}}
 	}
-	if !probabilityInRange(answer.Probability) || !probabilityInRange(answer.Confidence) {
+	if answer.Probability == nil || answer.Confidence == nil {
+		return ReportOutcome{Source: "model", Choice: "unknown", Reasons: []string{"answer probability or confidence missing"}}
+	}
+	if !probabilityInRange(*answer.Probability) || !probabilityInRange(*answer.Confidence) {
 		return ReportOutcome{Source: "model", Choice: "unknown", Reasons: []string{"answer probability or confidence outside [0,1]"}}
 	}
 	return ReportOutcome{
 		Source:      "model",
 		Choice:      answer.Choice,
-		Probability: &answer.Probability,
-		Confidence:  &answer.Confidence,
+		Probability: answer.Probability,
+		Confidence:  answer.Confidence,
 	}
 }
 
@@ -383,19 +392,20 @@ func outcomeFromResponse(response *ChoiceResponse) ReportOutcome {
 // page's record list.
 // Spec: docs/specs/task-retrospective.md via stageItem
 type evidenceRecord struct {
-	ID          string        `json:"id"`
-	Kind        string        `json:"kind"`
-	SessionID   string        `json:"session_id,omitempty"`
-	Tool        string        `json:"tool,omitempty"`
-	Status      string        `json:"status,omitempty"`
-	ExitCode    *int          `json:"exit_code,omitempty"`
-	Input       string        `json:"input,omitempty"`
-	Text        string        `json:"text,omitempty"`
-	Result      []oneFragment `json:"result,omitempty"`
-	SourceRefs  []SourceRef   `json:"source_refs,omitempty"`
-	PieceSource string        `json:"piece_source,omitempty"`
-	Piece       *fragRef      `json:"part,omitempty"`
-	Overlapped  bool          `json:"overlapped,omitempty"`
+	ID           string        `json:"id"`
+	Kind         string        `json:"kind"`
+	SessionID    string        `json:"session_id,omitempty"`
+	Tool         string        `json:"tool,omitempty"`
+	Status       string        `json:"status,omitempty"`
+	ExitCode     *int          `json:"exit_code,omitempty"`
+	Input        string        `json:"input,omitempty"`
+	InputOmitted bool          `json:"input_omitted,omitempty"`
+	Text         string        `json:"text,omitempty"`
+	Result       []oneFragment `json:"result,omitempty"`
+	SourceRefs   []SourceRef   `json:"source_refs,omitempty"`
+	PieceSource  string        `json:"piece_source,omitempty"`
+	Piece        *fragRef      `json:"part,omitempty"`
+	Overlapped   bool          `json:"overlapped,omitempty"`
 }
 
 // fragRef marks one piece of a split record (part/total, id-linked).
@@ -426,6 +436,14 @@ type stageTwoPage struct {
 
 // runStageTwo dispatches the paginated stage-two classification when the
 // success gate held, recording coverage accounting and validated answers.
+// Pages are packed under the conservative byte budgets (question envelopes
+// included) and delivered in order. A locally over-budget page or an HTTP
+// 413 size rejection re-packs that page with a halved content budget and
+// retries. Halving repeats until the page fits or a single record cannot;
+// that record is unknown (oversized-indivisible) and the rest of the run
+// continues. Other failures mark the run incomplete. Budgets are restored
+// after a successful page so one rejection does not permanently shrink
+// later pages.
 // Spec: docs/specs/task-retrospective.md via Analyze
 func (a *analysis) runStageTwo(ctx context.Context) {
 	if !a.gate.StageTwoRequested {
@@ -435,16 +453,112 @@ func (a *analysis) runStageTwo(ctx context.Context) {
 	for _, record := range excluded {
 		a.setExcluded(record.ID, record.Kind, exclusionReason(record))
 	}
-	pages := a.packStageTwoPages(items)
-	for index, page := range pages {
-		if err := a.dispatchPage(ctx, index+1, page); err != nil {
+	pending := append([]stageItem(nil), items...)
+	requestBudget := a.cfg.RequestLimitBytes
+	stateBudget := a.cfg.StateQuestionLimitBytes
+	pageNumber := 0
+	forceSingle := false
+	var previousTail []evidenceRecord
+	// Bound the re-pack loop. Each record can be halved a handful of times
+	// and split into pieces; past that the packer is not making progress.
+	guard := 0
+	limit := len(items)*16 + 64
+	for len(pending) > 0 {
+		guard++
+		if guard > limit {
+			a.halt("stage two packing did not converge")
+			a.markUndelivered(pending)
+			return
+		}
+		page, remaining := a.packNextPage(pending, previousTail, requestBudget, stateBudget, forceSingle)
+		if len(page.items) == 0 && len(remaining) == len(pending) {
+			a.halt("stage two packing stalled")
+			a.markUndelivered(pending)
+			return
+		}
+		pending = remaining
+		if len(page.items) == 0 {
+			forceSingle = false
+			requestBudget = a.cfg.RequestLimitBytes
+			stateBudget = a.cfg.StateQuestionLimitBytes
+			continue
+		}
+		pageNumber++
+		err := a.dispatchPage(ctx, pageNumber, page)
+		if isRepackableSizeError(err) {
+			a.sizeRepacks++
+			pageNumber--
+			nextRequest, nextState := requestBudget/2, stateBudget/2
+			indivisible := forceSingle || len(page.items) == 1 && (nextRequest < a.cfg.MinFragmentBytes || nextState < a.cfg.MinFragmentBytes)
+			if indivisible {
+				// A single record still cannot fit: name it unknown and keep
+				// going. Splitting never omits the rest of the page.
+				head := page.items[0]
+				a.setUnknown(head.subject, head.kind, "oversized-indivisible")
+				if len(page.items) > 1 {
+					pending = append(append([]stageItem(nil), page.items[1:]...), pending...)
+				}
+				forceSingle = false
+				requestBudget = a.cfg.RequestLimitBytes
+				stateBudget = a.cfg.StateQuestionLimitBytes
+				continue
+			}
+			if nextRequest < a.cfg.MinFragmentBytes || nextState < a.cfg.MinFragmentBytes {
+				forceSingle = true
+				requestBudget = a.cfg.MinFragmentBytes
+				stateBudget = a.cfg.MinFragmentBytes
+			} else {
+				requestBudget, stateBudget = nextRequest, nextState
+			}
+			pending = append(append([]stageItem(nil), page.items...), pending...)
+			continue
+		}
+		if err != nil {
 			a.halt("stage two dispatch failed: " + err.Error())
 			// The failed page's own records stay undelivered along with any
 			// further pages, so the accounting names every uncovered record.
-			a.markUndelivered(pages[index:])
+			a.markUndelivered(page.items)
+			a.markUndelivered(pending)
 			return
 		}
+		forceSingle = false
+		requestBudget = a.cfg.RequestLimitBytes
+		stateBudget = a.cfg.StateQuestionLimitBytes
+		if last := lastItem(page); last != nil {
+			previousTail = overlappedGramsOf(*last)
+		}
 	}
+}
+
+// overlappedGramsOf re-renders one item's recordgrams as the next page's
+// overlap context entries (explicitly flagged so evaluator-side and local
+// accounting deduplicate them).
+// Spec: docs/specs/task-retrospective.md via runStageTwo
+func overlappedGramsOf(item stageItem) []evidenceRecord {
+	tail := make([]evidenceRecord, 0, len(item.grams))
+	for _, gram := range item.grams {
+		repeated := gram
+		repeated.Overlapped = true
+		tail = append(tail, repeated)
+	}
+	return tail
+}
+
+// lastItem returns the page's last packed item.
+// Spec: docs/specs/task-retrospective.md via runStageTwo
+func lastItem(page *stageTwoPage) *stageItem {
+	if len(page.items) == 0 {
+		return nil
+	}
+	return &page.items[len(page.items)-1]
+}
+
+// isRepackableSizeError reports whether a dispatch failure is a size
+// rejection that the packer must handle by re-packing (splitting) instead of
+// halting the run.
+// Spec: docs/specs/task-retrospective.md via runStageTwo
+func isRepackableSizeError(err error) bool {
+	return errors.Is(err, ErrSizeRejected) || errors.Is(err, ErrContentOverBudget)
 }
 
 // stageTwoItems lists the redacted observable records (the interval's records
@@ -492,6 +606,8 @@ func exclusionReason(record *Record) string {
 		return "binary-record"
 	case record.Reasoning:
 		return "private-reasoning"
+	case record.Unsupported:
+		return "unsupported-record"
 	}
 	if record.Kind == RecordToolCall && len(record.Result) > 0 {
 		allBinary := true
@@ -514,7 +630,7 @@ func gramOf(record *Record) evidenceRecord {
 	gram := evidenceRecord{
 		ID: record.ID, Kind: record.Kind, SessionID: record.SessionID,
 		Tool: record.Tool, Status: record.Status, ExitCode: record.ExitCode,
-		Input: record.Input, Text: record.Text,
+		Input: record.Input, InputOmitted: record.InputOmitted, Text: record.Text,
 	}
 	for _, fragment := range record.Result {
 		gram.Result = append(gram.Result, oneFragment{
@@ -559,7 +675,7 @@ func (a *analysis) requirementQuestion(record *Record) *Question {
 }
 
 // gramBytes measures the serialized bytes of one item's recordgram list.
-// Spec: docs/specs/task-retrospective.md via packStageTwoPages
+// Spec: docs/specs/task-retrospective.md via packNextPage
 func gramBytes(grams []evidenceRecord) int {
 	encoded, err := json.Marshal(grams)
 	if err != nil {
@@ -568,97 +684,122 @@ func gramBytes(grams []evidenceRecord) int {
 	return len(encoded)
 }
 
-// pageContentBytes sums the recordgram bytes of a page (including the page's
-// overlap content) plus the overlap framing marker.
-// Spec: docs/specs/task-retrospective.md via packStageTwoPages
-func pageContentBytes(page *stageTwoPage) int {
-	used := 0
-	for _, item := range page.items {
-		used += gramBytes(item.grams)
+// fitsPage checks both serialized constraints with a tentative new item by
+// assembling the trial request exactly as dispatch would (recordgrams in
+// state, question envelopes included) and measuring the serialized bytes.
+// Spec: docs/specs/task-retrospective.md via packNextPage
+func (a *analysis) fitsPage(page *stageTwoPage, item stageItem, requestBudget, stateBudget int) bool {
+	trial := &stageTwoPage{}
+	*trial = *page
+	trial.items = append(append([]stageItem(nil), page.items...), item)
+	trial.questions = page.questions
+	if item.question != nil {
+		trial.questions = append(append([]Question(nil), page.questions...), *item.question)
 	}
-	if len(page.overlap) > 0 {
-		used += gramBytes(page.overlap) + overlapMarkerBytes
-	}
-	return used
-}
-
-// fitsPage checks both serialized constraints with a tentative new item.
-// Spec: docs/specs/task-retrospective.md via packStageTwoPages
-func (a *analysis) fitsPage(page *stageTwoPage, item stageItem, stateBytes int) bool {
-	content := pageContentBytes(page) + gramBytes(item.grams)
-	if content+stateBytes+stageReserveBytes > a.cfg.RequestLimitBytes {
+	measure := a.measureTrialRequest(trial)
+	if measure.Request > requestBudget {
 		return false
 	}
-	if item.question != nil {
-		longest := len(mustMarshal(*item.question))
-		for _, question := range page.questions {
-			if size := len(mustMarshal(question)); size > longest {
-				longest = size
-			}
-		}
-		if stateBytes+longest+stageReserveBytes > a.cfg.StateQuestionLimitBytes {
-			return false
-		}
-	}
-	return true
+	return measure.State+measure.LongestQuestion <= stateBudget
 }
 
-// packStageTwoPages greedily packs the items into pages with overlap and
-// id-linked fragment splitting for oversized records; a record that can never
-// fit is recorded unknown and never transmitted and never omitted silently.
+// measureTrialRequest measures one tentative page's serialized request bytes
+// for the budget gates (state includes the page's recordgrams). The
+// provisional page number is stable; the reserve covers digit growth of the
+// real dispatch numbers.
+// Spec: docs/specs/task-retrospective.md via fitsPage
+func (a *analysis) measureTrialRequest(page *stageTwoPage) ReportBytes {
+	return measureRequest(a.buildPageRequest(1, page))
+}
+
+// packNextPage greedily packs ONE page from the head of the pending items
+// under the current budgets, re-presenting the previous page's tail as the
+// page's overlap. An item too large for a fresh page is split into ID-linked
+// fragments (replacing its pending entry, so the caller's remaining list
+// always reflects the split); a record that can never fit is recorded unknown
+// (never omitted silently). forceSingle stops after one item so a size
+// rejection that can no longer be halved still makes progress. It returns the
+// packed page (possibly empty when every consumed item was recorded unknown)
+// and the remaining pending items.
 // Spec: docs/specs/task-retrospective.md via runStageTwo
-func (a *analysis) packStageTwoPages(items []stageItem) []*stageTwoPage {
-	stateBytes := len(a.stageIdentityState(map[string]any{"page": 0}))
-	pages := []*stageTwoPage{}
-	current := &stageTwoPage{}
-	rest := append([]stageItem(nil), items...)
-	for index := 0; index < len(rest); {
-		item := rest[index]
-		if a.fitsPage(current, item, stateBytes) {
-			current.items = append(current.items, item)
+func (a *analysis) packNextPage(pending []stageItem, previousTail []evidenceRecord, requestBudget, stateBudget int, forceSingle bool) (*stageTwoPage, []stageItem) {
+	page := &stageTwoPage{overlap: previousTail}
+	requestBudget -= pageBudgetOverhead(page)
+	stateBudget -= pageBudgetOverhead(page)
+	consumed := 0
+	for consumed < len(pending) {
+		item := pending[consumed]
+		if a.fitsPage(page, item, requestBudget, stateBudget) {
+			page.items = append(page.items, item)
 			if item.question != nil {
-				current.questions = append(current.questions, *item.question)
+				page.questions = append(page.questions, *item.question)
 			}
-			index++
+			consumed++
+			if forceSingle {
+				break
+			}
 			continue
 		}
-		if len(current.items) == 0 {
+		if len(page.items) == 0 && len(page.overlap) > 0 {
+			// A previous-page tail must not block a record that fits alone.
+			// Drop the overlap for this page rather than trim or omit the record.
+			bare := &stageTwoPage{}
+			if a.fitsPage(bare, item, requestBudget, stateBudget) {
+				page.overlap = nil
+				page.items = append(page.items, item)
+				if item.question != nil {
+					page.questions = append(page.questions, *item.question)
+				}
+				consumed++
+				break
+			}
+		}
+		if len(page.items) == 0 {
 			// The record cannot fit an empty page: split into id-linked
 			// pieces or record it unknown (never omitted silently).
-			pieces, reason := a.splitItem(item)
+			overlapBytes := 0
+			if len(page.overlap) > 0 {
+				overlapBytes = gramBytes(page.overlap)
+			}
+			pieces, reason := a.splitItem(item, requestBudget, stateBudget, overlapBytes)
 			if len(pieces) == 0 {
 				a.setUnknown(item.subject, item.kind, reason)
-				index++
+				consumed++
 				continue
 			}
-			rest = append(pieces, rest[index+1:]...)
-			index = 0
+			a.contentSplits++
+			pending = append(pieces, pending[consumed+1:]...)
+			consumed = 0
 			continue
 		}
-		// The page is full: close it, re-present its tail piece as the next
-		// page's overlap, and keep packing the same item on the fresh page.
-		pages = append(pages, current)
-		var tail []evidenceRecord
-		if last := current.items[len(current.items)-1]; len(last.grams) > 0 {
-			for _, gram := range last.grams {
-				repeated := gram
-				repeated.Overlapped = true
-				tail = append(tail, repeated)
-			}
-		}
-		current = &stageTwoPage{overlap: tail}
+		break // The page is full; the caller re-presents this page's tail as
+		// the next page's overlap and keeps packing the same item.
 	}
-	if current != nil && (len(current.items) > 0 || len(current.questions) > 0) {
-		pages = append(pages, current)
+	return page, pending[consumed:]
+}
+
+// pageBudgetOverhead reserves the request envelope, the state framing keys,
+// and small page-index growth from the content budgets. Exact bytes are
+// measured again on every fit trial and before dispatch.
+// Spec: docs/specs/task-retrospective.md via packNextPage
+func pageBudgetOverhead(page *stageTwoPage) int {
+	reserved := stageReserveBytes
+	if len(page.overlap) > 0 {
+		reserved += overlapMarkerBytes
 	}
-	return pages
+	return reserved
 }
 
 // splitItem cuts an oversized item's record into ID-linked pieces whose
 // serialized grams each fit inside both budgets; the input (if any) and each
 // result fragment's text are cut rune-safely and re-linked with part/total.
-// Spec: docs/specs/task-retrospective.md via packStageTwoPages
-func (a *analysis) splitItem(item stageItem) ([]stageItem, string) {
+// Each piece's piece_source is the source segment covering the piece's start
+// offset, so a source that spans several cuts keeps its own provenance
+// instead of the cut index. overlapBytes reserves the previous page's tail
+// so a piece still fits beside that overlap. Already-split pieces (content
+// only in Text) are cut again from that text, keeping their piece_source.
+// Spec: docs/specs/task-retrospective.md via packNextPage
+func (a *analysis) splitItem(item stageItem, requestBudget, stateBudget, overlapBytes int) ([]stageItem, string) {
 	gram := item.grams[0]
 	base := evidenceRecord{
 		ID: gram.ID, Kind: gram.Kind, SessionID: gram.SessionID,
@@ -668,42 +809,71 @@ func (a *analysis) splitItem(item stageItem) ([]stageItem, string) {
 	if err != nil {
 		return nil, "oversized-indivisible"
 	}
-	headroom := a.cfg.StateQuestionLimitBytes - stageReserveBytes - len(baseBytes)
+	questionBytes := 0
+	if item.question != nil {
+		questionBytes = len(mustMarshal(*item.question))
+	}
+	budget := stateBudget
+	if requestBudget < budget {
+		budget = requestBudget
+	}
+	headroom := budget - len(baseBytes) - questionBytes - pieceMarginBytes - overlapBytes
 	if headroom < a.cfg.MinFragmentBytes {
 		return nil, "oversized-indivisible"
 	}
-	stream := []string{}
-	sources := []string{}
-	if gram.Input != "" {
-		stream = append(stream, gram.Input)
-		sources = append(sources, "input")
-	}
-	for _, fragment := range gram.Result {
-		if fragment.Text == "" {
-			continue
-		}
-		stream = append(stream, fragment.Text)
-		sources = append(sources, "result:"+fragment.ID)
-	}
 	content := ""
-	for index, piece := range stream {
-		if index > 0 {
+	type segment struct {
+		src        string
+		start, end int
+	}
+	segments := []segment{}
+	addSource := func(src, text string) {
+		if content != "" {
 			content += "\u0000"
 		}
-		content += piece
+		start := len(content)
+		content += text
+		segments = append(segments, segment{src: src, start: start, end: len(content)})
+	}
+	added := false
+	if !gram.InputOmitted && gram.Input != "" {
+		addSource("input", gram.Input)
+		added = true
+	}
+	for _, fragment := range gram.Result {
+		if fragment.Binary || fragment.Text == "" {
+			continue
+		}
+		addSource("result:"+fragment.ID, fragment.Text)
+		added = true
+	}
+	if !added && gram.Text != "" {
+		src := gram.PieceSource
+		if src == "" {
+			src = "text"
+		}
+		addSource(src, gram.Text)
 	}
 	cuts := utf8Slices(content, headroom)
 	if len(cuts) < 2 {
 		return nil, "oversized-indivisible"
 	}
 	var pieces []stageItem
+	offset := 0
+	segmentAt := 0
 	for index, piece := range cuts {
+		start, end := offset, offset+len(piece)
+		offset = end
+		for segmentAt < len(segments) && segments[segmentAt].end <= start {
+			segmentAt++
+		}
 		nextGram := base
 		nextGram.Piece = &fragRef{Part: index + 1, Total: len(cuts)}
-		if index < len(sources) {
-			nextGram.PieceSource = sources[index]
+		if segmentAt < len(segments) {
+			nextGram.PieceSource = segments[segmentAt].src
 		}
 		nextGram.Text = piece
+		nextGram.InputOmitted = gram.InputOmitted
 		question := item.question
 		if index+1 < len(cuts) {
 			question = nil
@@ -716,6 +886,11 @@ func (a *analysis) splitItem(item stageItem) ([]stageItem, string) {
 	}
 	return pieces, ""
 }
+
+// pieceMarginBytes reserves the piece's JSON field names and markers when
+// computing the per-piece content headroom.
+// Spec: docs/specs/task-retrospective.md via splitItem
+const pieceMarginBytes = 96
 
 // utf8Slices cuts content into at most limit-byte rune-boundary slices.
 // Spec: docs/specs/task-retrospective.md via splitItem
@@ -778,13 +953,21 @@ func (a *analysis) rowFor(subject, kind string) *RecordDisposition {
 	return row
 }
 
-// buildPageRequest assembles one page's serialized request.
+// buildPageRequest assembles one page's serialized request: the state
+// carries the page's redacted recordgrams (`records`) explicitly, so every
+// classified record's redacted content is transmitted on the page where its
+// question is sent.
 // Spec: docs/specs/task-retrospective.md
 func (a *analysis) buildPageRequest(index int, page *stageTwoPage) *ChoiceRequest {
 	fields := map[string]any{
 		"page":    index,
 		"overlap": overlapSubjects(page.overlap),
 	}
+	grams := []evidenceRecord{}
+	for _, item := range page.items {
+		grams = append(grams, item.grams...)
+	}
+	fields["records"] = grams
 	return buildRequest(JevModel, a.stageIdentityState(fields), page.overlap, page.questions)
 }
 
@@ -802,20 +985,17 @@ func overlapSubjects(overlap []evidenceRecord) []string {
 	return ids
 }
 
-// dispatchPage serializes, measures, and delivers one page.
+// dispatchPage serializes, measures, and delivers one page. A local
+// over-budget measurement or an HTTP 413 size rejection surfaces as a
+// repackable size error (ErrContentOverBudget / ErrSizeRejected); the caller
+// re-packs with halved budgets instead of trimming or halting.
 // Spec: docs/specs/task-retrospective.md via runStageTwo
 func (a *analysis) dispatchPage(ctx context.Context, index int, page *stageTwoPage) error {
 	request := a.buildPageRequest(index, page)
 	measure := measureRequest(request)
 	page.stats = measure
-	for i := range request.Requests {
-		a.questionScope[request.Requests[i].ID] = &request.Requests[i]
-	}
-	if measure.Request > a.cfg.RequestLimitBytes {
-		return fmt.Errorf("page %d exceeds the serialized request budget", index)
-	}
-	if measure.State+measure.LongestQuestion > a.cfg.StateQuestionLimitBytes {
-		return fmt.Errorf("page %d exceeds the state+question budget", index)
+	if measure.Request > a.cfg.RequestLimitBytes || measure.State+measure.LongestQuestion > a.cfg.StateQuestionLimitBytes {
+		return ErrContentOverBudget
 	}
 	response, err := a.client.Choice(ctx, request)
 	if err != nil {
@@ -827,7 +1007,8 @@ func (a *analysis) dispatchPage(ctx context.Context, index int, page *stageTwoPa
 
 // collectAnswer validates one answer against the known dispatched questions
 // and stores the first valid occurrence; forged/invalid/duplicate deliveries
-// abstain.
+// abstain. A missing probability or confidence value also abstains (it never
+// decodes as zero and is never counted).
 // Spec: docs/specs/task-retrospective.md via recordPage
 func (a *analysis) collectAnswer(answer Answer) string {
 	question, known := a.questionScope[answer.RequestID]
@@ -838,7 +1019,8 @@ func (a *analysis) collectAnswer(answer Answer) string {
 		return ""
 	}
 	if answer.Subject != question.Subject || !containsString(question.Choices, answer.Choice) ||
-		!probabilityInRange(answer.Probability) || !probabilityInRange(answer.Confidence) {
+		answer.Probability == nil || answer.Confidence == nil ||
+		!probabilityInRange(*answer.Probability) || !probabilityInRange(*answer.Confidence) {
 		return ""
 	}
 	stored := answer
@@ -846,16 +1028,14 @@ func (a *analysis) collectAnswer(answer Answer) string {
 	return answer.RequestID
 }
 
-// markUndelivered marks the records of undelivered pages (a page failure
-// marks its own page too) so coverage accounting stays explicit.
+// markUndelivered marks the given items as explicitly undelivered so the
+// coverage accounting names every uncovered record.
 // Spec: docs/specs/task-retrospective.md via runStageTwo
-func (a *analysis) markUndelivered(pages []*stageTwoPage) {
-	for _, page := range pages {
-		for _, item := range page.items {
-			row := a.rowFor(item.subject, item.kind)
-			if row.Disposition == "" {
-				row.Disposition = "undelivered"
-			}
+func (a *analysis) markUndelivered(items []stageItem) {
+	for _, item := range items {
+		row := a.rowFor(item.subject, item.kind)
+		if row.Disposition == "" {
+			row.Disposition = "undelivered"
 		}
 	}
 }
@@ -864,6 +1044,10 @@ func (a *analysis) markUndelivered(pages []*stageTwoPage) {
 // answers for this page's own dispatched questions are eligible.
 // Spec: docs/specs/task-retrospective.md via dispatchPage
 func (a *analysis) recordPage(index int, page *stageTwoPage, response *ChoiceResponse) {
+	for _, question := range page.questions {
+		copied := question
+		a.questionScope[copied.ID] = &copied
+	}
 	delivered := []string{}
 	for _, item := range page.items {
 		row := a.rowFor(item.subject, item.kind)
@@ -928,7 +1112,8 @@ func containsInt(values []int, needle int) bool {
 // ---------------------------------------------------------------------------
 
 // finishEvaluation computes the record/requirement rows, the counting block,
-// the rate and trigger state, the coverage totals, and dispatch gating.
+// the rate and trigger state, the coverage totals, the redaction summary, and
+// dispatch gating.
 // Spec: docs/specs/task-retrospective.md via Analyze
 func (a *analysis) finishEvaluation() {
 	a.finishRecordRows()
@@ -936,6 +1121,7 @@ func (a *analysis) finishEvaluation() {
 	a.finishCounts()
 	a.finishRateTrigger()
 	a.finishCoverage()
+	a.finishRedaction()
 	a.finishDispatch()
 }
 
@@ -962,14 +1148,14 @@ func (a *analysis) finishRecordRows() {
 				// Unanswered, forged, or invalid answers never classify.
 				row.Reason = "classification abstained"
 			} else {
-				probability, confidence := answer.Probability, answer.Confidence
 				row.Choice = answer.Choice
 				row.Labels = answer.Labels
-				row.Probability, row.Confidence = &probability, &confidence
+				row.Probability = answer.Probability
+				row.Confidence = answer.Confidence
 				row.Page = a.pageOfAnswer["q-"+record.ID]
 				row.Counted = containsString(wasteChoices, answer.Choice) &&
-					answer.Probability >= a.cfg.MinSuccessProbability &&
-					answer.Confidence >= a.cfg.MinConfidence
+					*answer.Probability >= a.cfg.MinSuccessProbability &&
+					*answer.Confidence >= a.cfg.MinConfidence
 				if !row.Counted && containsString(wasteChoices, answer.Choice) {
 					row.Reason = "waste classification below the confident floors"
 				}
@@ -993,13 +1179,13 @@ func (a *analysis) finishRequirementRows() {
 				// Unanswered, forged, or invalid answers never classify.
 				row.Reason = "classification abstained"
 			} else {
-				probability, confidence := answer.Probability, answer.Confidence
 				row.Choice = answer.Choice
-				row.Probability, row.Confidence = &probability, &confidence
+				row.Probability = answer.Probability
+				row.Confidence = answer.Confidence
 				row.Page = a.pageOfAnswer["q-"+requirement.ID]
 				row.Counted = (answer.Choice == "omitted" || answer.Choice == "omitted-high-impact") &&
-					answer.Probability >= a.cfg.MinSuccessProbability &&
-					answer.Confidence >= a.cfg.MinConfidence
+					*answer.Probability >= a.cfg.MinSuccessProbability &&
+					*answer.Confidence >= a.cfg.MinConfidence
 				if !row.Counted && (answer.Choice == "omitted" || answer.Choice == "omitted-high-impact") {
 					row.Reason = "omission below the confident floors"
 				}
@@ -1304,12 +1490,64 @@ func (a *analysis) finishCoverage() {
 	}
 	a.evaluation.Records = a.recordRows
 	a.evaluation.Requirements = a.requirementRows
+	a.evaluation.StageTwoRan = a.stageTwoRan()
 	a.coverage = coverage
+}
+
+// finishRedaction computes the redaction accounting block. Redaction is
+// materially incomplete (and blocks automatic correction) when binary
+// records were excluded — their content cannot be certified redacted — or
+// when a secret-file body is absent/unreadable (an empty excerpt from the
+// collector).
+// Spec: docs/specs/task-retrospective.md via finishEvaluation
+func (a *analysis) finishRedaction() {
+	names := []string{}
+	for key := range a.redactor.Counts() {
+		names = append(names, key)
+	}
+	sort.Strings(names)
+	incomplete := false
+	reasons := []string{}
+	for _, row := range a.coverage.Records {
+		if row.Disposition == "excluded:binary-record" {
+			incomplete = true
+			reasons = append(reasons, "binary record excluded: redaction cannot certify its content ("+row.Subject+")")
+		}
+	}
+	seenSecret := map[string]bool{}
+	noteSecret := func(ref SourceRef) {
+		if !SecretFileBodyAbsent(ref) {
+			return
+		}
+		key := ref.Path + "\x00" + ref.SHA256
+		if seenSecret[key] {
+			return
+		}
+		seenSecret[key] = true
+		incomplete = true
+		reasons = append(reasons, "secret-file body absent or unreadable: "+ref.Path)
+	}
+	for _, ref := range a.normalized.Trace.SourceFiles {
+		noteSecret(ref)
+	}
+	for _, record := range a.normalized.Records {
+		for _, ref := range record.SourceRefs {
+			noteSecret(ref)
+		}
+	}
+	a.redaction = ReportRedaction{
+		SubstitutionsTotal:   a.redactor.TotalSubstitutions(),
+		Substitutions:        a.redactor.Counts(),
+		PatternNames:         names,
+		ExcludedRecords:      a.coverage.ExcludedRecords,
+		MateriallyIncomplete: incomplete,
+		Reasons:              reasons,
+	}
 }
 
 // finishDispatch computes the phase-two gating block. Eligible needs the
 // trigger, complete coverage (every page delivered, every record accounted
-// for), and a complete run.
+// for), a complete run, and materially complete redaction.
 // Spec: docs/specs/task-retrospective.md via finishEvaluation
 func (a *analysis) finishDispatch() {
 	var reasons []string
@@ -1324,6 +1562,9 @@ func (a *analysis) finishDispatch() {
 	}
 	if len(a.coverage.Records) < a.coverage.TotalRecords {
 		reasons = append(reasons, fmt.Sprintf("coverage incomplete: %d of %d records accounted", len(a.coverage.Records), a.coverage.TotalRecords))
+	}
+	if a.redaction.MateriallyIncomplete {
+		reasons = append(reasons, "materially incomplete redaction blocks automatic correction: "+strings.Join(a.redaction.Reasons, "; "))
 	}
 	a.dispatch = ReportDispatch{Eligible: len(reasons) == 0, Reasons: reasons}
 }
@@ -1344,7 +1585,9 @@ func (a *analysis) report() *Report {
 	}
 	gaps := []ReportGap{}
 	for _, gap := range trace.Gaps {
-		gaps = append(gaps, ReportGap{Kind: gap.Kind, Detail: gap.Detail})
+		// Gap details are collector-supplied free text: redact before any
+		// persistence so secrets in gap markers never reach the report.
+		gaps = append(gaps, ReportGap{Kind: gap.Kind, Detail: a.redactor.Text(gap.Detail)})
 	}
 	descendants := []string{}
 	var walk func(trace *Trace)
@@ -1396,37 +1639,16 @@ func (a *analysis) report() *Report {
 		StageOne:   a.stageOne,
 		Evaluation: a.evaluation,
 		Coverage:   a.coverage,
-		Redaction:  a.redactionReport(),
-		Usage:      ReportUsage{Requests: usage.Requests, Retries: usage.Retries, SizeRejections: usage.SizeRejections, Splits: 0, Budget: usage.Budget, Exhausted: usage.Exhausted},
-		Dispatch:   a.dispatch,
-	}
-}
-
-// redactionReport merges the redaction counting into the report block.
-// Redaction is materially incomplete (and blocks automatic correction) when
-// binary records were excluded: their content cannot be certified redacted.
-// Spec: docs/specs/task-retrospective.md via report
-func (a *analysis) redactionReport() ReportRedaction {
-	names := []string{}
-	for key := range a.redactor.Counts() {
-		names = append(names, key)
-	}
-	sort.Strings(names)
-	incomplete := false
-	reasons := []string{}
-	for _, row := range a.coverage.Records {
-		if row.Disposition == "excluded:binary-record" {
-			incomplete = true
-			reasons = append(reasons, "binary record excluded: redaction cannot certify its content ("+row.Subject+")")
-		}
-	}
-	return ReportRedaction{
-		SubstitutionsTotal:   a.redactor.TotalSubstitutions(),
-		Substitutions:        a.redactor.Counts(),
-		PatternNames:         names,
-		ExcludedRecords:      a.coverage.ExcludedRecords,
-		MateriallyIncomplete: incomplete,
-		Reasons:              reasons,
+		Redaction:  a.redaction,
+		Usage: ReportUsage{
+			Requests:       usage.Requests,
+			Retries:        usage.Retries,
+			SizeRejections: usage.SizeRejections,
+			Splits:         a.contentSplits + a.sizeRepacks,
+			Budget:         usage.Budget,
+			Exhausted:      usage.Exhausted,
+		},
+		Dispatch: a.dispatch,
 	}
 }
 
