@@ -219,7 +219,14 @@ unrelated work, and keep private permissions when relocating owned artifacts.
    the bounded change and its relevant lifecycle and concurrency invariants.
 <agent-hooks:invoke:post-delegate-implementor><agent-hooks:invoke:pre-delegate-code-reviewer>3. Validate the packet, then dispatch `code-reviewer` independently of the author,
    resuming only its own prior review session. Supply original DoD, brief and diff;
-   review invariants relevant to the scoped change. Reconcile repeat findings
+   review invariants relevant to the scoped change. If the pre-delegate hook
+   prepared external pre-review evidence, pass it as advisory leads with pinned
+   diff/base/head identity, original DoD/brief and provenance; the reviewer
+   reads it as attention routing, never acceptance. Reuse inspectable
+   same-revision exact-command evidence; missing, stale or low-confidence
+   results trigger the reviewer's local checks. No external rating yields
+   `ACCEPT`, and a missing or unavailable pre-review never changes the reviewer
+   dispatch: proceed unchanged. Reconcile repeat findings
    against the remediation diff to ensure no iterative goalpost-moving.
    Findings are evidence, not implementation instructions to blindly follow.
    The supervisor acts as a curation firewall: in remediation packets to `implementor`, pass only

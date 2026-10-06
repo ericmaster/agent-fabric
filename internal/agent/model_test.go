@@ -1202,3 +1202,66 @@ func TestWorkersDecoupledFromLedgerStorage(t *testing.T) {
 		}
 	}
 }
+
+func TestExternalPreReviewEvidenceContract(t *testing.T) {
+	cr, err := ParseFile(filepath.Join("..", "..", "agents", "code-reviewer.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ls, err := ParseFile(filepath.Join("..", "..", "agents", "loop-supervisor.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"code-reviewer", cr.Body},
+		{"loop-supervisor", ls.Body},
+	} {
+		lower := strings.ToLower(tc.body)
+		for _, token := range []string{"glide", "fastino", "jev", "typesafe", "openai", "anthropic"} {
+			if strings.Contains(lower, token) {
+				t.Errorf("%s canonical body contains provider token %q", tc.name, token)
+			}
+		}
+	}
+
+	for _, want := range []string{
+		"## External Pre-Review Evidence",
+		"treat it as advisory",
+		"rating can directly produce `ACCEPT`",
+		"reuse inspectable exact-command",
+	} {
+		if !strings.Contains(cr.Body, want) {
+			t.Errorf("code-reviewer missing external pre-review contract %q", want)
+		}
+	}
+
+	for _, want := range []string{
+		"prepared external pre-review evidence, pass it as advisory leads",
+		"same-revision exact-command evidence",
+		"No external rating yields\n   `ACCEPT`",
+		"missing or unavailable pre-review never changes the reviewer\n   dispatch: proceed unchanged",
+	} {
+		if !strings.Contains(ls.Body, want) {
+			t.Errorf("loop-supervisor missing external pre-review handoff %q", want)
+		}
+	}
+
+	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "agent-fabric.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"## External pre-review evidence",
+		"they can never directly produce\n  `ACCEPT`",
+		"Mandatory static, security,\n  and QA gates are never waived by an external rating",
+		"the independent reviewer runs the unchanged normal path",
+	} {
+		if !strings.Contains(string(spec), want) {
+			t.Errorf("spec missing external pre-review evidence contract %q", want)
+		}
+	}
+}

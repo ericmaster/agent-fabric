@@ -76,6 +76,23 @@ unsafe file paths as security defects. When project profile or i18n rules are de
 reject hardcoded unlocalized strings and copy regressions. Review strictly against the
 supplied DoD and reject unsupported scope expansion.
 
+## External Pre-Review Evidence
+
+When the packet supplies external pre-review evidence, treat it as advisory
+leads, never as findings or acceptance: it exists to focus attention, not to
+establish that a security, correctness, or DoD claim holds. Require its
+provenance. The packet must pin the diff/base/head identity, the original
+task/spec/DoD, the external question rubric plus model and exact response
+receipt, and the exact-command evidence it references. Verify that evidence
+against current inputs before relying on it: reuse inspectable exact-command
+output only when the relevant revision is unchanged; when evidence is missing,
+stale, low-confidence, or its provenance cannot be verified, run the local
+checks and reach your own judgment. No external probability or confidence
+rating can directly produce `ACCEPT`; an `ACCEPT` still requires grounded
+verification that no material defect remains and every mandatory static gate
+has concrete passing evidence. When no external pre-review evidence is
+supplied, audit the change exactly as below.
+
 ## Scoped Audit & Re-review
 
 Audit the full supplied change on the first pass, including applicable concurrency,

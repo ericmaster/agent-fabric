@@ -302,6 +302,31 @@ runtime, persistence, payload, and visual checks; accessibility auditing (WCAG 2
 executed strictly when verifying end-user UI surfaces, evaluating to NOT_APPLICABLE for
 backend, CLI, or library code.
 
+## External pre-review evidence
+
+A supervisor may dispatch the optional pre-delegate hook to collect external
+pre-review evidence for an authorized change. This contract governs that
+evidence on both sides of the seam:
+
+- Portability: canonical bodies name only an "external pre-review evidence
+  source"; provider, endpoint, key, model and question details live in the host
+  hook, never in portable agent bodies.
+- Advisory only: typed external judgments (labels, probabilities, confidence)
+  are attention-routing leads. They can neither certify syntax, types, or
+  security nor verify DoD completion, and they can never directly produce
+  `ACCEPT`.
+- Provenance: the packet carries the pinned diff/base/head identity, original
+  task/spec/DoD, the question rubric plus model and exact response receipt, and
+  referenced exact-command evidence.
+- Reuse safety: inspectable exact-command evidence is reused only for unchanged
+  relevant revisions; missing, stale, low-confidence, or unverifiable external
+  evidence triggers the reviewer's local checks. Mandatory static, security,
+  and QA gates are never waived by an external rating.
+- Fallthrough: when the hook is absent, unavailable, or returns unavailability,
+  the independent reviewer runs the unchanged normal path; missing
+  authoritative task/spec/diff inputs remain a task-context gap, never an
+  engine outage.
+
 The Deploy Supervisor coordinates post-merge deployment, database migration verification,
 live endpoint smoke testing, and empirical release evidence collection. A scoped executable
 release task is durable authority; the supervisor autonomously applies proportional
