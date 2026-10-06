@@ -484,6 +484,9 @@ func createAndFinish(ctx context.Context, opts DispatchOptions, store *Store, re
 	if errors.Is(err, ErrCapability) {
 		receipt.Status = StatusQueued
 		receipt.Error = "OpenCode server cannot create a visible root (" + err.Error() + "); queued, no hidden fallback"
+		if receipt.CreateAttempted {
+			receipt.Error += "; re-run with --retry to reconcile"
+		}
 		return save(store, receipt)
 	}
 	if err != nil && timedOut(err) {
@@ -506,12 +509,19 @@ func createAndFinish(ctx context.Context, opts DispatchOptions, store *Store, re
 // Spec: docs/specs/task-retrospective.md via Dispatch
 func reconcileCreate(ctx context.Context, opts DispatchOptions, store *Store, receipt *Receipt, report *Report, marker string) (*Receipt, error) {
 	sessions, err := callList(ctx, opts)
-	if err != nil || len(matchMarker(sessions, marker)) != 1 {
+	matched := []Session{}
+	if err == nil {
+		matched = matchMarker(sessions, marker)
+	}
+	if err != nil || len(matched) != 1 {
 		receipt.Status = StatusPending
 		receipt.Error = "session create response lost; reconciliation is ambiguous, not posting again"
+		if err == nil && len(matched) == 0 {
+			receipt.Error = "session create response lost; reconciliation found no root, not posting again; run a fresh analyze for a new incident"
+		}
 		return save(store, receipt)
 	}
-	session := matchMarker(sessions, marker)[0]
+	session := matched[0]
 	if err := acceptRoot(session, marker); err != nil {
 		receipt.Status = StatusPending
 		receipt.Error = err.Error()
@@ -931,8 +941,6 @@ func owners(requested string, roots, manifestPaths []string) ([]string, bool, bo
 	return unique, generated, immutable, nil
 }
 
-// discoveredManifests finds Fabric manifests inside canonical roots.
-// Spec: docs/specs/task-retrospective.md via owners
 // DispatchManifests returns regular Fabric manifests under canonical roots and
 // the source root. The CLI passes this list so copy refresh is not test-only.
 // Spec: docs/specs/task-retrospective.md

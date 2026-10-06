@@ -155,7 +155,14 @@ func runRetrospectiveDispatch(args []string) error {
 			HTTP:    &http.Client{Timeout: cfg.DispatchTimeout + time.Second},
 		}
 	}
-	sourceRoot, _ := sourceDir(options{})
+	sourceRoot, sourceErr := sourceDir(options{})
+	if sourceErr != nil {
+		if enabled {
+			return fmt.Errorf("source-root manifests: %w", sourceErr)
+		}
+		fmt.Fprintf(os.Stderr, "retrospective dispatch: source-root manifests omitted: %v\n", sourceErr)
+		sourceRoot = ""
+	}
 	settingsPath, settingsErr := retrospective.UserConfigPath()
 	if settingsErr != nil {
 		return settingsErr
