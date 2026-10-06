@@ -22,10 +22,11 @@ canonical workflows into native configurations for OpenCode, Kilo, Antigravity C
 agents/                  Canonical portable agent definitions (schema v1)
 adapters/                Target harness adapter JSON mappings
 hooks/                   Default hook templates and fallback instructions
-cmd/agent-fabric/        CLI commands (install, sync, validate, doctor, hub, uninstall)
+cmd/agent-fabric/        CLI commands (install, sync, validate, doctor, hub, uninstall, retrospective)
 internal/agent/          Agent definition parsing, validation, and hook schema checking
 internal/adapter/        Multi-harness rendering engine and format converters
 internal/manifest/       Atomic state tracking (.agent-fabric-manifest.json)
+internal/retrospective/  Offline task retrospective replay (trace -> redaction -> Jev -> report)
 docs/                    Versioned wiki (docs-organization-blueprint.md, specs/, adr/)
 fixtures/                Golden test fixtures for adapter rendering
 scripts/                 Release packaging and bootstrap tooling
@@ -67,8 +68,9 @@ go build -o agent-fabric ./cmd/agent-fabric
 
 ## Testing
 
-- Unit tests in `internal/agent`, `internal/adapter`, `internal/manifest`, and `cmd/agent-fabric`.
+- Unit tests in `internal/agent`, `internal/adapter`, `internal/manifest`, `internal/retrospective`, and `cmd/agent-fabric`.
 - Golden fixture comparison in `internal/adapter/adapter_test.go` checks rendered output against `fixtures/`.
+- Retrospective tests use recorded local mock HTTP and synthetic traces only; they never call the real Jev API.
 - Run `go test ./...` before committing.
 
 ## Secrets

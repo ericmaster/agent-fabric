@@ -84,6 +84,16 @@ func main() {
 		}
 		return
 	}
+	if cmd == "retrospective" {
+		if len(args) == 0 {
+			usage()
+			os.Exit(2)
+		}
+		if err := runRetrospective(args); err != nil {
+			fail(err)
+		}
+		return
+	}
 	var o options
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -128,7 +138,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "agent-fabric install|sync|hub install SOURCE|list|validate|doctor|uninstall [flags]")
+	fmt.Fprintln(os.Stderr, "agent-fabric install|sync|hub install SOURCE|list|validate|doctor|uninstall|retrospective analyze [flags]")
 }
 func fail(err error) { fmt.Fprintln(os.Stderr, "agent-fabric:", err); os.Exit(1) }
 
