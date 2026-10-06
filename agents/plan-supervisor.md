@@ -69,7 +69,7 @@ crossed:
    dispatch. Open a new `loop-supervisor` session only when new resolving authority arrives, the approved scope identity changes, or the recorded continuation is unavailable.
    Context length is not continuation unavailability: resume the recorded session
    or keep the phase `BLOCKED`.
-4. Verify its evidence and record the resulting phase state.
+4. Verify its evidence, apply Phase Closure below, and record the resulting phase state.
 5. <agent-hooks:invoke:label> Record the resulting phase state, then dispatch
    the next eligible phase immediately or enter bounded recovery.
 
@@ -242,6 +242,36 @@ independently verify evidence exists and record the phase-owned VCS revision. If
 the evidence is absent or contradictory, keep acceptance incomplete. A missing
 procedural QA session is not missing substantive evidence. Use implementation_ready
 only after verifying functional prerequisites, not as a substitute for PASS.
+
+## Phase Closure
+
+For every phase: validate required checks on current accepted inputs → independent review → immediate
+scoped commit/integration by the packet-named owner under repository workflow →
+verified durable receipt → eligible owned-resource cleanup. No phase PASS with
+valid uncommitted code; blocked mandatory gates do not authorize committing.
+Own composition and verify integrated ancestry before marking DONE; do not postpone
+all valid phase commits to plan end. Docs-only work records applicable checks, not
+invented test PASS. Verify integrated inputs match the reviewed scope; rerun invalidated
+gates. The receipt in the declared durable private root records scope, current accepted
+input hash, source/reviewed/integration revisions, commands/results and unrun checks,
+review disposition, decisions/rationale, failure history, counters/episodes/budgets/hard
+caps, continuation handles, retained/deleted inventory and ownership/consumer-closure
+eligibility proofs. Verify the summary before deleting source-unique evidence.
+Compact/remove successful COMPLETED accepted-scope logs only after all consumer
+references are resolved; preserve receipt-reuse proof locators/digests or explicitly
+retire/rebind them. Retain full raw logs for unresolved FAIL/BLOCKED/DEFERRED,
+incomplete acceptance, consumer-needed evidence or external retention. Keep failure
+history, counters/budgets and traceable full-error links while unresolved.
+IDLE is not command completion. Remove only task-owned worktrees/branches with no
+active handles or live commands (reconcile PID/start/boot identity), a clean tree and
+integrated commit ancestry, or explicit authorized discard of named content with
+backup/recoverable source where needed. Unknown ownership, dirty or unmerged work:
+retain and report the precise gap. Restore only task-owned named hunks/paths with
+recorded before hash and proof of no unrelated concurrent edits. No blanket checkout,
+force worktree removal, reset/clean or broad deletion. Unassigned/no-caller resources
+are not obsolete. Preserve current resources, macro-ledgers, native fixtures and
+budgets; this is not purge authority. Optional host policy must resolve from declared
+packet roots; missing detail never waives these safeguards.
 
 ## Macro-Ledger & State Transitions
 

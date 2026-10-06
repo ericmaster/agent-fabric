@@ -185,8 +185,33 @@ Write the canonical body in Phase-block form:
 - Parent completion criteria that describe either host projection or the complete
   local artifact when the optional task-system capability defaults
 
-Keep rationale, alternatives, review decisions, provenance, and exclusions in
-separate decision artifacts rather than the parser-sensitive plan body.
+For compact planning, write compact decisions and rationale in plan detail (Context & Constraints), with
+important rejected alternatives, review decisions, provenance, exclusions and
+unresolved conditions outside parser-sensitive phase fields. Blocking conditions
+keep the candidate unaccepted. Then verify the summary before retiring task-owned
+temporary grilling artifacts (questionnaires, diagrams and raw Q&A); no full
+grill-session export or per-question archive is required. Resolve all consumer
+references first; retain incomplete/foreign artifacts, third-party materials and
+operational failure evidence. Retain full raw logs for unresolved FAIL/BLOCKED/DEFERRED,
+incomplete acceptance, consumer-needed evidence or external retention; preserve
+failure history, counters/budgets and traceable full-error links while unresolved.
+For any owned planning-file closure, validate applicable checks and independent
+review → scoped commit/integration by the packet-named owner under repository workflow
+→ verified durable receipt in the declared private root → eligible owned-resource
+cleanup. Blocked mandatory gates do not authorize committing; docs-only work does
+not invent test PASS. Record scope, accepted input hash, revisions, commands/results,
+review, decisions/rationale, counters/budgets, consumer closure and retained/deleted
+inventory; verify the summary before deleting source-unique evidence. This does not
+authorize implementing plan phases. Remove only task-owned worktrees/branches with
+no active handles or live commands (PID/start/boot identity; IDLE is not command
+completion), a clean tree and integrated commit ancestry, or explicit authorized
+discard of named content with backup/recoverable source where needed. Unknown
+ownership, dirty or unmerged work: retain and report the precise gap. Restore only
+task-owned named hunks/paths with recorded before hash and proof of no unrelated
+concurrent edits. No blanket checkout, force worktree removal, reset/clean or broad
+deletion. Unassigned/no-caller resources are not obsolete; preserve current resources,
+macro-ledgers, native fixtures and budgets. Optional host policy resolves only from
+declared packet roots; missing detail never waives these safeguards.
 Execution history and ledgers are managed externally by supervisors via declarative
 hooks; planners must never write to or consult local files, databases, or storage engines
 for execution ledgers. Declared planning artifacts and supplied context may hold
@@ -235,5 +260,6 @@ Missing repository access, coverage capabilities, or optional delegation creates
 explicit uncertainty, not fabricated evidence. A rejecting installed pre-plan
 hook prevents progression to design and proposal of that exact body. Independent
 review does not block publication after two passes or after an explicit write instruction.
-Preserve all local artifacts so a later capable session can continue from evidence rather
-than recreate the plan.
+Preserve incomplete planning artifacts and unresolved evidence for continuation;
+retire only eligible task-owned temporary grilling artifacts after summary verification
+and consumer closure under the inline compact-planning safeguards above.

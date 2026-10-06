@@ -392,6 +392,63 @@ behavior. A reduced delivery does not complete the original plan. Verify the tar
 revision and existing runtime evidence before deciding to build or deploy; a revision
 already deployed and verified is reused, not rebuilt or redeployed.
 
+## Phase closure and compact planning
+
+Every phase closes in order: validate required checks on current accepted inputs,
+independent source review, immediate scoped commit/integration under repository
+workflow, verified compact durable receipt, then owned-resource cleanup. The
+packet names the commit/integration owner; an implementor forbidden to commit
+hands the reviewed candidate to that owner. Never end phase acceptance PASS with
+valid uncommitted code. Blocked mandatory gates do not authorize a commit;
+docs-only work records applicable checks, not invented test PASS. Integration
+must contain the reviewed scope; changed inputs invalidate affected evidence.
+
+The receipt lives in the declared durable private root and records acceptance
+scope, current accepted input hash, source/reviewed/integration revisions, exact
+commands and results (including unrun checks), independent review disposition,
+decisions and rationale, important rejected alternatives, unresolved conditions,
+failure history, cumulative counters, episodes and budgets/hard caps, continuation
+handles, retained/deleted inventory, and each resource's ownership, consumer
+closure and cleanup eligibility evidence. Verify summary completeness against
+source evidence before removing any source-unique proof. Preserve existing
+ledger/continuity policy; this contract adds no daemon, agent or runtime executor.
+
+Successful COMPLETED accepted-scope raw logs may be removed or compacted only
+after all consumer references are resolved and the summary is verified. Consumers
+include review, receipt reuse (log digest/locator), continuation and external
+retention requirements; retire or rebind references explicitly, never leave
+dangling proof locators. Retain full raw logs for unresolved FAIL/BLOCKED/DEFERRED,
+incomplete acceptance or required external retention. While unresolved, summaries
+preserve failure history, counters/budgets and traceable full-error links; never
+trim failures prematurely. IDLE is not command completion: reconcile active
+handles and PID/start/boot identity, not just session status or PID alone.
+
+Remove worktrees/branches only when task-owned, with no active handles or live
+commands, a clean tree and integrated commit ancestry, or explicit authorized
+discard of named content with backup/recoverable source where needed. Unknown
+ownership, dirty or unmerged work is retained with the precise eligibility gap.
+Restore temporary working changes only for proven task-owned named hunks/paths,
+with recorded before hash and proof of no unrelated concurrent edits. Never use
+blanket checkout, force worktree removal, reset/clean or broad deletion. Arbitrary
+used/unassigned resources or absence of callers do not establish obsolescence.
+Do not erase current resources, macro-ledgers, native fixtures or budgets. Cleanup
+follows valid scoped commit/integration and the verified receipt, never precedes
+them or deletes the only recovery source.
+
+At plan readiness, put compact grilling decisions, rationale, important rejected
+alternatives and unresolved conditions in plan detail (Context & Constraints,
+outside parser-sensitive phase fields). Unresolved blocking conditions keep the
+candidate unaccepted, not an executable plan. After verifying the complete summary,
+retire task-owned temporary grilling questionnaires, diagrams and raw Q&A artifacts;
+no full grill-session export or per-question archive is required. This retirement
+does not cover operational failure logs, third-party materials, foreign artifacts
+or evidence still needed by consumers. Preserve incomplete planning artifacts for
+continuation. This spec is the authorship/testing SSOT; exported planner and
+supervisor bodies carry concise critical safeguards inline, without requiring a
+Fabric source checkout or duplicating the full policy. Optional detailed host
+policy resolves only from declared packet roots; missing detail never waives the
+inline safeguards. Policy tests verify instructions, not OS-mechanical enforcement.
+
 ## Deterministic supervision support
 
 `python3 <declared-fabric-root>/hooks/supervisor/support.py` consumes one JSON
