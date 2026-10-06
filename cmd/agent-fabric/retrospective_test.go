@@ -3,6 +3,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -175,8 +176,22 @@ func TestRetrospectiveAnalyzeRequiresInputAndOutput(t *testing.T) {
 }
 
 func TestRetrospectiveRejectsUnknownSubcommand(t *testing.T) {
-	if err := runRetrospective([]string{"dispatch", "--report", "x"}); err == nil {
-		t.Fatal("phase-two subcommand accepted in phase one")
+	if err := runRetrospective([]string{"not-a-command"}); err == nil {
+		t.Fatal("unknown subcommand accepted")
+	}
+}
+
+func TestRetrospectiveDispatchDisabledDoesNotMutate(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AGF_CONFIG", filepath.Join(dir, "absent.json"))
+	state := filepath.Join(dir, "state")
+	t.Setenv("AGF_RETROSPECTIVE_STATE", state)
+	err := runRetrospectiveDispatch([]string{"--report", filepath.Join(dir, "missing-report.json")})
+	if !errors.Is(err, retrospective.ErrDisabled) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, statErr := os.Stat(state); !os.IsNotExist(statErr) {
+		t.Fatalf("disabled dispatch created state: %v", statErr)
 	}
 }
 

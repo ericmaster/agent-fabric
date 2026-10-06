@@ -155,13 +155,20 @@ func runRetrospectiveDispatch(args []string) error {
 			HTTP:    &http.Client{Timeout: cfg.DispatchTimeout + time.Second},
 		}
 	}
+	sourceRoot, _ := sourceDir(options{})
+	settingsPath, settingsErr := retrospective.UserConfigPath()
+	if settingsErr != nil {
+		return settingsErr
+	}
 	receipt, err := retrospective.Dispatch(context.Background(), retrospective.DispatchOptions{
-		Enabled:    enabled,
-		Config:     cfg,
-		ReportPath: reportPath,
-		Client:     client,
-		Retry:      retry,
-		RenderCopy: retrospectiveCopyRenderer(),
+		Enabled:       enabled,
+		Config:        cfg,
+		ReportPath:    reportPath,
+		Client:        client,
+		Retry:         retry,
+		RenderCopy:    retrospectiveCopyRenderer(),
+		ManifestPaths: retrospective.DispatchManifests(cfg.CanonicalRoots, sourceRoot),
+		SettingsPath:  settingsPath,
 	})
 	if err != nil {
 		return err

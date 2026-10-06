@@ -156,7 +156,7 @@ func OpenStore(dir string) (*Store, error) {
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return nil, err
 	}
-	for _, name := range []string{"claims", "receipts", "markers", "reports", "traces", "findings", "origins", "preimages"} {
+	for _, name := range []string{"receipts", "markers", "reports", "traces", "findings", "origins", "preimages"} {
 		sub := filepath.Join(dir, name)
 		if err := os.MkdirAll(sub, 0o700); err != nil {
 			return nil, err

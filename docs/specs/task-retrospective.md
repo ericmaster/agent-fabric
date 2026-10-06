@@ -379,8 +379,10 @@ Added to the same `Config` struct, not a second defaults table:
 | `state_dir` | empty | Overrides the user state directory. |
 | `max_repair_attempts` | 2 | One initial correcting run plus one repair attempt per finding/source version. |
 
-A canonical root of `/`, a relative path, or a symlink is unsafe and rejected.
-There is no per-source human approval gate.
+A canonical root of `/`, a relative path, a symlink, or a path that does not
+exist is unsafe and rejected at validation. Config JSON rejects a trailing
+value after the object, the same way trace and report JSON do. There is no
+per-source human approval gate.
 
 ### State
 
@@ -395,7 +397,19 @@ after 30 days. Compact finding/source-hash records and dispatch receipts are
 kept until that source hash changes. `--retry` does not create a second root
 for the same report and task, does not re-apply a successful repair of the
 same source hash, and does not post again after an ambiguous create or prompt.
-A finding that already used `max_repair_attempts` is exhausted.
+A finding that already used `max_repair_attempts` is exhausted. A new report
+for the same finding and source hash may `--retry` once more until that cap;
+the next attempt is exhausted and does not write. A changed source hash is a
+new incident. A second dispatch of a repaired report returns the stored
+receipt and leaves the file untouched.
+
+A queued receipt is not a dead end. If create was never attempted and
+`dispatch_server` plus `dispatch_ui_template` are now set, a later dispatch
+persists the marker, records the create attempt, and creates the first root.
+If create was attempted and no root id was read back, a later dispatch without
+`--retry` stays queued and does not post. `--retry` lists sessions and adopts
+one exact marker match; it does not call `POST /session` again. Zero or many
+matches stay pending.
 
 ### Learning-origin identity
 
@@ -404,8 +418,9 @@ of `learning-origin\n` concatenated with the incident id. The incident id is
 the SHA-256 of `report-file-sha256\n` concatenated with the task id.
 
 The marker file is persisted before `POST /session`. The session title is
-`learning: <task> [<marker>]`. After read-back, `origins/<session-id>` stores
-the marker. The store is authoritative. The title is the reconciliation echo.
+`learning: <task> [<marker>]`. The task id is truncated to 48 characters; the
+marker is not truncated. After read-back, `origins/<session-id>` stores the
+marker. The store is authoritative. The title is the reconciliation echo.
 
 Phase 3 capture must ignore a session whose id is in `origins/` or whose title
 contains `agf-learning-origin:v1:`, and every descendant whose parent chain
@@ -429,8 +444,10 @@ Fixture-tested HTTP, no other UI:
 
 The receipt records root id, project, directory, title, UI URL from the
 validated template, report locator, and status
-(`queued`, `pending`, `submitted`, `repaired`, `suggested`, `conflict`,
-`exhausted`, `suppressed`).
+(`queued`, `pending`, `submitted`, `repaired`, `conflict`,
+`exhausted`, `suppressed`). After a confirmed prompt, advisory findings use
+receipt status `submitted`. `suggested` is a finding action, not that receipt
+status.
 
 ### Canonical resolution
 
@@ -439,7 +456,9 @@ symlinks. Edit only the owning canonical file inside a canonical root.
 Generated copies and skill-manager caches are not edited. `immutable: true`
 or a directory `.immutable` marker produces a suggestion to update the upstream
 source. Two different canonical owners are an ambiguity and are rejected.
-A symlink whose target leaves the allowed roots is rejected.
+A symlink whose target leaves the allowed roots is rejected. Resolution
+errors, including an unsafe or missing root, reject the dispatch before any
+session is created. They are not recorded as a per-finding conflict.
 
 Skill ownership shape:
 
@@ -471,14 +490,18 @@ the exact excerpt diff, preimage hash, postimage hash, and a `0600` preimage.
 If validation fails and the current hash is still the postimage, only that
 repair is restored. A later user edit is a conflict, not an overwrite.
 
-Protected paths (learning policy, hook trees, origin markers, state files,
-executables) are never edited. Transcript text cannot authorize those edits.
-Dispatch does not commit, push, force-sync, or change permissions.
+Protected paths (learning policy, the user config file that owns
+`retrospective.enabled`, any explicit settings path, hook trees, origin
+markers, state files, executables) are never edited. Transcript text cannot
+authorize those edits. Dispatch does not commit, push, force-sync, or change
+permissions. A failed finding-record write is appended to that finding's
+suggestion and does not hide the repair result.
 
 After a validated repair of a canonical agent definition, unchanged
-manifest-owned generated copies may be refreshed through the injected renderer.
-Copies whose bytes no longer match the manifest hash are left in place and
-reported.
+manifest-owned generated copies may be refreshed. The CLI passes manifests
+discovered under the canonical roots and the source root. Copies whose bytes
+no longer match the manifest hash are left in place and reported. A failed
+manifest hash update is a copy note with action `manifest-update-failed`.
 
 ### Correcting role
 

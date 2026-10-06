@@ -166,6 +166,9 @@ func eligibleReport(root, task string, findings []Finding) *Report {
 
 func writeReport(t *testing.T, dir string, report *Report) string {
 	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	path := filepath.Join(dir, "report.json")
 	body, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
@@ -886,5 +889,294 @@ func TestUITemplateRejectsUserinfo(t *testing.T) {
 	got, err := BuildUIURL("http://127.0.0.1:9/ui/{id}", "ses_1")
 	if err != nil || got != "http://127.0.0.1:9/ui/ses_1" {
 		t.Fatalf("url = %s %v", got, err)
+	}
+}
+
+func TestLearningTitleTruncatesTaskIDOnly(t *testing.T) {
+	marker := LearningOriginPrefix + strings.Repeat("ab", 32)
+	title := learningTitle(strings.Repeat("t", 80), marker)
+	if !strings.HasPrefix(title, "learning: "+strings.Repeat("t", 48)+" [") || !strings.HasSuffix(title, "["+marker+"]") {
+		t.Fatalf("title = %s", title)
+	}
+}
+
+func TestQueuedReceiptRecoversWhenServerAppears(t *testing.T) {
+	for _, retry := range []bool{false, true} {
+		t.Run(map[bool]string{false: "redispatch", true: "retry"}[retry], func(t *testing.T) {
+			root := t.TempDir()
+			state := filepath.Join(t.TempDir(), "state")
+			target := filepath.Join(root, "docs", "note.md")
+			hash := writeText(t, target, "text\n")
+			report := writeReport(t, root, eligibleReport(root, "queued-"+map[bool]string{false: "no", true: "yes"}[retry], []Finding{{
+				ID: "q", SourcePath: target, SourceSHA256: hash, Cause: CauseTool,
+			}}))
+			cfg := testConfig(root, state, "")
+			queued, err := Dispatch(context.Background(), DispatchOptions{Enabled: true, Config: cfg, ReportPath: report, Client: denyClient{t}})
+			if err != nil || queued.Status != StatusQueued || queued.CreateAttempted {
+				t.Fatalf("queue = %+v %v", queued, err)
+			}
+			api := &sessionServer{}
+			_, client := newClient(t, api, 0, 0)
+			cfg.DispatchServer = client.(*HTTPSessionClient).BaseURL
+			cfg.DispatchUITemplate = cfg.DispatchServer + "/ui/{id}"
+			opts := dispatchOpts(cfg, report, client)
+			opts.Retry = retry
+			receipt, err := Dispatch(context.Background(), opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if receipt.Status == StatusQueued || receipt.RootID == "" || api.posts("") != 1 {
+				t.Fatalf("queued receipt did not create one root: %+v posts=%d", receipt, api.posts(""))
+			}
+		})
+	}
+}
+
+func TestQueuedCreateAttemptReconcilesOnRetryWithoutRepost(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "state")
+	target := filepath.Join(root, "docs", "note.md")
+	hash := writeText(t, target, "text\n")
+	report := writeReport(t, root, eligibleReport(root, "queued-404", []Finding{{
+		ID: "q", SourcePath: target, SourceSHA256: hash, Cause: CauseTool,
+	}}))
+	api := &sessionServer{status: http.StatusNotFound}
+	_, client := newClient(t, api, 0, 0)
+	cfg := testConfig(root, state, client.(*HTTPSessionClient).BaseURL)
+	cfg.DispatchUITemplate = cfg.DispatchServer + "/ui/{id}"
+	queued, err := Dispatch(context.Background(), dispatchOpts(cfg, report, client))
+	if err != nil || queued.Status != StatusQueued || !queued.CreateAttempted || queued.RootID != "" {
+		t.Fatalf("404 queue = %+v %v", queued, err)
+	}
+	again, err := Dispatch(context.Background(), dispatchOpts(cfg, report, client))
+	if err != nil || again.Status != StatusQueued || api.posts("") != 1 {
+		t.Fatalf("redispatch reposted: %+v posts=%d", again, api.posts(""))
+	}
+	opts := dispatchOpts(cfg, report, client)
+	opts.Retry = true
+	retried, err := Dispatch(context.Background(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retried.RootID != "" || api.posts("") != 1 {
+		t.Fatalf("retry reposted create: %+v posts=%d", retried, api.posts(""))
+	}
+}
+
+func TestSecondDispatchOfRepairReturnsStoredReceipt(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "state")
+	target := filepath.Join(root, "docs", "runbook.md")
+	hash := writeText(t, target, "stale line\n")
+	report := writeReport(t, root, eligibleReport(root, "stored", []Finding{{
+		ID: "s", SourcePath: target, SourceSHA256: hash, Cause: CauseStale,
+		InstructionVersion: hash, FailedBehavior: "failed", Recovery: "recovered",
+		Excerpt: "stale line", Replacement: "fresh line",
+	}}))
+	api := &sessionServer{}
+	_, client := newClient(t, api, 0, 0)
+	cfg := testConfig(root, state, client.(*HTTPSessionClient).BaseURL)
+	cfg.DispatchUITemplate = cfg.DispatchServer + "/ui/{id}"
+	first, err := Dispatch(context.Background(), dispatchOpts(cfg, report, client))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repaired, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Dispatch(context.Background(), dispatchOpts(cfg, report, client))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.IncidentID != first.IncidentID || second.RootID != first.RootID || api.posts("") != 1 {
+		t.Fatalf("second dispatch = %+v posts=%d", second, api.posts(""))
+	}
+	got, _ := os.ReadFile(target)
+	if string(got) != string(repaired) {
+		t.Fatalf("second dispatch rewrote the file: %s", got)
+	}
+}
+
+func TestRetryReappliesOnceThenExhausted(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "state")
+	target := filepath.Join(root, "docs", "runbook.md")
+	original := "stale line\n"
+	hash := writeText(t, target, original)
+	finding := Finding{
+		ID: "cap", SourcePath: target, SourceSHA256: hash, Cause: CauseStale,
+		InstructionVersion: hash, FailedBehavior: "failed", Recovery: "recovered",
+		Excerpt: "stale line", Replacement: "fresh line",
+	}
+	api := &sessionServer{}
+	_, client := newClient(t, api, 0, 0)
+	cfg := testConfig(root, state, client.(*HTTPSessionClient).BaseURL)
+	cfg.DispatchUITemplate = cfg.DispatchServer + "/ui/{id}"
+	firstReport := writeReport(t, root, eligibleReport(root, "cap-1", []Finding{finding}))
+	opts := dispatchOpts(cfg, firstReport, client)
+	opts.ValidateRepair = func(string, []byte) error { return errValidation }
+	if _, err := Dispatch(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(target); string(got) != original {
+		t.Fatalf("first attempt left %s", got)
+	}
+	blocked := writeReport(t, filepath.Join(root, "blocked"), eligibleReport(root, "cap-blocked", []Finding{finding}))
+	blockedOpts := dispatchOpts(cfg, blocked, client)
+	blockedOpts.ValidateRepair = opts.ValidateRepair
+	blockedReceipt, err := Dispatch(context.Background(), blockedOpts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blockedReceipt.Findings[0].Action != StatusSuppressed || !strings.Contains(blockedReceipt.Findings[0].Suggestion, "already dispatched") {
+		t.Fatalf("suppressed = %+v", blockedReceipt.Findings[0])
+	}
+	retryReport := writeReport(t, filepath.Join(root, "retry"), eligibleReport(root, "cap-2", []Finding{finding}))
+	retryOpts := dispatchOpts(cfg, retryReport, client)
+	retryOpts.Retry = true
+	retried, err := Dispatch(context.Background(), retryOpts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retried.Findings[0].Action != StatusRepaired {
+		t.Fatalf("retry = %+v", retried.Findings[0])
+	}
+	got, _ := os.ReadFile(target)
+	if string(got) != "fresh line\n" {
+		t.Fatalf("retry did not re-apply: %s", got)
+	}
+	exhaustedReport := writeReport(t, filepath.Join(root, "exhausted"), eligibleReport(root, "cap-3", []Finding{finding}))
+	exhaustedOpts := dispatchOpts(cfg, exhaustedReport, client)
+	exhaustedOpts.Retry = true
+	exhausted, err := Dispatch(context.Background(), exhaustedOpts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exhausted.Findings[0].Action != StatusExhausted {
+		t.Fatalf("exhausted = %+v", exhausted.Findings[0])
+	}
+	after, _ := os.ReadFile(target)
+	if string(after) != "fresh line\n" {
+		t.Fatalf("exhausted attempt wrote: %s", after)
+	}
+}
+
+func TestChangedSourceHashIsNewIncident(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "state")
+	target := filepath.Join(root, "docs", "runbook.md")
+	hash := writeText(t, target, "stale line\n")
+	report := writeReport(t, root, eligibleReport(root, "hash-1", []Finding{{
+		ID: "h", SourcePath: target, SourceSHA256: hash, Cause: CauseStale,
+		InstructionVersion: hash, FailedBehavior: "failed", Recovery: "recovered",
+		Excerpt: "stale line", Replacement: "fresh line",
+	}}))
+	api := &sessionServer{}
+	_, client := newClient(t, api, 0, 0)
+	cfg := testConfig(root, state, client.(*HTTPSessionClient).BaseURL)
+	cfg.DispatchUITemplate = cfg.DispatchServer + "/ui/{id}"
+	first, err := Dispatch(context.Background(), dispatchOpts(cfg, report, client))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextHash := digest(string(body))
+	nextReport := writeReport(t, filepath.Join(root, "next"), eligibleReport(root, "hash-2", []Finding{{
+		ID: "h", SourcePath: target, SourceSHA256: nextHash, Cause: CauseStale,
+		InstructionVersion: nextHash, FailedBehavior: "failed again", Recovery: "recovered again",
+		Excerpt: "fresh line", Replacement: "newer line",
+	}}))
+	second, err := Dispatch(context.Background(), dispatchOpts(cfg, nextReport, client))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.IncidentID == first.IncidentID || second.Findings[0].Action != StatusRepaired {
+		t.Fatalf("changed hash did not start a new repair: %+v / %+v", second, second.Findings)
+	}
+	got, _ := os.ReadFile(target)
+	if string(got) != "newer line\n" {
+		t.Fatalf("new incident did not repair: %s", got)
+	}
+}
+
+func TestRepairedFindingStaysSuppressedWithoutRetry(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "state")
+	target := filepath.Join(root, "docs", "runbook.md")
+	hash := writeText(t, target, "stale line\n")
+	finding := Finding{
+		ID: "kept", SourcePath: target, SourceSHA256: hash, Cause: CauseStale,
+		InstructionVersion: hash, FailedBehavior: "failed", Recovery: "recovered",
+		Excerpt: "stale line", Replacement: "fresh line",
+	}
+	api := &sessionServer{}
+	_, client := newClient(t, api, 0, 0)
+	cfg := testConfig(root, state, client.(*HTTPSessionClient).BaseURL)
+	cfg.DispatchUITemplate = cfg.DispatchServer + "/ui/{id}"
+	if _, err := Dispatch(context.Background(), dispatchOpts(cfg, writeReport(t, root, eligibleReport(root, "kept-1", []Finding{finding})), client)); err != nil {
+		t.Fatal(err)
+	}
+	repaired, _ := os.ReadFile(target)
+	againReport := writeReport(t, filepath.Join(root, "again"), eligibleReport(root, "kept-2", []Finding{finding}))
+	receipt, err := Dispatch(context.Background(), dispatchOpts(cfg, againReport, client))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Findings[0].Action != StatusSuppressed || !strings.Contains(receipt.Findings[0].Suggestion, "already repaired") {
+		t.Fatalf("finding = %+v", receipt.Findings[0])
+	}
+	got, _ := os.ReadFile(target)
+	if string(got) != string(repaired) {
+		t.Fatalf("suppressed finding wrote: %s", got)
+	}
+}
+
+func TestEnableFlagFileIsProtected(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(t.TempDir(), "state")
+	configPath := filepath.Join(root, "config.json")
+	body := "{\"retrospective\":{\"enabled\":true}}\n"
+	hash := writeText(t, configPath, body)
+	t.Setenv("AGF_CONFIG", configPath)
+	report := writeReport(t, root, eligibleReport(root, "policy", []Finding{{
+		ID: "flag", SourcePath: configPath, SourceSHA256: hash, Cause: CauseStale,
+		InstructionVersion: hash, FailedBehavior: "failed", Recovery: "recovered",
+		Excerpt: "true", Replacement: "false",
+	}}))
+	cfg := testConfig(root, state, "http://127.0.0.1:9")
+	cfg.DispatchUITemplate = "http://127.0.0.1:9/ui/{id}"
+	if _, err := Dispatch(context.Background(), DispatchOptions{
+		Enabled: true, Config: cfg, ReportPath: report, Client: denyClient{t}, SettingsPath: configPath,
+	}); err == nil || !strings.Contains(err.Error(), "protected") {
+		t.Fatalf("enable-flag file err = %v", err)
+	}
+	got, _ := os.ReadFile(configPath)
+	if string(got) != body {
+		t.Fatalf("enable flag rewritten: %s", got)
+	}
+	if _, err := os.Stat(state); !os.IsNotExist(err) {
+		t.Fatalf("protected finding created state: %v", err)
+	}
+}
+
+func TestDispatchManifestsIncludesRootsAndSource(t *testing.T) {
+	root := t.TempDir()
+	source := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".agent-fabric"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".agent-fabric", ".agent-fabric-manifest.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, ".agent-fabric-manifest.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := DispatchManifests([]string{root}, source)
+	if len(got) != 2 {
+		t.Fatalf("manifests = %v", got)
 	}
 }

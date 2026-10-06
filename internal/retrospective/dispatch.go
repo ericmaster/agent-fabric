@@ -296,7 +296,7 @@ func checkCanonicalRoot(root string) error {
 	}
 	info, err := os.Lstat(root)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return fmt.Errorf("%w: canonical root %q does not exist", ErrUnsafe, root)
 	}
 	if err != nil {
 		return err
@@ -330,6 +330,8 @@ type DispatchOptions struct {
 	ValidateRepair RepairValidator
 	RenderCopy     CopyRenderer
 	ManifestPaths  []string
+	// SettingsPath is an extra protected user-config file, in addition to UserConfigPath.
+	SettingsPath string
 }
 
 // Dispatch turns one eligible report into at most one visible correcting root.
@@ -363,7 +365,7 @@ func Dispatch(ctx context.Context, opts DispatchOptions) (*Receipt, error) {
 		return nil, err
 	}
 	for _, finding := range report.Findings {
-		if _, err := ResolveSource(finding.SourcePath, opts.Config.CanonicalRoots, opts.ManifestPaths, opts.Config.StateDir); err != nil {
+		if _, err := ResolveSource(finding.SourcePath, opts.Config.CanonicalRoots, opts.ManifestPaths, opts.Config.StateDir, protectedConfigPaths(opts.SettingsPath)); err != nil {
 			return nil, err
 		}
 	}
@@ -429,8 +431,29 @@ func continueReceipt(ctx context.Context, opts DispatchOptions, store *Store, re
 	if receipt.Status == StatusExhausted || receipt.Status == StatusSuppressed {
 		return receipt, nil
 	}
-	if receipt.Status == StatusQueued {
-		return receipt, nil
+	if receipt.Status == StatusQueued && !receipt.CreateAttempted {
+		if opts.Config.DispatchServer == "" || opts.Config.DispatchUITemplate == "" {
+			return receipt, nil
+		}
+		if opts.Client == nil {
+			return nil, errors.New("session client is required when dispatch_server is set")
+		}
+		if err := store.WriteMarker(receipt.IncidentID, marker); err != nil {
+			return nil, err
+		}
+		receipt.CreateAttempted = true
+		receipt.Status = StatusPending
+		receipt.Error = ""
+		if _, err := save(store, receipt); err != nil {
+			return nil, err
+		}
+		return createAndFinish(ctx, opts, store, receipt, report, marker)
+	}
+	if receipt.Status == StatusQueued && receipt.CreateAttempted && receipt.RootID == "" {
+		if !opts.Retry {
+			return receipt, nil
+		}
+		return reconcileCreate(ctx, opts, store, receipt, report, marker)
 	}
 	if !opts.Retry && receipt.RootID != "" && receipt.PromptConfirmed {
 		return receipt, nil
@@ -528,7 +551,10 @@ func bindAndFinish(ctx context.Context, opts DispatchOptions, store *Store, rece
 // Spec: docs/specs/task-retrospective.md via Dispatch
 func finishVerified(ctx context.Context, opts DispatchOptions, store *Store, receipt *Receipt, report *Report, marker string) (*Receipt, error) {
 	if len(receipt.Findings) == 0 {
-		results, notes := applyFindings(opts, store, receipt, report)
+		results, notes, err := applyFindings(opts, store, receipt, report)
+		if err != nil {
+			return nil, err
+		}
 		receipt.Findings = results
 		receipt.CopyNotes = notes
 		if _, err := save(store, receipt); err != nil {
@@ -664,7 +690,7 @@ func matchMarker(sessions []Session, marker string) []Session {
 // Spec: docs/specs/task-retrospective.md via finishVerified
 func outcomeStatus(results []FindingResult) string {
 	if len(results) == 0 {
-		return StatusSuggested
+		return StatusSubmitted
 	}
 	repaired, suggested, conflict, exhausted := 0, 0, 0, 0
 	for _, result := range results {
@@ -687,7 +713,7 @@ func outcomeStatus(results []FindingResult) string {
 	case repaired > 0:
 		return StatusRepaired
 	default:
-		return StatusSuggested
+		return StatusSubmitted
 	}
 }
 
@@ -785,7 +811,7 @@ type Resolution struct {
 
 // ResolveSource follows manifests, skill ownership, and symlinks to one owner.
 // Spec: docs/specs/task-retrospective.md
-func ResolveSource(requested string, roots, manifestPaths []string, stateDir string) (Resolution, error) {
+func ResolveSource(requested string, roots, manifestPaths []string, stateDir string, protected []string) (Resolution, error) {
 	for _, root := range roots {
 		if err := checkCanonicalRoot(root); err != nil {
 			return Resolution{}, err
@@ -825,7 +851,7 @@ func ResolveSource(requested string, roots, manifestPaths []string, stateDir str
 	if !withinAny(roots, canonical) {
 		return Resolution{Requested: cleaned, Canonical: canonical, Generated: generated}, nil
 	}
-	if protectedPath(canonical, stateDir) {
+	if protectedPath(canonical, stateDir, protected) {
 		return Resolution{}, fmt.Errorf("%w: %s is protected", ErrUnsafe, canonical)
 	}
 	canonInfo, statErr := os.Lstat(canonical)
@@ -907,6 +933,35 @@ func owners(requested string, roots, manifestPaths []string) ([]string, bool, bo
 
 // discoveredManifests finds Fabric manifests inside canonical roots.
 // Spec: docs/specs/task-retrospective.md via owners
+// DispatchManifests returns regular Fabric manifests under canonical roots and
+// the source root. The CLI passes this list so copy refresh is not test-only.
+// Spec: docs/specs/task-retrospective.md
+func DispatchManifests(roots []string, sourceRoot string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(path string) {
+		if path == "" || seen[path] {
+			return
+		}
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			return
+		}
+		seen[path] = true
+		out = append(out, path)
+	}
+	for _, path := range discoveredManifests(roots) {
+		add(path)
+	}
+	if sourceRoot != "" {
+		add(filepath.Join(sourceRoot, ".agent-fabric-manifest.json"))
+		add(filepath.Join(sourceRoot, ".agent-fabric", ".agent-fabric-manifest.json"))
+	}
+	return out
+}
+
+// discoveredManifests finds Fabric manifests inside canonical roots.
+// Spec: docs/specs/task-retrospective.md via owners
 func discoveredManifests(roots []string) []string {
 	var out []string
 	for _, root := range roots {
@@ -942,30 +997,33 @@ func immutableMarker(path string) bool {
 
 // applyFindings classifies every finding and writes only a verified text repair.
 // Spec: docs/specs/task-retrospective.md via finishVerified
-func applyFindings(opts DispatchOptions, store *Store, receipt *Receipt, report *Report) ([]FindingResult, []CopyNote) {
+func applyFindings(opts DispatchOptions, store *Store, receipt *Receipt, report *Report) ([]FindingResult, []CopyNote, error) {
 	if len(report.Findings) == 0 {
 		return []FindingResult{{
 			Action:        StatusSuggested,
 			Suggestion:    "no structured verified text cause was supplied",
 			Reviewer:      opts.Config.Reviewer,
 			SelfCertified: false,
-		}}, nil
+		}}, nil, nil
 	}
 	var results []FindingResult
 	var notes []CopyNote
 	for _, finding := range report.Findings {
-		result := applyOne(opts, store, receipt, finding)
+		result, err := applyOne(opts, store, receipt, finding)
+		if err != nil {
+			return results, notes, err
+		}
 		results = append(results, result)
 		if result.Action == StatusRepaired {
 			notes = append(notes, refreshCopies(opts.ManifestPaths, result.CanonicalPath, opts.RenderCopy)...)
 		}
 	}
-	return results, notes
+	return results, notes, nil
 }
 
 // applyOne applies or refuses one finding. It never writes on a non-text cause.
 // Spec: docs/specs/task-retrospective.md via applyFindings
-func applyOne(opts DispatchOptions, store *Store, receipt *Receipt, finding Finding) FindingResult {
+func applyOne(opts DispatchOptions, store *Store, receipt *Receipt, finding Finding) (FindingResult, error) {
 	result := FindingResult{
 		ID: finding.ID, SourcePath: finding.SourcePath, SourceSHA256: finding.SourceSHA256,
 		Cause: finding.Cause, Reviewer: opts.Config.Reviewer, SelfCertified: false,
@@ -974,7 +1032,7 @@ func applyOne(opts DispatchOptions, store *Store, receipt *Receipt, finding Find
 	if err := store.DropStaleFindings(finding.ID, finding.SourcePath, finding.SourceSHA256); err != nil {
 		result.Action = StatusConflict
 		result.Suggestion = err.Error()
-		return result
+		return result, nil
 	}
 	attempts := 1
 	if rec, err := store.ReadFindingRecord(key); err == nil {
@@ -986,20 +1044,18 @@ func applyOne(opts DispatchOptions, store *Store, receipt *Receipt, finding Find
 				result.Action = StatusSuppressed
 				result.Suggestion = "finding already repaired for this source version"
 			}
-			return result
+			return result, nil
 		}
 		if !opts.Retry {
 			result.Action = StatusSuppressed
 			result.Suggestion = "finding already dispatched for this source version"
-			return result
+			return result, nil
 		}
 		attempts = rec.Attempts + 1
 	}
-	resolution, err := ResolveSource(finding.SourcePath, opts.Config.CanonicalRoots, opts.ManifestPaths, opts.Config.StateDir)
+	resolution, err := ResolveSource(finding.SourcePath, opts.Config.CanonicalRoots, opts.ManifestPaths, opts.Config.StateDir, protectedConfigPaths(opts.SettingsPath))
 	if err != nil {
-		result.Action = StatusConflict
-		result.Suggestion = err.Error()
-		return result
+		return result, err
 	}
 	result.CanonicalPath = resolution.Canonical
 	switch {
@@ -1042,14 +1098,21 @@ func applyOne(opts DispatchOptions, store *Store, receipt *Receipt, finding Find
 	if attempts > opts.Config.MaxRepairAttempts {
 		result.Action = StatusExhausted
 		result.Suggestion = "repair attempts exhausted for this source version"
-		return result
+		return result, nil
 	}
-	_ = store.WriteFindingRecord(&FindingRecord{
+	if err := store.WriteFindingRecord(&FindingRecord{
 		Key: key, FindingID: finding.ID, SourcePath: finding.SourcePath,
 		SourceSHA256: finding.SourceSHA256, Attempts: attempts, LastAction: result.Action,
 		IncidentID: receipt.IncidentID,
-	})
-	return result
+	}); err != nil {
+		note := "dedup record failed: " + err.Error()
+		if result.Suggestion != "" {
+			result.Suggestion += "; " + note
+		} else {
+			result.Suggestion = note
+		}
+	}
+	return result, nil
 }
 
 // applyExcerpt replaces one unique excerpt after a fresh hash check.
@@ -1243,7 +1306,9 @@ func refreshCopies(manifestPaths []string, canonicalPath string, render CopyRend
 			notes = append(notes, CopyNote{Path: file.Path, Action: "refreshed"})
 		}
 		if changed {
-			_ = manifest.WriteAtomic(path, m)
+			if err := manifest.WriteAtomic(path, m); err != nil {
+				notes = append(notes, CopyNote{Path: path, Action: "manifest-update-failed", Reason: err.Error()})
+			}
 		}
 	}
 	return notes
@@ -1338,7 +1403,20 @@ func reviewerOK(name string) bool {
 
 // protectedPath is learning policy, hook code, state, or an executable.
 // Spec: docs/specs/task-retrospective.md via ResolveSource
-func protectedPath(path, stateDir string) bool {
+// protectedConfigPaths is the enable-flag file plus any explicit settings path.
+// Spec: docs/specs/task-retrospective.md via ResolveSource
+func protectedConfigPaths(explicit string) []string {
+	var out []string
+	if path, err := UserConfigPath(); err == nil && path != "" {
+		out = append(out, filepath.Clean(path))
+	}
+	if explicit != "" {
+		out = append(out, filepath.Clean(explicit))
+	}
+	return out
+}
+
+func protectedPath(path, stateDir string, extra []string) bool {
 	cleaned := filepath.Clean(path)
 	slash := filepath.ToSlash(cleaned)
 	base := strings.ToLower(filepath.Base(cleaned))
@@ -1350,6 +1428,11 @@ func protectedPath(path, stateDir string) bool {
 	}
 	if stateDir != "" && within(stateDir, cleaned) {
 		return true
+	}
+	for _, item := range extra {
+		if item != "" && samePath(cleaned, item) {
+			return true
+		}
 	}
 	info, err := os.Lstat(cleaned)
 	if err == nil && info.Mode()&0o111 != 0 && info.Mode().IsRegular() {
@@ -1414,6 +1497,7 @@ func learningOrigin(incident string) string {
 }
 
 // learningTitle is the visible root title. It always starts with "learning:".
+// The task id is truncated to 48 characters; the marker is not truncated.
 // Spec: docs/specs/task-retrospective.md via createAndFinish
 func learningTitle(taskID, marker string) string {
 	short := taskID

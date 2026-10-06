@@ -4,6 +4,7 @@ package retrospective
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -106,6 +107,14 @@ func TestLoadConfigDurationRequiresUnitSuffix(t *testing.T) {
 	}
 	if cfg.RequestBudget != 100 {
 		t.Fatalf("omitted budget was not preserved: %d", cfg.RequestBudget)
+	}
+}
+
+func TestCanonicalRootMustExist(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.CanonicalRoots = []string{filepath.Join(t.TempDir(), "missing-root")}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "does not exist") {
+		t.Fatalf("missing root err = %v", err)
 	}
 }
 
