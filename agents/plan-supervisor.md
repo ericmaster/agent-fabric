@@ -283,6 +283,13 @@ interaction for bounded updates, not repeated polling or a terminal-only promise
 Resolve root-qualified locators against their named packet root; ambiguity and
 escapes still fail closed.
 
+Store resume-critical checkpoints, candidate trees and acceptance receipts in a
+declared durable private root; temporary storage is scratch, not sole authority.
+Name that root and locators before dispatch. After a crash, reconcile surviving
+hashes/receipts and boot/start identity: missing evidence is not PASS, and there is
+no budget reset. Refresh only invalidated checks, preserve completed evidence and
+unrelated work, and keep private permissions when relocating owned artifacts.
+
 Maintain the macro-ledger of phase execution across the plan. At every state
 transition boundary (phase selection/initialization `PENDING` -> `IN_PROGRESS`,
 phase completion verification `IN_PROGRESS` -> `DONE`, and recovery/escalation

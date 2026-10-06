@@ -119,3 +119,19 @@ func TestSupervisorLongChecksPreserveVisibleProgress(t *testing.T) {
 		}
 	}
 }
+
+// Spec: docs/specs/agent-fabric.md — crash-safe continuation evidence
+func TestSupervisorResumeInputsAreDurable(t *testing.T) {
+	for _, role := range []string{"loop-supervisor", "plan-supervisor"} {
+		d, err := ParseFile(filepath.Join("..", "..", "agents", role+".md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := strings.Join(strings.Fields(d.Body), " ")
+		for _, want := range []string{"durable private root", "temporary storage is scratch", "missing evidence is not PASS", "no budget reset"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s missing crash-safe resume contract %q", role, want)
+			}
+		}
+	}
+}

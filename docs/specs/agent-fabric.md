@@ -315,6 +315,15 @@ and migration checks use `NOT_RUN`. Failed restoration is `FAILED`, never VERIFI
 
 ## Bounded episodes, waiting, and reduced delivery
 
+Resume-critical checkpoints, candidate trees and acceptance evidence must live in
+a declared durable private root outside reboot-cleared temporary storage. `/tmp`
+is scratch only, never the sole authority for a continuation or a reviewed diff.
+Packets carry the durable root and receipt locators before dispatch. After a
+crash, reconcile surviving source hashes, receipts and command boot/start identity;
+missing temporary evidence remains unavailable, never reconstructed as PASS or
+used to reset budgets. Refresh only invalidated checks, not unchanged completed
+ones. Preserve private permissions and unrelated work during relocation.
+
 Before an expensive check, record the user-facing deliverable and whether the
 current phase changes the public preview or only a private draft. A mismatch with
 the user's delivery goal is surfaced to the superior once, not hidden behind
