@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // readAllString consumes one test request body.
@@ -787,5 +788,48 @@ func TestBackfillConcurrentWithIngestLosesNoRecords(t *testing.T) {
 		if spool.Parts[fmt.Sprintf("prt_flush_%d", i)] == nil {
 			t.Fatalf("flush part %d lost to the backfill race", i)
 		}
+	}
+}
+
+func TestBackfillCyclicParentTopologyTerminates(t *testing.T) {
+	// Regression: a cyclic observed-parent topology (each spool row naming
+	// the other parent/child) must terminate the backfill walk instead of
+	// nesting two locks of one session in one walk (self-deadlock). The
+	// server returns empty histories; no ingest traffic is involved.
+	f := newLoopFixture(t, successScript(t))
+	f.setEnabledFor(t, t.TempDir(), true)
+	cycle := &Envelope{Version: EnvelopeSchemaVersion, Harness: HarnessOpenCode, SessionID: "ses_cyc_a", Records: []EnvelopeRecord{
+		{Kind: "session", SessionID: "ses_cyc_a", ParentID: "ses_cyc_b", Title: "cycle a", Directory: f.root},
+		{Kind: "session", SessionID: "ses_cyc_b", ParentID: "ses_cyc_a", Title: "cycle b", Directory: f.root},
+		{Kind: "message", RecordID: "msg_u", SessionID: "ses_cyc_a", Role: "user"},
+		{Kind: "part", RecordID: "prt_u", SessionID: "ses_cyc_a", MessageID: "msg_u", PartType: "text", Text: "cycle turn"},
+	}}
+	if _, err := IngestEnvelope(IngestOptions{Config: f.cfg, Store: f.store}, cycle); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := IngestEnvelope(IngestOptions{Config: f.cfg, Store: f.store}, &Envelope{
+		Version: EnvelopeSchemaVersion, Harness: HarnessOpenCode, SessionID: "ses_cyc_b",
+		Records: []EnvelopeRecord{{Kind: "session", SessionID: "ses_cyc_b", ParentID: "ses_cyc_a", Title: "cycle b", Directory: f.root}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	client := &HTTPSessionClient{BaseURL: f.sessionAPI.URL, Generation: f.cfg.DispatchEndpoint}
+	done := make(chan []Gap, 1)
+	go func() {
+		budget := DrainMaxBackfillChildren
+		done <- backfillSession(context.Background(), client, f.store, f.cfg, "ses_cyc_a", &budget, []SessionMessageRow{})
+	}()
+	select {
+	case gaps := <-done:
+		for _, gap := range gaps {
+			if strings.Contains(gap.Detail, "depth budget") || strings.Contains(gap.Detail, "child reconcile cap") {
+				return // bounded termination recorded; no hang
+			}
+		}
+		// Either disposition is fine (empty histories stage nothing new);
+		// the assertion is termination itself.
+		_ = gaps
+	case <-time.After(30 * time.Second):
+		t.Fatal("backfill did not terminate on a cyclic parent topology (self-deadlock)")
 	}
 }

@@ -725,9 +725,12 @@ worker. The worker:
   every spool load+stage+write — owner and children — holds that session's
   spool lock in drain.lock → spool.lock order, the same lock ingest holds,
   so a racing plugin flush can never lose staged records; the only other
-  lock order is ingest's spool-lock-only, so no deadlock is possible;
-  marking a `partial_stream` gap when the reconcile fails — transport
-  errors are recorded as gaps, never invented as coverage);
+  lock order is ingest's spool-lock-only, so no deadlock is possible.
+  Each level's lock is released before descending into children, and a
+  visited set plus the 16-deep descendant budget terminate the walk even on
+  a cyclic observed-parent topology; marking a `partial_stream` gap when
+  the reconcile fails — transport errors are recorded as gaps, never
+  invented as coverage);
   assembles the trace; validates; runs `analyze` (Jev budgets per config);
   writes the report into `<state>/reports/`; runs `dispatch` under the same
   global-enable re-check and request budgets; records the receipt status in
@@ -819,8 +822,10 @@ The plugin is an opt-in owned asset, never a default install:
   aggregation, abort/error-then-idle, multi-turn boundaries, history
   compaction, restart resume, learning-session suppression,
   concurrent-ingest-vs-backfill serialization (no lost staged records),
-  rune-safe truncation (no replacement characters), and bound-refusal
-  memory/disk consistency.
+  cyclic-parent backfill termination (visited set + depth budget),
+  rune-safe truncation (no replacement characters, whole first rune under a
+  sub-limit bound), and bound-refusal memory/disk consistency (both the
+  fixed-metadata-alone and the gap-note-drop sites).
 - Loop e2e tests run ingest → drain → analyze (mock Jev endpoint) → dispatch
   (mock session server) and prove: only the bounded stage-one payload is sent
   before the success gate, stage-two pages only after success, exactly one

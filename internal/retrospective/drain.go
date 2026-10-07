@@ -488,28 +488,76 @@ func reconcileServer(ctx context.Context, cfg *Config, store *Store, spool *Spoo
 
 // backfillSession merges one session's fetched message history into its
 // staged spool (load+stage+write under that session's spool lock, the same
-// lock the ingest path holds) and recurses into its observed descendants.
-// Lock order is always drain.lock → spool.lock (the ingest path takes only
-// the spool lock), so a concurrent plugin flush cannot lose staged records
-// to this backfill and no deadlock is possible.
+// lock the ingest path holds) and then walks its observed descendants. Each
+// lock is held only for its own spool's load+stage+write and released before
+// descending: a cyclic parent topology (each row naming the other its child)
+// can never nest two spool locks of the same session in one walk, and the
+// visited set plus the MaxDescendantDepth budget terminate the walk even on
+// adversarial identity maps. Lock order is always drain.lock → one spool
+// lock at a time (the ingest path takes only the spool lock), so a
+// concurrent plugin flush cannot lose staged records to this backfill and no
+// deadlock is possible.
 // Spec: docs/specs/task-retrospective.md via reconcileServer
 func backfillSession(ctx context.Context, client *HTTPSessionClient, store *Store, cfg *Config, sessionID string, budget *int, rows []SessionMessageRow) []Gap {
+	seen := map[string]bool{}
+	return backfillOne(ctx, client, store, cfg, sessionID, budget, rows, seen, 0)
+}
+
+// backfillOne is the recursion of backfillSession: visited-set plus depth
+// budget guarding the observed-parent walk, one spool lock per level,
+// released before the children are descended into.
+// Spec: docs/specs/task-retrospective.md via backfillSession
+func backfillOne(ctx context.Context, client *HTTPSessionClient, store *Store, cfg *Config, sessionID string, budget *int, rows []SessionMessageRow, seen map[string]bool, depth int) []Gap {
+	if seen[sessionID] {
+		return nil
+	}
+	seen[sessionID] = true
+	if depth >= MaxDescendantDepth {
+		return []Gap{{Kind: "partial_stream", Detail: "descendant depth budget reached at " + sessionID}}
+	}
+	// One spool lock per level, released before descending into children.
 	unlock, err := spoolLock(store, sessionID)
 	if err != nil {
 		return []Gap{{Kind: "partial_stream", Detail: "spool lock " + sessionID + ": " + boundedGapDetail(err.Error())}}
 	}
-	defer unlock()
+	spool, rows, childIDs, gaps := backfillLoadStage(ctx, client, store, cfg, sessionID, rows)
+	unlock()
+	if gaps != nil {
+		return gaps
+	}
+	if *budget <= 0 {
+		return []Gap{{Kind: "partial_stream", Detail: "child reconcile cap reached before " + sessionID}}
+	}
+	*budget--
+	_ = spool
+	for _, id := range childIDs {
+		// The parent lock is released before descending: nested cycles can
+		// only meet an already-visited session (skipped) or the depth
+		// budget, never a second self-lock of one session in one walk.
+		if *budget < 0 {
+			return append(gaps, Gap{Kind: "partial_stream", Detail: "child reconcile cap reached before " + id})
+		}
+		gaps = append(gaps, backfillOne(ctx, client, store, cfg, id, budget, nil, seen, depth+1)...)
+	}
+	return gaps
+}
+
+// backfillLoadStage loads one spool, stages its fetched history, writes it
+// back, and returns the observed child ids. The caller holds that session's
+// spool lock across this call and releases it before descending.
+// Spec: docs/specs/task-retrospective.md via backfillOne
+func backfillLoadStage(ctx context.Context, client *HTTPSessionClient, store *Store, cfg *Config, sessionID string, rows []SessionMessageRow) (*Spool, []SessionMessageRow, []string, []Gap) {
 	spool, err := loadSpool(store, sessionID)
 	if err != nil {
-		return []Gap{{Kind: "partial_stream", Detail: "spool " + sessionID + ": " + boundedGapDetail(err.Error())}}
+		return nil, nil, nil, []Gap{{Kind: "partial_stream", Detail: "spool " + sessionID + ": " + boundedGapDetail(err.Error())}}
 	}
 	if rows == nil {
 		fetched, err := client.Messages(ctx, sessionID)
 		if err != nil {
 			if errors.Is(err, ErrCapability) {
-				return nil
+				return spool, nil, nil, nil
 			}
-			return []Gap{{Kind: "partial_stream", Detail: "message reconcile failed: " + sessionID + ": " + boundedGapDetail(err.Error())}}
+			return nil, nil, nil, []Gap{{Kind: "partial_stream", Detail: "message reconcile failed: " + sessionID + ": " + boundedGapDetail(err.Error())}}
 		}
 		rows = fetched
 	}
@@ -527,30 +575,23 @@ func backfillSession(ctx context.Context, client *HTTPSessionClient, store *Stor
 	}
 	redactor, redactorErr := NewRedactor(cfg)
 	if redactorErr != nil {
-		return []Gap{{Kind: "partial_stream", Detail: "reconcile redactor: " + boundedGapDetail(redactorErr.Error())}}
+		return nil, nil, nil, []Gap{{Kind: "partial_stream", Detail: "reconcile redactor: " + boundedGapDetail(redactorErr.Error())}}
 	}
 	stageRecords(redactor, capRecords(records), spool)
 	if spool.ServerURL == "" {
 		spool.ServerURL = firstNonEmpty(client.BaseURL, spool.ServerURL)
 	}
 	if err := writeSpoolBounded(cfg, store, spool); err != nil {
-		return []Gap{{Kind: "partial_stream", Detail: "spool write failed: " + sessionID + ": " + boundedGapDetail(err.Error())}}
+		return nil, nil, nil, []Gap{{Kind: "partial_stream", Detail: "spool write failed: " + sessionID + ": " + boundedGapDetail(err.Error())}}
 	}
-	var gaps []Gap
-	if *budget <= 0 {
-		return []Gap{{Kind: "partial_stream", Detail: "child reconcile cap reached before " + sessionID}}
-	}
-	*budget--
+	var childIDs []string
 	for _, id := range sortedSessionIDs(spool) {
 		if id == sessionID || spool.Sessions[id].ParentID != sessionID {
 			continue
 		}
-		if *budget < 0 {
-			return append(gaps, Gap{Kind: "partial_stream", Detail: "child reconcile cap reached before " + id})
-		}
-		gaps = append(gaps, backfillSession(ctx, client, store, cfg, id, budget, nil)...)
+		childIDs = append(childIDs, id)
 	}
-	return gaps
+	return spool, rows, childIDs, nil
 }
 
 // boundedGapDetail clips one gap detail.

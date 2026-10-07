@@ -509,8 +509,8 @@ func truncateRecord(record *EnvelopeRecord) {
 }
 
 // clipRuneBoundary returns the first limit bytes of value, backed off to the
-// nearest rune start so the result is valid UTF-8. A single oversize rune is
-// kept whole.
+// nearest rune start so the result is valid UTF-8. A limit landing inside
+// the first rune keeps the whole first rune.
 // Spec: docs/specs/task-retrospective.md via truncateRecord
 func clipRuneBoundary(value string, limit int) string {
 	if limit < 1 || len(value) <= limit {
@@ -521,7 +521,11 @@ func clipRuneBoundary(value string, limit int) string {
 		end--
 	}
 	if end == 0 {
-		end = 1
+		first, _ := utf8.DecodeRuneInString(value)
+		if first == utf8.RuneError {
+			return value[:1]
+		}
+		return value[:utf8.RuneLen(first)]
 	}
 	return value[:end]
 }

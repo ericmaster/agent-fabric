@@ -647,6 +647,15 @@ func TestTruncateRecordIsRuneSafe(t *testing.T) {
 	if !utf8.ValidString(clipped) || len(clipped) == 0 {
 		t.Fatalf("oversize single-rune clipping invalid: %d bytes", len(clipped))
 	}
+	// A limit landing inside the first rune keeps the whole first rune,
+	// never a single byte of it (the prior end=1 fallback produced invalid
+	// UTF-8 here: clip("🚨abcd", 2) was "\xf0").
+	if got := clipRuneBoundary("🚨abcd", 2); got != "🚨" || !utf8.ValidString(got) {
+		t.Fatalf("first-rune clipping = %q, want the whole first rune", got)
+	}
+	if got := clipRuneBoundary("字x", 1); got != "字" {
+		t.Fatalf("first-rune clipping at one byte = %q, want whole rune", got)
+	}
 	// Detail clips to its own bound, rune-safe as well.
 	record = EnvelopeRecord{Kind: "event", Detail: multi}
 	truncateRecord(&record)
@@ -680,5 +689,54 @@ func TestWriteSpoolBoundRefusalKeepsDiskConsistent(t *testing.T) {
 	after := loadSpoolFor(t, store, "ses_tiny")
 	if after.Overflows != 0 {
 		t.Fatalf("refusal must not bump the persisted count: %d", after.Overflows)
+	}
+}
+
+func TestWriteSpoolBoundGapNoteDropKeepsDiskConsistent(t *testing.T) {
+	// The tiny-bound gap-note drop path: dropping parts first, then the
+	// appended gap note overflows again, so the note is dropped and the
+	// write still lands within the bound with no unpersisted bump.
+	store := testStore(t)
+	cfg := observationConfig(store)
+	spool, err := loadSpool(store, "ses_gapdrop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := EnvelopeRecord{Kind: "part", RecordID: "prt_one", MessageID: "msg", PartType: "text", Text: strings.Repeat("x", 512)}
+	stageRecords(redactorForTest(), []EnvelopeRecord{record}, spool)
+	// Bound sits between the empty-doc size and the empty-doc-plus-note
+	// size: the part must drop (its gap note appended), then the gap note
+	// itself must drop for the write to fit, and the single dropped part is
+	// the persisted count.
+	noted := &Spool{Schema: SpoolSchemaVersion, SessionID: "ses_gapdrop"}
+	noted.appendGap(Gap{Kind: "partial_stream", Detail: "spool overflow dropped 1 staged records"})
+	notedBody, err := json.Marshal(noted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptyBody, err := json.Marshal(&Spool{Schema: SpoolSchemaVersion, SessionID: "ses_gapdrop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(notedBody) <= len(emptyBody) {
+		t.Fatalf("note sizing inverted: empty=%d noted=%d", len(emptyBody), len(notedBody))
+	}
+	cfg.SpoolMaxBytes = (len(emptyBody) + len(notedBody)) / 2
+	if err := writeSpoolBounded(cfg, store, spool); err != nil {
+		t.Fatalf("gap-note drop must land within the bound: %v", err)
+	}
+	reloaded := loadSpoolFor(t, store, "ses_gapdrop")
+	body, err := os.ReadFile(spoolPath(store, "ses_gapdrop"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body) > cfg.SpoolMaxBytes {
+		t.Fatalf("bounded spool exceeded: %d > %d", len(body), cfg.SpoolMaxBytes)
+	}
+	if reloaded.Overflows != 1 {
+		t.Fatalf("persisted overflows = %d (want the one dropped part)", reloaded.Overflows)
+	}
+	if len(reloaded.Gaps) != 0 {
+		t.Fatalf("gap note must be dropped for the fit: %+v", reloaded.Gaps)
 	}
 }
