@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Envelope } from "../opencode";
 import { RetrospectivePlugin } from "../opencode";
+import nativePlugin from "../opencode";
 // spec: docs/specs/task-retrospective.md (OpenCode observation adapter)
 
 // Compiled output lives at dist/tests; the recorded fixtures live at the
@@ -51,6 +52,35 @@ function loadEvents(name: string): unknown[] {
     .split("\n")
     .map((line) => JSON.parse(line));
 }
+
+test("actual v2 default loader consumes recorded native stream and message-scoped call IDs", async () => {
+  const harness = fixtureCLI();
+  delete process.env.AGF_PLUGIN_FAKE_HEALTH;
+  const events = loadEvents("native-2.0.24.jsonl") as any[];
+  // Duplicate tool ID in another assistant message is a distinct attempt.
+  const repeated = events.slice(3, 6).map((event) => ({ ...event, data: { ...event.data, assistantMessageID: "msg_second_attempt" } }));
+  events.splice(6, 0, ...repeated);
+  events.splice(7, 0, { type: "session.reasoning.delta", data: { sessionID: events[0].data.sessionID, text: "HIDDEN-CANARY" } });
+  let disposed = false;
+  try {
+    const cleanup = await nativePlugin.setup({
+      app: { version: "2.0.24" }, location: { directory: path.join(harness.root, "proj") },
+      event: { async *subscribe() { for (const event of events) yield event; } },
+      tool: { async hook() { return { async dispose() { disposed = true; } }; } },
+    } as any);
+    await cleanup();
+    const captures = capturesOf(harness.captureFile);
+    assert.ok(captures.length > 0, "native terminal did not ingest");
+    const envelope = JSON.parse(captures.at(-1)!.stdin) as Envelope;
+    assert.equal(envelope.sdk_version, "2.0.24");
+    assert.equal(envelope.trigger, true);
+    assert.ok(envelope.records.some((record) => record.text === "QA_OBSERVER_DONE"));
+    const completed = envelope.records.filter((record) => record.tool_status === "completed");
+    assert.equal(new Set(completed.map((record) => record.call_id)).size, 2);
+    assert.ok(!JSON.stringify(envelope).includes("HIDDEN-CANARY"));
+    assert.ok(disposed);
+  } finally { harness.restore(); }
+});
 
 function capturesOf(file: string): CaptureRow[] {
   let body: string;

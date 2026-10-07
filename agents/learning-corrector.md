@@ -70,6 +70,12 @@ update instead.
 
 ## Output
 
+When the coordinator packet declares read-only investigation, return its typed
+proposal schema instead of editing. Investigate causal task evidence and the
+owning canonical source; never invent a finding to fill an empty report. The
+coordinator executes independent reviewer and QA roles and owns hash-checked
+application/rollback. Proposal submission is not a repair or acceptance verdict.
+
 Return the action (`repaired`, `suggested`, `conflict`, or `BLOCKED`), the
 reviewer identity, `self_certified: false`, the source hash, and rollback
 evidence. A context gap, an unsafe root, or an unresolved canonical owner is

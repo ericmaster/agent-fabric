@@ -1580,6 +1580,16 @@ func (a *analysis) finishDispatch() {
 func (a *analysis) report() *Report {
 	normalized := a.normalized
 	trace := normalized.Trace
+	evidence := []evidenceRecord{}
+	for _, record := range normalized.Records {
+		if normalized.InInterval(record) && exclusionReason(record) == "" {
+			evidence = append(evidence, gramOf(a.redactor.Record(record)))
+		}
+	}
+	for _, record := range normalized.Requirements {
+		evidence = append(evidence, gramOf(a.redactor.Record(record)))
+	}
+	a.finishRedaction()
 	model := ModelInfo{Model: EvaluatorModel(a.cfg.Evaluator), RubricVersion: RubricVersion}
 	sourceFiles := []ReportSourceFile{}
 	for _, ref := range trace.SourceFiles {
@@ -1620,6 +1630,7 @@ func (a *analysis) report() *Report {
 		pages = []PageDelivery{}
 	}
 	return &Report{
+		TaskEvidence:      evidence,
 		SchemaVersion:     ReportSchemaVersion,
 		Status:            a.status,
 		IncompleteReasons: a.incompleteReasons,

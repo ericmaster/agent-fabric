@@ -40,6 +40,10 @@ type loopSessionServer struct {
 	statusCode int
 	loseCreate bool
 	directory  string
+	proposal   NativeProposal
+	roles      map[string]string
+	finals     map[string]string
+	fault      string
 }
 
 func (s *loopSessionServer) handler() http.Handler {
@@ -68,9 +72,30 @@ func (s *loopSessionServer) handler() http.Handler {
 				return
 			}
 			var req struct {
-				Title string `json:"title"`
+				Title       string              `json:"title"`
+				Agent       string              `json:"agent"`
+				Model       map[string]string   `json:"model"`
+				Location    map[string]string   `json:"location"`
+				Permissions []map[string]string `json:"permissions"`
 			}
 			_ = json.Unmarshal([]byte(body), &req)
+			if req.Agent == "" || req.Model["providerID"] != "fixture" || req.Model["id"] != "worker" || req.Location["directory"] != s.directory || len(req.Permissions) == 0 {
+				http.Error(w, "missing native role/model/location/permissions", 400)
+				return
+			}
+			readAllowed, defaultDenied := false, false
+			for _, rule := range req.Permissions {
+				if rule["action"] == "read" && rule["resource"] == "*" && rule["effect"] == "allow" {
+					readAllowed = true
+				}
+				if rule["action"] == "*" && rule["resource"] == "*" && rule["effect"] == "deny" {
+					defaultDenied = true
+				}
+			}
+			if !readAllowed || !defaultDenied {
+				http.Error(w, "native relative read rules or default deny missing", 400)
+				return
+			}
 			session := Session{
 				ID:        fmt.Sprintf("ses_loop_%d", len(s.sessions)+1),
 				Title:     req.Title,
@@ -79,6 +104,11 @@ func (s *loopSessionServer) handler() http.Handler {
 				ParentID:  "",
 			}
 			s.sessions = append(s.sessions, session)
+			if s.roles == nil {
+				s.roles = map[string]string{}
+				s.finals = map[string]string{}
+			}
+			s.roles[session.ID] = req.Agent
 			s.creates = append(s.creates, session.ID)
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": loopWireSession(session)})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/session":
@@ -88,6 +118,15 @@ func (s *loopSessionServer) handler() http.Handler {
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": data, "cursor": map[string]any{"next": nil}})
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/session/") && strings.HasSuffix(r.URL.Path, "/message"):
+			id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/session/"), "/message")
+			if final, ok := s.finals[id]; ok {
+				role := s.roles[id]
+				if s.fault == "wrong-role" {
+					role = "build"
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]any{"type": "assistant", "agent": role, "model": map[string]string{"providerID": "fixture", "id": "worker"}, "time": map[string]int64{"completed": 1}, "content": []any{map[string]string{"type": "text", "text": final}}}}, "cursor": map[string]any{"next": nil}})
+				return
+			}
 			// The reconcile reads the full observable history; the mock
 			// returns an empty data page (the streamed fixture coverage is
 			// complete).
@@ -109,7 +148,27 @@ func (s *loopSessionServer) handler() http.Handler {
 				Text string `json:"text"`
 			}
 			_ = json.Unmarshal([]byte(body), &req)
+			id := s.promptIDs[len(s.promptIDs)-1]
+			role := s.roles[id]
+			var packet struct {
+				CandidateSHA string `json:"candidate_sha256"`
+			}
+			if at := strings.Index(req.Text, "\n"); at >= 0 {
+				_ = json.Unmarshal([]byte(req.Text[at+1:]), &packet)
+			}
+			var final any = s.proposal
+			if role != "learning-corrector" {
+				if role == "qa-runner" {
+					final = map[string]any{"passed": s.fault != "qa-reject", "candidate_sha256": packet.CandidateSHA, "reason": "fixture QA read postimage"}
+				} else {
+					final = map[string]any{"approved": s.fault != "review-reject", "candidate_sha256": packet.CandidateSHA, "reason": "fixture causal review"}
+				}
+			}
+			encoded, _ := json.Marshal(final)
+			s.finals[id] = string(encoded)
 			_, _ = w.Write([]byte(fmt.Sprintf(`{"data":{"id":"msg_%d","type":"user","payload":{"text":%q}}}`, len(s.prompts), req.Text)))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/wait"):
+			w.WriteHeader(204)
 		default:
 			http.NotFound(w, r)
 		}
@@ -249,6 +308,7 @@ func newLoopFixture(t *testing.T, script func(subject, scope string) (string, []
 	cfg.Endpoint = jevAPI.URL
 	cfg.DispatchServer = sessionAPI.URL
 	cfg.DispatchEndpoint = EndpointMessage
+	cfg.DispatchModel = "fixture/worker"
 	cfg.DispatchServerUsername = "opencode"
 	cfg.DispatchServerPassword = "synthetic-loop-key"
 	cfg.DispatchUITemplate = sessionAPI.URL + "/tui/{id}"
@@ -479,12 +539,8 @@ func TestLoopDrainSuccessFixesOwningInstructionExactlyOnce(t *testing.T) {
 	f.stageReplay(t, filepath.Join(fixtureRoot(t), "envelopes", "success-recovery.jsonl"))
 	f.stageProvenance(t, f.agentSource)
 	t.Setenv("AGF_RETROSPECTIVE_STATE", f.store.Dir)
-	// The trusted coordinator computes the deterministic task identity the
-	// same way the drain does (library helper), then stages its verified
-	// findings packet before the first dispatch.
-	spool := loadSpoolFor(t, f.store, "ses_task01")
-	taskID := syntheticTaskID(spool, assembleTrace(f.store, spool, "ses_task01"))
-	f.writeCoordinatorPacket(t, taskID, Finding{
+	// Actual native proposal/review/QA path, no coordinator packet.
+	f.sessions.proposal = NativeProposal{Summary: "causal fixture investigation", Findings: []Finding{{
 		ID:                 "fix-parking-docs",
 		SourcePath:         f.agentSource,
 		SourceSHA256:       f.sourceHash,
@@ -494,16 +550,16 @@ func TestLoopDrainSuccessFixesOwningInstructionExactlyOnce(t *testing.T) {
 		Recovery:           "the agent re-read this project's AGENTS.md and wrote the policy into this project's docs directory",
 		Excerpt:            "The stale parking-lot direction.",
 		Replacement:        "Parking-lot documentation lives in this project's docs directory.",
-	})
+	}}}
 	summary := drainCluster(t, f, "host-key-fixture")
 	if summary.Processed != 1 || summary.Completed != 1 || summary.Failed != 0 {
 		t.Fatalf("enabled drain summary: %+v", summary)
 	}
 	creates, prompts, promptIDs := f.sessions.snapshot()
-	if len(creates) != 1 {
-		t.Fatalf("visible roots = %d (want exactly one): %v", len(creates), creates)
+	if len(creates) != 3 {
+		t.Fatalf("visible roots = %d (corrector/reviewer/QA): %v", len(creates), creates)
 	}
-	if len(prompts) != 1 || len(promptIDs) != 1 || promptIDs[0] != creates[0] {
+	if len(prompts) != 3 || len(promptIDs) != 3 || promptIDs[0] != creates[0] {
 		t.Fatalf("prompt submissions = %d ids=%v creates=%v", len(prompts), promptIDs, creates)
 	}
 	var promptPayload struct {
@@ -516,7 +572,7 @@ func TestLoopDrainSuccessFixesOwningInstructionExactlyOnce(t *testing.T) {
 	if promptPayload.Agent != "" {
 		t.Fatal("live prompt must not pretend ignored agent key selects a role")
 	}
-	if !strings.Contains(promptPayload.Text, "Report locator:") {
+	if !strings.Contains(promptPayload.Text, "authoritative_report_locator") {
 		t.Fatalf("intake packet missing the report locator: %s", promptPayload.Text)
 	}
 	// The success payload / pages order: the stage one question is sent
@@ -588,7 +644,7 @@ func TestLoopDrainSuccessFixesOwningInstructionExactlyOnce(t *testing.T) {
 	f.stageReplay(t, filepath.Join(fixtureRoot(t), "envelopes", "success-recovery.jsonl"))
 	summary = drainCluster(t, f, "host-key-fixture")
 	creates2, prompts2, _ := f.sessions.snapshot()
-	if len(creates2) != 1 || len(prompts2) != 1 {
+	if len(creates2) != 3 || len(prompts2) != 3 {
 		t.Fatalf("duplicate dispatch after a settled turn: creates=%v prompts=%v", creates2, prompts2)
 	}
 }

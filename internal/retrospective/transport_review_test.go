@@ -102,6 +102,7 @@ func TestLiveRootDirectoryMustMatchBeforeRepairOrPrompt(t *testing.T) {
 			defer server.Close()
 			cfg := testConfig(root, t.TempDir(), server.URL)
 			cfg.DispatchEndpoint = EndpointMessage
+			cfg.DispatchModel = "fixture/worker"
 			cfg.DispatchServerPassword = "CANARY-SERVER-PASSWORD"
 			receipt, err := Dispatch(context.Background(), dispatchOpts(cfg, report, OpenSessionClient(cfg)))
 			if err != nil {
@@ -109,7 +110,7 @@ func TestLiveRootDirectoryMustMatchBeforeRepairOrPrompt(t *testing.T) {
 			}
 			content, _ := os.ReadFile(target)
 			if mode == "correct" {
-				if receipt.Directory != root || receipt.Project != "project_literal" || prompts != 1 || string(content) == original {
+				if receipt.Directory != root || receipt.Project != "project_literal" || prompts != 1 || string(content) != original || receipt.Status != StatusPending {
 					t.Fatalf("valid live root failed: %+v", receipt)
 				}
 			} else {

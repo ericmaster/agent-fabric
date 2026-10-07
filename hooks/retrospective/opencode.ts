@@ -12,14 +12,15 @@
 // into the user's source session, and never blocks a response on Jev.
 //
 // Version pinning: fixture-tested against OpenCode 2.0.24
-// (@opencode-ai/plugin@1.18.35, fixtures/retrospective/opencode/). The
-// adapter probes the server version once and stays inert (degradation, never
-// fake coverage) for an unconfirmed version.
+// (@opencode/plugin@2.0.24 default setup/events API). The v1 named hook export
+// and @opencode-ai/plugin@1.18.35 types are replay-only compatibility. Native
+// setup uses ctx.app.version and rejects an unconfirmed generation.
 //
 // Runtime constraints: the installed plugin file is self-contained; runtime
 // imports are Node/Bun built-ins only, so no per-project package.json is
 // required. Type-only imports are erased at load time.
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
+import type { Plugin as NativePlugin } from "@opencode/plugin";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
@@ -128,13 +129,15 @@ function toolStatus(state: unknown): string | undefined {
 }
 
 /** The observed absolute path of a source-loading tool call (if any). */
-function observedPath(args: unknown): string | undefined {
+function observedPath(args: unknown, directory?: string): string | undefined {
   if (!args || typeof args !== "object") {
     return undefined;
   }
-  const candidate = (args as { filePath?: unknown; path?: unknown; file?: unknown }).filePath;
-  if (typeof candidate === "string" && candidate.length > 0 && path.isAbsolute(candidate)) {
-    return candidate;
+  const values = args as { filePath?: unknown; path?: unknown; file?: unknown };
+  const candidate = values.filePath ?? values.path ?? values.file;
+  if (typeof candidate === "string" && candidate.length > 0) {
+    if (path.isAbsolute(candidate)) return candidate;
+    if (directory) return path.resolve(directory, candidate);
   }
   return undefined;
 }
@@ -407,7 +410,7 @@ class Adapter {
       version: ENVELOPE_VERSION,
       harness: "opencode",
       session_id: sessionID,
-      server_url: this.serverUrl.toString().replace(/\/$/, ""),
+      server_url: this.serverUrl.port === "0" ? undefined : this.serverUrl.toString().replace(/\/$/, ""),
       sdk_version: this.observedSDK,
       trigger,
       project_dir: this.projectDir || undefined,
@@ -502,6 +505,110 @@ export const RetrospectivePlugin: (input: PluginInput) => Promise<Hooks> = async
     },
   };
 };
+
+/** v2.0.24 native definition. Named v1 export above is replay-only. */
+export default {
+  id: "agf-retrospective",
+  async setup(ctx: NativePlugin.Context) {
+    const version = ctx.app.version;
+    if (version !== "2.0.24") throw new Error("AGF retrospective: unsupported native plugin generation");
+    const adapter = new Adapter({
+      serverUrl: process.env.AGF_OBSERVER_SERVER,
+      projectDir: ctx.location.directory,
+      sdkVersion: version,
+      health: async () => ({ version }),
+    });
+    // Do not permit replay-only environment stubs to grant live authority.
+    if (process.env.AGF_PLUGIN_FAKE_HEALTH) throw new Error("AGF retrospective: replay health stub forbidden in native setup");
+    await adapter.ensureActive();
+	const provenance = await ctx.tool.hook("execute.after", async (event) => {
+	  if (event.tool !== "read" || event.status !== "completed") return;
+	  const file = observedPath(event.input, ctx.location.directory);
+	  if (!file) return;
+	  if (/(^|\/)(\.env|credentials|secrets|id_rsa|id_ed25519)|\.(pem|p12|pfx)$/i.test(file)) {
+	    adapter.observe(event.sessionID, { kind: "source_gap", session_id: event.sessionID, path: file, detail: "secret-file candidate: body never collected" }); return;
+	  }
+	  try { adapter.observe(event.sessionID, { kind: "source", session_id: event.sessionID, path: file, sha256: createHash("sha256").update(readFileSync(file)).digest("hex") }); }
+	  catch { adapter.observe(event.sessionID, { kind: "source_gap", session_id: event.sessionID, path: file, detail: "native at-use read provenance unavailable" }); }
+	});
+    const abort = new AbortController();
+    const tools = new Map<string, { name?: string; input?: string }>();
+    const consume = (async () => {
+      for await (const event of ctx.event.subscribe({ signal: abort.signal })) {
+        const records = nativeRecords(event, tools);
+        for (const record of records) {
+          const id = record.session_id;
+          if (!id) continue;
+          if (record.kind === "session") adapter.observeSessionRow(record);
+          else adapter.observe(id, record);
+          const terminal = record.kind === "event" && record.event === "session.idle";
+          if (terminal || adapter.bufferedCount(id) >= FLUSH_THRESHOLD_RECORDS) await adapter.flush(id, terminal);
+        }
+      }
+    })().catch(() => { if (!abort.signal.aborted) console.error("AGF retrospective: native event subscription failed; collection incomplete"); });
+    return async () => { abort.abort(); await provenance.dispose(); await consume; };
+  },
+};
+
+/** Normalize actual v2 durable/ephemeral events; never inspect reasoning text. */
+function nativeRecords(event: any, tools: Map<string, { name?: string; input?: string }>): EnvelopeRecord[] {
+  const d = event?.data ?? {};
+  const session = d.sessionID;
+  if (typeof session !== "string") return [];
+  // v2 provider call IDs (e.g. functions.read:0) repeat in later messages.
+  const call = `${d.assistantMessageID}:${d.id}`;
+  const message = (id: string, role: string): EnvelopeRecord => ({ kind: "message", session_id: session, record_id: id, role });
+  const part = (id: string, messageID: string, text: string): EnvelopeRecord => {
+    const record: EnvelopeRecord = { kind: "part", session_id: session, record_id: id, message_id: messageID, part_type: "text" };
+    boundedField(record, "text", text); return record;
+  };
+  switch (event.type) {
+    case "session.created": return [{ kind: "session", session_id: session, title: d.title ?? "", parent_id: d.parentID ?? "", directory: d.location?.directory ?? "" }];
+    case "session.renamed": return [{ kind: "session", session_id: session, title: d.title ?? "" }];
+    case "session.inbox.enqueued":
+      if (d.item?.type !== "user" || typeof d.item.payload?.text !== "string") return [];
+      return [message(d.inboxID, "user"), part(`${d.inboxID}:text`, d.inboxID, d.item.payload.text)];
+    case "session.step.started": return [message(d.assistantMessageID, "assistant")];
+    case "session.text.ended": return [message(d.assistantMessageID, "assistant"), part(`${d.assistantMessageID}:text:${d.ordinal}`, d.assistantMessageID, d.text)];
+    case "session.reasoning.ended": return [{ kind: "part", session_id: session, record_id: `${d.assistantMessageID}:reasoning:${d.ordinal}`, message_id: d.assistantMessageID, part_type: "reasoning", reasoning: true }];
+    case "session.tool.input.started": tools.set(`${session}:${call}`, { name: d.name }); return [];
+    case "session.tool.called": {
+      const prior = tools.get(`${session}:${call}`) ?? {};
+      prior.input = JSON.stringify(d.input); tools.set(`${session}:${call}`, prior);
+      const record: EnvelopeRecord = { kind: "part", session_id: session, record_id: call, message_id: d.assistantMessageID, part_type: "tool", call_id: call, tool: prior.name, tool_status: "running" };
+      boundedField(record, "input", prior.input); return [record];
+    }
+    case "session.tool.success":
+    case "session.tool.failed": {
+      const key = `${session}:${call}`;
+      const prior = tools.get(key) ?? {};
+      const record: EnvelopeRecord = { kind: "part", session_id: session, record_id: call, message_id: d.assistantMessageID, part_type: "tool", call_id: call, tool: prior.name, tool_status: event.type.endsWith("success") ? "completed" : "error", error: errorName(d.error) };
+      boundedField(record, "input", prior.input);
+      const content = Array.isArray(d.content) ? d.content : [];
+      boundedField(record, "output", content.filter((item: any) => item.type === "text").map((item: any) => item.text).join("\n"));
+      if (content.some((item: any) => item.type !== "text")) record.detail = "unsupported tool result content withheld";
+      tools.delete(key);
+      const records: EnvelopeRecord[] = [record];
+      // Provenance at the actual terminal read, never secret-file bodies.
+      if (prior.name === "read" && prior.input) {
+        try {
+          const file = observedPath(JSON.parse(prior.input));
+          if (file && !/(^|\/)(\.env|credentials|secrets|id_rsa|id_ed25519)|\.(pem|p12|pfx)$/i.test(file)) {
+            records.push({ kind: "source", session_id: session, path: file, sha256: createHash("sha256").update(readFileSync(file)).digest("hex") });
+          } else if (file) records.push({ kind: "source_gap", session_id: session, path: file, detail: "secret-file candidate: content never collected" });
+        } catch { records.push({ kind: "source_gap", session_id: session, detail: "native read provenance unavailable" }); }
+      }
+      return records;
+    }
+    case "session.execution.failed":
+    case "session.step.failed": return [{ kind: "event", session_id: session, event: "session.error", detail: errorName(d.error) }];
+    case "session.execution.interrupted": return [{ kind: "event", session_id: session, event: "session.error", detail: "MessageAbortedError" }, { kind: "event", session_id: session, event: "session.idle" }];
+    case "session.execution.succeeded": return [{ kind: "event", session_id: session, event: "session.idle" }];
+    case "session.status": return d.status?.type === "idle" ? [{ kind: "event", session_id: session, event: "session.idle" }] : [];
+    case "session.compaction.started": return [{ kind: "event", session_id: session, event: "session.compacted" }];
+    default: return [];
+  }
+}
 
 /**
  * eventRecord maps one native bus event into the envelope record set.

@@ -48,8 +48,9 @@ agf retrospective enable
   "dispatch_server": "http://127.0.0.1:4096",
   "dispatch_ui_template": "https://<ui-host>/{id}",
   "dispatch_endpoint": "message",
+  "dispatch_model": "<available-provider>/<available-worker-model>",
   "canonical_roots": ["/absolute/editable/project/roots"],
-  "reviewer": "some-independent-reviewer"
+  "reviewer": "code-reviewer"
 }
 ```
 
@@ -77,12 +78,64 @@ records no hidden reasoning, never posts into the source session, and never
 blocks a session on evaluation. OpenCode must be restarted to load, unload, or
 replace the plugin file.
 
-The verified 2.0.24 user-message echo confirms prompt delivery only, not
-agent/model selection or autonomous correction completion: extra agent/model
-keys are ignored, so the live prompt sends text only. A root must echo the
-authorized execution/dispatch directory before any prompt or local repair;
-absent/mismatched directory remains pending with no such side effects. Visible-root
-reconnect/repair QA and live provider calibration remain unverified.
+2.0.24 prompt extra agent/model keys are ignored: prompt sends text only.
+Selection instead uses native session.create fields `agent`, `model` (Model.Ref)
+and `location`. The canonical learning-corrector investigates a typed proposal;
+separate visible parentless reviewer and qa-runner roots execute before acceptance.
+Direct model edits/bash/network are denied. The receipt records actual visible
+final results, role/model evidence and digest-bound verdicts, not delivery alone.
+Missing/unavailable profiles, incomplete history or verdicts remain pending.
+A completed no-edit advisory is `suggested`, not `repaired`.
+
+The native default plugin definition uses installed-generation
+`@opencode/plugin@2.0.24`, `ctx.event.subscribe` and `ctx.app.version`.
+Its v1 named hook export is replay compatibility only. Set
+`AGF_OBSERVER_SERVER` to the exact configured dispatch origin for backfill;
+without it local native events still stage, but historical backfill has no URL.
+Never use `AGF_PLUGIN_FAKE_HEALTH` in a live server. `AGF_BIN` must locate the
+packaged Go CLI. Native call IDs are assistant-message scoped because provider
+IDs repeat across turns. Source hashes come from actual terminal read hooks.
+
+## Clean disposable native readiness reproducer
+
+Use only a disposable root and synthetic evidence, never the host HOME or user
+4097/4098 service. Build the CLI to scratch, provision disposable HOME/XDG
+config/state/data/cache and project directories, and start the installed
+`opencode serve --hostname 127.0.0.1 --port <free-port>` from that project with
+an allowlisted environment (`env -i`): PATH, HOME, PWD, XDG paths, synthetic
+OPENCODE_PASSWORD, AGF_SOURCE, AGF_BIN, AGF_CONFIG,
+AGF_RETROSPECTIVE_STATE/CONFIG, AGF_OBSERVER_SERVER. Do not inherit host
+OPENCODE config overrides/provider credentials. For observation-only readiness,
+`AGF_RETROSPECTIVE_NO_SPAWN=1` avoids evaluator network while still staging jobs.
+Install via `agf install --all --tools opencode --assets retrospective --yes`,
+enable with `agf retrospective enable`, create `instructions.md` with a synthetic
+redaction canary, and run bounded native CLI:
+
+```sh
+timeout -k 10s 240s opencode run --server http://127.0.0.1:<free-port> \
+  --model opencode/fledge-alpha-free --agent build --auto \
+  --title 'AGF native observer readiness' \
+  'Read instructions.md and reply exactly QA_OBSERVER_DONE. Do not edit files.'
+```
+
+The model above is a disposable readiness profile, not a canonical-agent pin
+or a guarantee of future availability. Require successful actual result and
+redacted spool **and** job. Test default plugin loading, not a manual shim.
+For dispatch readiness provide an explicitly synthetic eligible report and
+configured available model; require `native_completed`, real canonical
+learning-corrector history, independent reviewer/QA histories and final verdicts.
+Keep synthetic report probes distinct from native end-to-end learning acceptance.
+Bound every child and HTTP call; stop only an owned server after checking UID,
+PID and cwd. Retain public final text only, never hidden reasoning.
+
+`fixtures/retrospective/opencode/events/native-2.0.24.jsonl` is projected from
+the actual isolated native SSE stream: keep only `type` and `data` of observable
+events, remove all reasoning events, and redact the synthetic canary. Its source
+command is the reproducer above. The npm native default-loader replay also
+adds a clearly synthetic repeated-call-ID negative control. This fixture is not
+proof of a live GLiDE calibration or a complete autonomous stale-runbook loop.
+Browser/reconnect, live GLiDE calibration and full native learning-loop QA remain
+separate mandatory unmet verification until actually executed.
 
 ## Scoped disable (without a global off)
 

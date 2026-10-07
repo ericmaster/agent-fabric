@@ -338,6 +338,7 @@ type Finding struct {
 // Report is the versioned deliverable written by `agf retrospective analyze`.
 // Spec: docs/specs/task-retrospective.md
 type Report struct {
+	TaskEvidence      []evidenceRecord `json:"task_evidence,omitempty"`
 	SchemaVersion     int              `json:"schema_version"`
 	Status            string           `json:"status"`
 	IncompleteReasons []string         `json:"incomplete_reasons,omitempty"`

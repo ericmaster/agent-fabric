@@ -36,30 +36,40 @@ const (
 // Receipt is the persisted dispatch result. It is not a supervisor ledger entry.
 // Spec: docs/specs/task-retrospective.md via Store
 type Receipt struct {
-	SchemaVersion   int             `json:"schema_version"`
-	IncidentID      string          `json:"incident_id"`
-	LearningOrigin  string          `json:"learning_origin"`
-	RootID          string          `json:"root_id,omitempty"`
-	ParentID        string          `json:"parent_id,omitempty"`
-	Project         string          `json:"project,omitempty"`
-	Directory       string          `json:"directory,omitempty"`
-	Title           string          `json:"title,omitempty"`
-	UIURL           string          `json:"ui_url,omitempty"`
-	ReportLocator   string          `json:"report_locator"`
-	ReportSHA256    string          `json:"report_sha256"`
-	TaskID          string          `json:"task_id"`
-	Status          string          `json:"status"`
-	Error           string          `json:"error,omitempty"`
-	Attempts        int             `json:"attempts"`
-	Reviewer        string          `json:"reviewer,omitempty"`
-	SelfCertified   bool            `json:"self_certified"`
-	CreateAttempted bool            `json:"create_attempted,omitempty"`
-	PromptAttempted bool            `json:"prompt_attempted,omitempty"`
-	PromptConfirmed bool            `json:"prompt_confirmed,omitempty"`
-	Findings        []FindingResult `json:"findings,omitempty"`
-	CopyNotes       []CopyNote      `json:"copy_notes,omitempty"`
-	CreatedAt       string          `json:"created_at"`
-	UpdatedAt       string          `json:"updated_at,omitempty"`
+	SchemaVersion           int             `json:"schema_version"`
+	IncidentID              string          `json:"incident_id"`
+	LearningOrigin          string          `json:"learning_origin"`
+	RootID                  string          `json:"root_id,omitempty"`
+	ParentID                string          `json:"parent_id,omitempty"`
+	Project                 string          `json:"project,omitempty"`
+	Directory               string          `json:"directory,omitempty"`
+	Title                   string          `json:"title,omitempty"`
+	UIURL                   string          `json:"ui_url,omitempty"`
+	ReportLocator           string          `json:"report_locator"`
+	ReportSHA256            string          `json:"report_sha256"`
+	TaskID                  string          `json:"task_id"`
+	Status                  string          `json:"status"`
+	Error                   string          `json:"error,omitempty"`
+	Attempts                int             `json:"attempts"`
+	Reviewer                string          `json:"reviewer,omitempty"`
+	SelfCertified           bool            `json:"self_certified"`
+	CreateAttempted         bool            `json:"create_attempted,omitempty"`
+	PromptAttempted         bool            `json:"prompt_attempted,omitempty"`
+	PromptConfirmed         bool            `json:"prompt_confirmed,omitempty"`
+	NativeCompleted         bool            `json:"native_completed,omitempty"`
+	CorrectorResult         string          `json:"corrector_result,omitempty"`
+	ReviewerRootID          string          `json:"reviewer_root_id,omitempty"`
+	ReviewerCreateAttempted bool            `json:"reviewer_create_attempted,omitempty"`
+	ReviewerPromptAttempted bool            `json:"reviewer_prompt_attempted,omitempty"`
+	ReviewVerdict           string          `json:"review_verdict,omitempty"`
+	QARootID                string          `json:"qa_root_id,omitempty"`
+	QACreateAttempted       bool            `json:"qa_create_attempted,omitempty"`
+	QAPromptAttempted       bool            `json:"qa_prompt_attempted,omitempty"`
+	QAVerdict               string          `json:"qa_verdict,omitempty"`
+	Findings                []FindingResult `json:"findings,omitempty"`
+	CopyNotes               []CopyNote      `json:"copy_notes,omitempty"`
+	CreatedAt               string          `json:"created_at"`
+	UpdatedAt               string          `json:"updated_at,omitempty"`
 }
 
 // FindingResult is one finding's repair or suggestion evidence.

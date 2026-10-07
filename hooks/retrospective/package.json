@@ -9,6 +9,7 @@
     "test": "tsc -p tsconfig.json && node --test \"dist/tests/**/*.test.js\""
   },
   "devDependencies": {
+    "@opencode/plugin": "2.0.24",
     "@opencode-ai/plugin": "1.18.35",
     "@opencode-ai/sdk": "1.18.35",
     "@types/node": "22.18.6",

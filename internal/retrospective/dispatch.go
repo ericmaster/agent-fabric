@@ -60,6 +60,8 @@ type Session struct {
 type CreateRootRequest struct {
 	Title     string
 	Directory string
+	Agent     string
+	Model     string
 }
 
 // PromptRequest is the correcting prompt. Marker is the reconciliation echo.
@@ -96,6 +98,8 @@ type HTTPSessionClient struct {
 	Username      string
 	Password      string
 	TrustedOrigin string
+	Model         string
+	ReadRoots     []string
 }
 
 // OpenSessionClient builds the configured transport for dispatch and drain.
@@ -112,6 +116,8 @@ func OpenSessionClient(cfg *Config) *HTTPSessionClient {
 		HTTP:          &http.Client{Timeout: cfg.DispatchTimeout + time.Second},
 		Username:      user,
 		Password:      pass,
+		Model:         cfg.DispatchModel,
+		ReadRoots:     append([]string{cfg.StateDir}, cfg.CanonicalRoots...),
 	}
 }
 
@@ -173,16 +179,40 @@ func (c *HTTPSessionClient) messageGeneration() bool {
 }
 
 // CreateRoot posts a root session. The JSON body never contains parentID.
-// The message generation creates the session under the server's own project
-// directory, so it sends only the title.
+// Native message generation selects role, Model.Ref and location at creation.
 // Spec: docs/specs/task-retrospective.md via HTTPSessionClient
 func (c *HTTPSessionClient) CreateRoot(ctx context.Context, req CreateRootRequest) (Session, error) {
 	var body []byte
 	var err error
 	if c.messageGeneration() {
-		body, err = json.Marshal(struct {
-			Title string `json:"title"`
-		}{req.Title})
+		agent := firstNonEmpty(req.Agent, LearningCorrectorID)
+		model := firstNonEmpty(req.Model, c.Model)
+		permissions := []map[string]string{{"action": "*", "resource": "*", "effect": "deny"}}
+		// v2 internal read resources and grep/glob patterns are relative strings.
+		// Absolute external paths also need the scoped external_directory gate.
+		for _, action := range []string{"read", "glob", "grep"} {
+			permissions = append(permissions, map[string]string{"action": action, "resource": "*", "effect": "allow"})
+		}
+		for _, root := range append([]string{req.Directory}, c.ReadRoots...) {
+			if !filepath.IsAbs(root) {
+				continue
+			}
+			for _, action := range []string{"read", "glob", "grep", "external_directory"} {
+				permissions = append(permissions, map[string]string{"action": action, "resource": filepath.ToSlash(filepath.Clean(root)) + "/**", "effect": "allow"})
+			}
+		}
+		for _, pattern := range []string{".env*", "credentials*", "secrets*", "id_rsa*", "id_ed25519*", "*.pem", "*.p12", "*.pfx", "**/.env*", "**/credentials*", "**/secrets*", "**/id_rsa*", "**/id_ed25519*", "**/*.pem", "**/*.p12", "**/*.pfx"} {
+			permissions = append(permissions, map[string]string{"action": "*", "resource": pattern, "effect": "deny"})
+		}
+		payload := map[string]any{"title": req.Title, "agent": agent, "location": map[string]string{"directory": req.Directory}, "permissions": permissions}
+		if model != "" {
+			ref, parseErr := nativeModel(model)
+			if parseErr != nil {
+				return Session{}, parseErr
+			}
+			payload["model"] = ref
+		}
+		body, err = json.Marshal(payload)
 	} else {
 		body, err = json.Marshal(struct {
 			Title     string `json:"title"`
@@ -767,6 +797,9 @@ func continueReceipt(ctx context.Context, opts DispatchOptions, store *Store, re
 	if receipt.Status == StatusExhausted || receipt.Status == StatusSuppressed {
 		return receipt, nil
 	}
+	if client, ok := opts.Client.(*HTTPSessionClient); ok && client.messageGeneration() && receipt.RootID != "" && !receipt.NativeCompleted {
+		return finishVerified(ctx, opts, store, receipt, report, marker)
+	}
 	if receipt.Status == StatusQueued && !receipt.CreateAttempted {
 		if opts.Config.DispatchServer == "" || opts.Config.DispatchUITemplate == "" {
 			return receipt, nil
@@ -915,6 +948,9 @@ func finishVerified(ctx context.Context, opts DispatchOptions, store *Store, rec
 	}
 	receipt.Directory = session.Directory
 	receipt.Project = session.Project
+	if client, ok := opts.Client.(*HTTPSessionClient); ok && client.messageGeneration() {
+		return finishNativeLearning(ctx, opts, store, receipt, report, marker, client)
+	}
 	if len(receipt.Findings) == 0 {
 		results, notes, err := applyFindings(opts, store, receipt, report)
 		if err != nil {
@@ -1589,7 +1625,8 @@ func applyExcerpt(store *Store, incident string, finding Finding, path string, v
 	}
 	if err := validate(path, written); err != nil {
 		result.Validation = err.Error()
-		if sha256hex(written) == result.PostimageSHA256 {
+		current, readErr := os.ReadFile(path)
+		if readErr == nil && sha256hex(current) == result.PostimageSHA256 {
 			if restoreErr := writePreservingMode(path, again, info.Mode().Perm()); restoreErr == nil {
 				result.Restored = true
 				result.Action = StatusConflict

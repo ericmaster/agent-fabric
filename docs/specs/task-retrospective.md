@@ -33,6 +33,7 @@ ledgers are never a retrospective database).
 - `internal/retrospective/store.go` — local state, locks, retention, settings entry.
 - `internal/retrospective/dispatch.go` — session dispatch, canonical resolution, repair.
 - `internal/retrospective/transport_boundary.go` — validated collection URLs and exact-origin credential authority.
+- `internal/retrospective/native_learning.go` — actual v2 corrector/reviewer/QA execution and bound result evidence.
 - `internal/retrospective/observe.go` — OpenCode observation envelope validation, staged spool, ingest, trigger.
 - `internal/retrospective/drain.go` — persisted drain jobs, spool→trace assembly, server backfill, detached worker.
 - `hooks/retrospective/opencode.ts` — thin OpenCode observation adapter (plugin asset).
@@ -630,12 +631,31 @@ fire-and-forget staging plus a detached worker.
 
 ### Installed version pins
 
-- Observed pairing for fixtures and runtime: OpenCode CLI `2.0.24` with
-  `@opencode-ai/plugin@1.18.35` and `@opencode-ai/sdk@1.18.35` (the npm
-  generation that matches the installed CLI; the planning note recorded
-  `1.18.32`, since superseded by the installed `2.0.24`).
-- The adapter is version-tested: it probes the server version once and stays
-  inert (logs degradation, never stages) for a version it cannot confirm. SDK
+Live readiness SSOT is OpenCode tag `v2.0.24`, commit
+`e7a34f09bfd9134dfade5a8ddb843f7030bc9a69`:
+`packages/plugin/src/README.md`, `packages/core/src/plugin/module.ts`,
+`packages/schema/src/session-event.ts`, and
+`packages/protocol/src/groups/session.ts` in
+https://github.com/anomalyco/opencode/tree/v2.0.24 . Context7 is unavailable
+in this harness; these exact-version primary sources replace assumptions.
+The v2 loader requires a default `{id,setup}` definition, not the v1 named
+function returning hooks. `@opencode/plugin@2.0.24` is the native typing pin;
+v1 SDK pins remain replay compatibility only, not live compatibility claims.
+Native setup subscribes to `ctx.event.subscribe`, takes version from
+`ctx.app.version` and directory from `ctx.location.directory`, and normalizes
+`event.data` into the existing envelope. Inbox user payloads, final text,
+terminal tool events and execution success/failure/interruption are observed;
+reasoning text is never collected. Stable IDs precede Go task-boundary logic.
+`AGF_OBSERVER_SERVER` optionally supplies the validated backfill URL; absence
+does not prevent local ingestion. No fake health environment is used by the
+native loader. Unload aborts the subscription. Existing opt-in standalone
+file ownership/install/sync/uninstall paths remain unchanged.
+
+- Native runtime pairing is OpenCode CLI `2.0.24` with `@opencode/plugin@2.0.24`.
+  `@opencode-ai/plugin@1.18.35` and `@opencode-ai/sdk@1.18.35` are historical
+  replay typings, not evidence of live loader compatibility.
+- The adapter is version-tested: native setup verifies the loader app version;
+  legacy replay probes once. Unsupported generations never stage. SDK
   shape differences are normalized inside the adapter only; the Go core knows
   only the envelope below.
 
@@ -837,6 +857,54 @@ queued receipts block the task for manual reconciliation.
 
 ### Dispatch transport generation
 
+Native message generation now uses the documented **session.create** agent,
+Model.Ref and location fields, never ignored prompt extras. Explicit
+`dispatch_model` must name an available host profile. Roles are the canonical
+`learning-corrector`, configured installed reviewer (distinct from corrector
+and `qa-runner`), and `qa-runner`. Each is a separate parentless visible root,
+with a learning-origin title/store binding and verified intended directory.
+The correcting role investigates report `task_evidence` and source provenance
+and returns a typed proposal (at most one Markdown text change) or a completed
+advisory. No coordinator finding packet is necessary to execute this workflow.
+All native sessions deny direct edits/bash/network; Go alone owns application.
+Report `task_evidence` contains the full redacted non-excluded interval and
+requirements; it is not hidden reasoning, an extra provider request, or an
+outcome/threshold change. Existing reports without it can yield advisories,
+but cannot authorize model-proposed replacements.
+
+Independent review must complete in the actual reviewer role/model and return
+an approved verdict bound to the exact candidate SHA. A model proposal alone,
+a report-only finding, or the `reviewer` string cannot authorize application.
+Collected source path/version, canonical ownership, protected paths, unique
+excerpt and fresh on-disk hash gates still apply. Proposed non-Markdown or
+unproven causes abstain. QA executes in its own actual role, inspects the
+postimage or no-edit advisory, and returns a digest-bound verdict. Failed QA
+restores only Go's matching postimage through the existing validator/rollback.
+Receipts persist actual results and review/QA root IDs/verdicts; only completed
+and verified execution can set `native_completed`. A completed advisory is
+`suggested`, never `repaired`. Accepted HTTP delivery alone remains pending.
+Native permission rules default-deny all actions. Internal read resources and
+grep/glob search patterns are relative strings (`core/src/file-access.ts` and
+`core/src/tool/plugin/{grep,glob}.ts`), so read/glob/grep rules allow their
+patterns; absolute outside-root targets also require separately scoped
+`external_directory` rules for execution/canonical/state roots. Secret-file
+patterns are denied last for both relative and absolute paths. No shell,
+execute/code runner, edit, network or subagent action is authorized. Packets
+declare no shell commands: independent judgments inspect files and causal
+evidence using allowed tools; Go owns cryptographic hash computation/gates.
+Before asynchronous QA, journal the exact postimage/preimage/diff as a pending
+finding. Resume verifies that exact postimage, finishes QA or hash-safe rollback,
+and never blindly reapplies. Validation rollback re-reads current bytes rather
+than using its stale pre-validation snapshot; concurrent user edits survive.
+Each stage is bounded by `dispatch_timeout`; timeout interrupts only the owned
+root. Lost create/prompt responses reconcile recorded stages without blind
+duplicate posting. Actual history must prove agent, selected model, completed
+time, no provider error, and visible final text; reasoning content is ignored.
+
+API source: exact v2.0.24 session.create `/api/session`, switch agent/model
+routes `/api/session/{id}/agent|model`, and native completion wait
+`POST /api/experimental/session/{id}/wait`. No CLI fallback is needed.
+
 `dispatch_endpoint` config key picks the OpenCode server generation:
 
 - `prompt` (default) — the Phase 2 contract exactly: `POST /session` body
@@ -846,16 +914,18 @@ queued receipts block the task for manual reconciliation.
   an isolated OpenCode 2.0.24 server; recorded in
   `fixtures/retrospective/opencode/live-api-2.0.24.json`): every route is
   served under the `/api` prefix; requests carry HTTP Basic auth when
-  credentials resolve (see below); `POST /api/session` body `{title}` returns
-  a `{"data": …}` envelope (the project directory comes from the server's
-  working directory); the session list and per-session history are
+  credentials resolve (see below); `POST /api/session` body contains title,
+  agent, explicit Model.Ref, location.directory and read-only permissions
+  (no parentID). It returns a `{"data": …}` envelope; the session list and
+  per-session history are
   `{"data": …, "cursor": {next}}` pages the clients follow to exhaustion
   (bounded; a page limit fails closed); prompt delivery uses the synchronous
   `POST /api/session/{id}/prompt` with the flat body
   `{"text": …}` — the 2xx user-message echo
-  confirms delivery without requiring a model, and the marker stays in the
-  prompt text; reconcile of a lost prompt searches the flat
-  `{id, time, text, type}` history rows for the marker. 404/501 queue the
+   confirms delivery only. Native stage reconciliation reads effective
+   assistant agent/model, time.completed and final text from message content;
+   it does not blindly repost an attempted stage. Legacy marker/history
+   reconciliation remains separate. 404/501 queue the
   report exactly as before; no hidden fallback.
 
 **Credential destination boundary.** Only the configured dispatch-server

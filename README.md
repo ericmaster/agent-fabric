@@ -213,6 +213,11 @@ Evaluation defaults to Fastino GLiDE using host `FASTINO_API_KEY` (never
 persisted). Jev is unavailable pending a verified current contract. Local
 synthetic tests do not certify live model calibration or autonomous repair;
 OpenCode prompt delivery alone is not proof of correction completion.
+Native OpenCode 2.0.24 uses its default plugin setup/event subscription API.
+Configure an available `dispatch_model` and installed independent reviewer:
+session creation selects the canonical learning-corrector role, followed by
+separate visible reviewer and QA roots. Completed role/model history and
+digest-bound verdicts, not ignored prompt extras, gate hash-safe text repair.
 
 ```sh
 agf install --all --tools opencode --assets retrospective --yes
