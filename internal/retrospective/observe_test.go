@@ -615,6 +615,73 @@ func TestTerminalWorkWithMissingStartupCreatesInspectableIncompleteReport(t *tes
 	}
 }
 
+// Spec: docs/specs/task-retrospective.md — late intake must prove segment ownership.
+func TestStartupGapHealsOnlyWithOriginalOpeningEvidence(t *testing.T) {
+	for _, opening := range []string{"original", "unrelated"} {
+		t.Run(opening, func(t *testing.T) {
+			store := testStore(t)
+			cfg := observationConfig(store)
+			settings := filepath.Join(t.TempDir(), "settings.json")
+			if err := SetEnabled(settings, true); err != nil {
+				t.Fatal(err)
+			}
+			id := "ses_late_opening"
+			ingest := func(records ...EnvelopeRecord) {
+				t.Helper()
+				records = append(records, EnvelopeRecord{Kind: "event", SessionID: id, Event: "session.idle"})
+				if _, err := IngestEnvelope(IngestOptions{Config: cfg, Store: store}, &Envelope{Version: 1, Harness: HarnessOpenCode, SessionID: id, Trigger: true, Records: records}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			drain := func() *DrainJob {
+				t.Helper()
+				if _, err := RunDrain(context.Background(), DrainOptions{Config: cfg, ConfigPath: settings}); err != nil {
+					t.Fatal(err)
+				}
+				job, err := store.ReadDrainJob(id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return job
+			}
+			ingest(EnvelopeRecord{Kind: "message", SessionID: id, RecordID: "assistant_original", Role: "assistant", ParentID: "user_original"}, EnvelopeRecord{Kind: "part", SessionID: id, RecordID: "tool_original", MessageID: "assistant_original", PartType: "tool", Tool: "read", ToolStatus: "completed", Input: `{"path":"normal.txt"}`, Output: "1"}, EnvelopeRecord{Kind: "part", SessionID: id, RecordID: "final_original", MessageID: "assistant_original", PartType: "text", Text: "DONE"})
+			first := drain()
+			if !strings.Contains(first.Error, "collection startup incomplete") {
+				t.Fatalf("missing opening not blocked: %+v", first)
+			}
+			originalReport := strings.Split(first.Error, "full report: ")[1]
+			originalBytes, err := os.ReadFile(originalReport)
+			if err != nil {
+				t.Fatal(err)
+			}
+			openingID := "user_" + opening
+			ingest(EnvelopeRecord{Kind: "message", SessionID: id, RecordID: openingID, Role: "user"}, EnvelopeRecord{Kind: "part", SessionID: id, RecordID: openingID + ":text", MessageID: openingID, PartType: "text", Text: "Actual opening instruction"})
+			job := drain()
+			blocked := strings.Contains(job.Error, "collection startup incomplete")
+			if blocked != (opening == "unrelated") {
+				t.Fatalf("wrong task healed startup: %+v", job)
+			}
+			if opening == "original" {
+				body, err := os.ReadFile(originalReport)
+				if err != nil || string(body) != string(originalBytes) {
+					t.Fatal("healing erased historical diagnostic")
+				}
+				spool, err := loadSpool(store, id)
+				if err != nil || len(spool.StartupGaps) != 1 || len(spool.SourceRefs) != 0 {
+					t.Fatal("healing removed marker or manufactured source evidence")
+				}
+			}
+			if opening == "unrelated" {
+				ingest(EnvelopeRecord{Kind: "message", SessionID: id, RecordID: "assistant_original", Role: "assistant", ParentID: openingID})
+				ingest(EnvelopeRecord{Kind: "message", SessionID: id, RecordID: "assistant_later", Role: "assistant", ParentID: openingID}, EnvelopeRecord{Kind: "part", SessionID: id, RecordID: "final_later", MessageID: "assistant_later", PartType: "text", Text: "Later task DONE"})
+				if job := drain(); !strings.Contains(job.Error, "collection startup incomplete") {
+					t.Fatalf("later terminal certified original task: %+v", job)
+				}
+			}
+		})
+	}
+}
+
 // dropJob removes one persisted job (test helper).
 // Spec: docs/specs/task-retrospective.md
 func dropJob(store *Store, sessionID string) error {

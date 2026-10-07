@@ -199,7 +199,16 @@ type SpoolSession struct {
 // SpoolMessage is the role map row of one observed message id.
 // Spec: docs/specs/task-retrospective.md via Spool
 type SpoolMessage struct {
-	Role string `json:"role,omitempty"`
+	Role     string `json:"role,omitempty"`
+	ParentID string `json:"parent_id,omitempty"` // observed opening user message of an assistant
+}
+
+// StartupGap binds missing intake to the first observed work in one interval.
+// Historical markers remain inspectable; completeness is re-derived from evidence.
+// Spec: docs/specs/task-retrospective.md via IngestEnvelope
+type StartupGap struct {
+	MessageID string `json:"message_id"`
+	Seq       int    `json:"seq"`
 }
 
 // SpoolPart is the latest observed state of one part id. Streamed updates
@@ -249,6 +258,7 @@ type Spool struct {
 	Events           []SpoolEvent             `json:"events,omitempty"`
 	SourceRefs       []SourceRef              `json:"source_refs,omitempty"`
 	Gaps             []Gap                    `json:"gaps,omitempty"`
+	StartupGaps      []StartupGap             `json:"startup_gaps,omitempty"`
 }
 
 // SpoolSchemaVersion is the only accepted spool schema.
@@ -354,16 +364,35 @@ func IngestEnvelope(opts IngestOptions, envelope *Envelope) (*IngestResult, erro
 		// roots because pre-plugin sessions carry no session record).
 		return result, nil
 	}
-	if !spoolHasUserTurn(spool) {
+	if !spoolHasUserTurn(spool) && len(spool.Parts) == 0 {
 		// A bare idle is degenerate, but terminal work whose startup was lost
 		// must remain inspectable and explicitly incomplete, never silently inert.
-		if len(spool.Parts) == 0 {
-			return result, nil
+		return result, nil
+	}
+	for _, part := range orderedParts(spool) {
+		if part.record.Seq <= spool.AcceptedAfterSeq || part.record.Synthetic {
+			continue
 		}
-		spool.appendGap(Gap{Kind: "partial_stream", Detail: "terminal work observed without opening user turn; startup coverage incomplete, unsafe evaluation blocked"})
-		if err := writeSpoolBounded(cfg, store, spool); err != nil {
-			return nil, err
+		marker := StartupGap{MessageID: part.record.MessageID, Seq: part.record.Seq}
+		if !spool.startupCovered(marker) {
+			known := false
+			for _, old := range spool.StartupGaps {
+				if old == marker {
+					known = true
+				}
+			}
+			if !known {
+				spool.StartupGaps = append(spool.StartupGaps, marker)
+				if len(spool.StartupGaps) > SpoolEventsRetained {
+					spool.StartupGaps = spool.StartupGaps[len(spool.StartupGaps)-SpoolEventsRetained:]
+					spool.appendGap(Gap{Kind: "partial_stream", Detail: "startup marker retention exceeded; historical coverage incomplete"})
+				}
+			}
+			if err := writeSpoolBounded(cfg, store, spool); err != nil {
+				return nil, err
+			}
 		}
+		break
 	}
 	_, created, err := persistTriggerJob(opts, spool)
 	if err != nil {
@@ -572,7 +601,15 @@ func (spool *Spool) upsert(record *EnvelopeRecord) {
 		if spool.Messages == nil {
 			spool.Messages = map[string]*SpoolMessage{}
 		}
-		spool.Messages[record.RecordID] = &SpoolMessage{Role: record.Role}
+		entry := spool.Messages[record.RecordID]
+		if entry == nil {
+			entry = &SpoolMessage{}
+			spool.Messages[record.RecordID] = entry
+		}
+		entry.Role = record.Role
+		if entry.ParentID == "" && record.Role == "assistant" {
+			entry.ParentID = record.ParentID
+		}
 	case "part":
 		if spool.Parts == nil {
 			spool.Parts = map[string]*SpoolPart{}
@@ -629,6 +666,25 @@ func (spool *Spool) upsert(record *EnvelopeRecord) {
 	case "source_gap":
 		spool.appendGap(Gap{Kind: "missing_source", Detail: record.Path + ": " + record.Detail})
 	}
+}
+
+// startupCovered accepts an earlier observed user part or an explicit observed
+// assistant->user ownership link. Arrival after terminal alone proves nothing.
+// Spec: docs/specs/task-retrospective.md via IngestEnvelope
+func (spool *Spool) startupCovered(marker StartupGap) bool {
+	owner := ""
+	if row := spool.Messages[marker.MessageID]; row != nil && row.Role == "assistant" {
+		owner = row.ParentID
+	}
+	for _, part := range spool.Parts {
+		if part.SessionID != spool.SessionID || part.Synthetic || part.PartType != "text" || part.Text == "" || messageRole(spool, part.MessageID) != "user" {
+			continue
+		}
+		if part.Seq > spool.AcceptedAfterSeq && (part.Seq <= marker.Seq || part.MessageID == owner) {
+			return true
+		}
+	}
+	return false
 }
 
 // appendGap bounds the gap list, dropping the oldest rows beyond the cap.

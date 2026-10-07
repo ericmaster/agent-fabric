@@ -5,13 +5,14 @@
 import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Envelope } from "../opencode";
 import { RetrospectivePlugin } from "../opencode";
 import nativePlugin from "../opencode";
 import { execFileSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 // spec: docs/specs/task-retrospective.md (OpenCode observation adapter)
 
 // Compiled output lives at dist/tests; the recorded fixtures live at the
@@ -53,6 +54,98 @@ function loadEvents(name: string): unknown[] {
     .split("\n")
     .map((line) => JSON.parse(line));
 }
+
+test("ingest settles once per attempt across timeout/close/error/throw and disabled", async (t) => {
+  const cp = require("node:child_process");
+  for (const mode of ["timeout", "error", "throw", "no-stdin", "exit", "disabled", "ok"]) {
+    const harness = fixtureCLI();
+    const previous = process.env.AGF_RETROSPECTIVE_STATE;
+    const state = path.join(harness.root, "state"); process.env.AGF_RETROSPECTIVE_STATE = state;
+    const sent: string[] = [];
+    let attempts = 0;
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const mock = t.mock.method(cp, "spawn", () => {
+      attempts++;
+      if (mode === "throw") throw new Error("synthetic spawn throw");
+      const child: any = new EventEmitter(); child.stderr = new EventEmitter();
+      child.kill = () => { queueMicrotask(() => child.emit("close", null)); return true; };
+      if (mode !== "no-stdin") {
+        child.stdin = new EventEmitter();
+        child.stdin.end = (text: string) => {
+          sent.push(text);
+          if (mode !== "timeout") queueMicrotask(() => {
+            child.stderr.emit("data", Buffer.from("synthetic diagnostic\n"));
+            if (mode === "error") child.emit("error", new Error("synthetic error"));
+            child.emit("close", mode === "disabled" ? 2 : mode === "ok" ? 0 : 1);
+          });
+        };
+      } else queueMicrotask(() => child.emit("close", 1));
+      return child;
+    });
+    try {
+      const hooks = await RetrospectivePlugin({ serverUrl: new URL("http://127.0.0.1:4200"), directory: harness.root } as any);
+      await hooks.event!({ event: { type: "message.part.updated", properties: { part: { id: "opening", sessionID: "ses_spawn", messageID: "user", type: "text", text: "Actual opening bytes" } } } } as any);
+      const flush = hooks.event!({ event: { type: "session.idle", properties: { sessionID: "ses_spawn" } } } as any);
+      for (let turn = 0; turn < 3; turn++) { await new Promise(setImmediate); t.mock.timers.tick(30000); }
+      await flush; await new Promise(setImmediate);
+      const failure = mode !== "disabled" && mode !== "ok";
+      assert.equal(attempts, failure ? 2 : 1, mode);
+      const directory = path.join(state, "observer-errors");
+      const reports = existsSync(directory) ? readdirSync(directory) : [];
+      assert.equal(reports.length, failure ? attempts : 0, `${mode}: exactly one diagnostic per failed attempt`);
+      if (sent.length === 2) assert.equal(sent[0], sent[1], `${mode}: retained exact retry batch`);
+    } finally { mock.mock.restore(); t.mock.timers.reset(); harness.restore(); if (previous === undefined) delete process.env.AGF_RETROSPECTIVE_STATE; else process.env.AGF_RETROSPECTIVE_STATE = previous; }
+  }
+});
+
+test("native read provenance excludes secret suffixes/segments and hashes only normal text", async () => {
+  const harness = fixtureCLI(); delete process.env.AGF_PLUGIN_FAKE_HEALTH;
+  const root = path.join(harness.root, "proj");
+  const secrets = ["config/app.env", "key.pem", "key.p12", "key.pfx", "credentials/token.txt", "secrets/data.txt", "id_rsa", "id_ed25519", ".env.local"];
+  let after: any;
+  try {
+    for (const file of [...secrets, "normal.txt"]) { mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); writeFileSync(path.join(root, file), file === "normal.txt" ? "ordinary text" : "CANARY-NEVER-HASH-SECRET"); }
+    const cleanup = await nativePlugin.setup({ app: { version: "2.0.24" }, location: { directory: root },
+      session: { async hook() { return { async dispose() {} }; } },
+      tool: { async hook(_name: string, callback: any) { after = callback; return { async dispose() {} }; } },
+      event: { async *subscribe() {
+        for (const file of [...secrets, "normal.txt"]) await after({ tool: "read", status: "completed", sessionID: "ses_secret", input: { path: file } });
+        yield { type: "session.execution.succeeded", data: { sessionID: "ses_secret" } };
+      } },
+    } as any);
+    await cleanup();
+    const envelopes = envelopesOf(harness); const records = envelopes.flatMap(envelope => envelope.records);
+    assert.equal(records.filter(record => record.kind === "source_gap").length, secrets.length);
+    const sources = records.filter(record => record.kind === "source");
+    assert.equal(sources.length, 1); assert.equal(sources[0].sha256, createHash("sha256").update("ordinary text").digest("hex"));
+    assert.ok(!JSON.stringify(envelopes).includes("CANARY-NEVER-HASH-SECRET"));
+    assert.ok(!JSON.stringify(envelopes).includes(createHash("sha256").update("CANARY-NEVER-HASH-SECRET").digest("hex")));
+  } finally { harness.restore(); }
+});
+
+test("native duplicate old step cannot borrow a later opening or queued inbox identity", async () => {
+  const harness = fixtureCLI(); delete process.env.AGF_PLUGIN_FAKE_HEALTH;
+  let intake: any;
+  try {
+    const cleanup = await nativePlugin.setup({ app: { version: "2.0.24" }, location: { directory: harness.root },
+      session: { async get() { return { id: "ses_owner", location: { directory: harness.root } }; }, async hook(_name: string, callback: any) { intake = callback; return { async dispose() {} }; } },
+      tool: { async hook() { return { async dispose() {} }; } },
+      event: { async *subscribe() {
+        yield { type: "session.inbox.enqueued", data: { sessionID: "ses_owner", inboxID: "queued_not_admitted", item: { type: "user", payload: { text: "queued only" } } } };
+        yield { type: "session.step.started", data: { sessionID: "ses_owner", assistantMessageID: "original" } };
+        await intake({ sessionID: "ses_owner", messageID: "later", prompt: { text: "Later separate task" } });
+        yield { type: "session.step.started", data: { sessionID: "ses_owner", assistantMessageID: "original" } };
+        yield { type: "session.step.started", data: { sessionID: "ses_owner", assistantMessageID: "later_step" } };
+        yield { type: "session.execution.succeeded", data: { sessionID: "ses_owner" } };
+      } },
+    } as any);
+    await cleanup();
+    const messages = envelopesOf(harness).flatMap(envelope => envelope.records).filter(row => row.kind === "message");
+    const original = messages.filter(row => row.record_id === "original");
+    assert.equal(original.length, 2); assert.ok(original.every(row => !row.parent_id));
+    assert.equal(messages.find(row => row.record_id === "later_step")?.parent_id, "later");
+  } finally { harness.restore(); }
+});
 
 test("fresh native opening failed reads survive real ingest validation and terminal batching", async () => {
   const harness = fixtureCLI();
@@ -108,6 +201,7 @@ test("fresh native opening failed reads survive real ingest validation and termi
     assert.equal(spool.source_refs[0].sha256, hash, "source hash must remain the observed version, not today's bytes");
     assert.equal(spool.source_refs.length, 1);
     assert.ok(spool.sessions[id]);
+    assert.equal(spool.messages.msg_0.parent_id, "msg_user", "native step ownership names the admitted opening, not a later prompt");
     assert.equal(Object.values(spool.parts).filter((p: any) => p.part_type === "tool").length, 29);
     assert.ok(JSON.parse(readFileSync(path.join(state, "jobs", `${id}.json`), "utf8")));
     const reports = readdirSync(path.join(state, "observer-errors"));

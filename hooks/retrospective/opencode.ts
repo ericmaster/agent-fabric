@@ -142,6 +142,11 @@ function observedPath(args: unknown, directory?: string): string | undefined {
   return undefined;
 }
 
+/** Secret paths are neither read nor hashed for provenance. */
+function secretSourcePath(file: string): boolean {
+  return /(^|[\\/])(\.env|credentials|secrets|id_rsa|id_ed25519)/i.test(file) || /\.(env|pem|p12|pfx)$/i.test(path.basename(file));
+}
+
 /** resolveCLI locates the packaged Go CLI binary (AGF_BIN or PATH/home). */
 function resolveCLI(env: NodeJS.ProcessEnv): string | undefined {
   const fromEnv = env.AGF_BIN;
@@ -174,6 +179,16 @@ type RunIngest = (envelope: Envelope, cli: string) => Promise<number | null>;
 /** spawnIngest pipes the envelope through stdin; argv stays static. */
 const spawnIngest: RunIngest = (envelope, cli) =>
   new Promise<number>((resolve) => {
+    let settled = false;
+    let stderr = "";
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (code: number) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (code !== EXIT_OK && code !== EXIT_DISABLED) reportIngestFailure(code, stderr);
+      resolve(code);
+    };
     let child: ReturnType<typeof spawn>;
     try {
       child = spawn(cli, ["retrospective", "ingest", "--harness", "opencode"], {
@@ -181,28 +196,24 @@ const spawnIngest: RunIngest = (envelope, cli) =>
         env: process.env,
       });
     } catch {
-      resolve(1);
+      stderr = "ingest spawn threw synchronously";
+      finish(1);
       return;
     }
-    let stderr = "";
     child.stderr?.on("data", (chunk) => { stderr += chunk.toString(); });
-    const failed = (code: number) => { if (code !== EXIT_OK && code !== EXIT_DISABLED) reportIngestFailure(code, stderr); resolve(code); };
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       child.kill("SIGKILL");
-      failed(1);
+      finish(1);
     }, SPAWN_TIMEOUT_MS);
     child.on("close", (code) => {
-      clearTimeout(timer);
-      failed(typeof code === "number" ? code : 1);
+      finish(typeof code === "number" ? code : 1);
     });
     child.on("error", () => {
-      clearTimeout(timer);
-      failed(1);
+      finish(1);
     });
     const stdin = child.stdin;
     if (!stdin) {
-      clearTimeout(timer);
-      resolve(1);
+      finish(1);
       return;
     }
     stdin.on("error", () => {});
@@ -574,11 +585,14 @@ export default {
     // Do not permit replay-only environment stubs to grant live authority.
     if (process.env.AGF_PLUGIN_FAKE_HEALTH) throw new Error("AGF retrospective: replay health stub forbidden in native setup");
     await adapter.ensureActive();
+    const users = new Map<string, string>();
+    const stepOwners = new Map<string, string>();
 	// Location plugins may be loaded after session.created on the fresh first
 	// task. Prompt hooks run before generation: obtain current identity from the
 	// in-process native domain, and capture the actual admitted user message.
 	const intake = await ctx.session.hook("prompt", async (event) => {
 	  if (!adapter.isStaging()) return;
+	  if (users.has(event.sessionID) || users.size < MAX_BUFFERED_EVENTS) users.set(event.sessionID, event.messageID);
 	  try {
 	    const session = await ctx.session.get({ sessionID: event.sessionID }, { signal: AbortSignal.timeout(2000) });
 	    adapter.observeSessionRow({ kind: "session", session_id: session.id, parent_id: session.parentID, title: session.title, directory: session.location.directory });
@@ -593,7 +607,7 @@ export default {
 	  if (event.tool !== "read" || event.status !== "completed") return;
 	  const file = observedPath(event.input, ctx.location.directory);
 	  if (!file) return;
-	  if (/(^|\/)(\.env|credentials|secrets|id_rsa|id_ed25519)|\.(pem|p12|pfx)$/i.test(file)) {
+	  if (secretSourcePath(file)) {
 	    adapter.observe(event.sessionID, { kind: "source_gap", session_id: event.sessionID, path: file, detail: "secret-file candidate: body never collected" }); return;
 	  }
 	  try { adapter.observe(event.sessionID, { kind: "source", session_id: event.sessionID, path: file, sha256: createHash("sha256").update(readFileSync(file)).digest("hex") }); }
@@ -603,7 +617,7 @@ export default {
     const tools = new Map<string, { name?: string; input?: string }>();
     const consume = (async () => {
       for await (const event of ctx.event.subscribe({ signal: abort.signal })) {
-        const records = nativeRecords(event, tools);
+        const records = nativeRecords(event, tools, users, stepOwners);
         for (const record of records) {
           const id = record.session_id;
           if (!id) continue;
@@ -619,7 +633,7 @@ export default {
 };
 
 /** Normalize actual v2 durable/ephemeral events; never inspect reasoning text. */
-function nativeRecords(event: any, tools: Map<string, { name?: string; input?: string }>): EnvelopeRecord[] {
+function nativeRecords(event: any, tools: Map<string, { name?: string; input?: string }>, users: Map<string, string>, stepOwners: Map<string, string>): EnvelopeRecord[] {
   const d = event?.data ?? {};
   const session = d.sessionID;
   if (typeof session !== "string") return [];
@@ -636,7 +650,13 @@ function nativeRecords(event: any, tools: Map<string, { name?: string; input?: s
     case "session.inbox.enqueued":
       if (d.item?.type !== "user" || typeof d.item.payload?.text !== "string") return [];
       return [message(d.inboxID, "user"), part(`${d.inboxID}:text`, d.inboxID, d.item.payload.text)];
-    case "session.step.started": return [message(d.assistantMessageID, "assistant")];
+    case "session.step.started": {
+      const key = `${session}:${d.assistantMessageID}`;
+      // Preserve even absence at first observation: queued inbox events and
+      // duplicate old steps cannot borrow a later admitted prompt's identity.
+      if (!stepOwners.has(key) && stepOwners.size < MAX_BUFFERED_EVENTS) stepOwners.set(key, users.get(session) ?? "");
+      return [{ ...message(d.assistantMessageID, "assistant"), parent_id: stepOwners.get(key) || undefined }];
+    }
     case "session.text.ended": return [message(d.assistantMessageID, "assistant"), part(`${d.assistantMessageID}:text:${d.ordinal}`, d.assistantMessageID, d.text)];
     case "session.reasoning.ended": return [{ kind: "part", session_id: session, record_id: `${d.assistantMessageID}:reasoning:${d.ordinal}`, message_id: d.assistantMessageID, part_type: "reasoning", reasoning: true }];
     case "session.tool.input.started": tools.set(`${session}:${call}`, { name: d.name }); return [];

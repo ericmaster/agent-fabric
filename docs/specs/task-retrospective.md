@@ -673,6 +673,31 @@ provider replay is added. A terminal stream with real parts but missing its
 opening user turn retains a drain job and explicit incomplete report with a
 locator, with no evaluator/correction request. A bare idle remains degenerate.
 
+Startup completeness is derived from current evidence, not a persisted detail
+string. `startup_gaps` stores bounded historical `{message_id,seq}` markers for
+the first observable part after the accepted boundary. Drain derives an active
+`missing_startup` gap only while that segment lacks its opening user text.
+An earlier staged user part (including late role completion) proves ordering;
+otherwise an observed assistant `parent_id` must name that exact user message.
+Native step-start normalization carries the already observed admitted user ID;
+later text events cannot invent the link. The first nonempty observed owner is
+preserved on upserts. Native step-start redelivery preserves even an originally
+absent owner; queued inbox identity alone is not admitted ownership. Bounded
+owner caches refuse new links at capacity rather than rebinding old steps.
+An unrelated later prompt/final cannot heal the earlier
+segment; absence of ordering/ownership evidence stays incomplete. Healing
+supersedes only the active derived gap, preserving historical spool markers and
+old diagnostic files, without recreating source content or hashes. Bounded
+server reconciliation runs before deriving current completeness. Legacy
+unstructured partial-stream gaps remain conservative collection gaps.
+
+Ingest settlement is one-shot across timeout, close, error, missing stdin and
+synchronous spawn throw: exactly one full diagnostic per failed attempt, none
+for success/disabled. One terminal retry remains unchanged. Native source
+exclusions cover basename suffixes `.env`, `.pem`, `.p12`, `.pfx` and `.env`,
+credentials/secrets/id_rsa/id_ed25519 path segments (case insensitive), matching
+the legacy adapter; excluded files are neither read nor hashed by capture.
+
 - Native runtime pairing is OpenCode CLI `2.0.24` with `@opencode/plugin@2.0.24`.
   `@opencode-ai/plugin@1.18.35` and `@opencode-ai/sdk@1.18.35` are historical
   replay typings, not evidence of live loader compatibility.
@@ -699,7 +724,7 @@ Every record is one of the following kinds (single object, `kind` selects):
 
 - `session` — `{session_id, parent_id?, title?, directory?}`; identity and
   parent linkage observed from session events.
-- `message` — `{record_id, session_id, role}`; role map (`user`/`assistant`).
+- `message` — `{record_id, session_id, role, parent_id?}`; role map (`user`/`assistant`); assistant parent_id is the observed admitted opening user message, never a later inferred prompt.
 - `part` — `{record_id, session_id, message_id, part_type, text?, synthetic?,
   reasoning?, tool?, tool_status?, call_id?, input?, output?, error?}`.
   Reasoning parts are emitted with `reasoning: true` and no text: private
@@ -754,6 +779,7 @@ state directory, written temp-file + rename behind the shared `spool.lock`:
 | `events` | append-only bounded session events (last 400) |
 | `source_refs` | deduplicated `{path, sha256, excerpt?}` provenance |
 | `gaps` | bounded collection gaps (`compacted`, `partial_stream`, `missing_source`, overflow) |
+| `startup_gaps` | bounded historical `{message_id,seq}` missing-opening markers; active gaps re-derived from segment ownership evidence |
 | `suppressed` | true once the session matched a suppression rule |
 
 Bounds are enforced at ingest: envelope ≤ 2,000 records, each record field

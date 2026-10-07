@@ -289,9 +289,24 @@ func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock
 			return save(JobFailed, "cannot sanitize invalid persisted server URL")
 		}
 	}
+	var reconcileGaps []Gap
+	if !invalidSpoolURL {
+		reconcileGaps = reconcileServer(ctx, cfg, store, spool, originalJobURL)
+		unlock, err := spoolLock(store, spool.SessionID)
+		if err != nil {
+			return save(JobFailed, "cannot reload reconciled startup evidence")
+		}
+		latest, err := loadSpool(store, spool.SessionID)
+		unlock()
+		if err != nil {
+			return save(JobFailed, "cannot load reconciled startup evidence")
+		}
+		spool = latest
+	}
 	trace := assembleTrace(store, spool, spool.SessionID)
+	trace.Gaps = append(trace.Gaps, reconcileGaps...)
 	for _, gap := range trace.Gaps {
-		if strings.Contains(gap.Detail, "terminal work observed without opening user turn") {
+		if gap.Kind == "missing_startup" {
 			path := filepath.Join(store.Dir, "reports", drainReportName(firstNonEmpty(trace.Identities.TaskID, spool.SessionID)))
 			diagnostic := &Report{SchemaVersion: ReportSchemaVersion, Status: ReportStatusIncomplete, IncompleteReasons: []string{gap.Detail}, Trace: ReportTrace{Identities: trace.Identities}}
 			if err := WriteReport(path, diagnostic); err != nil {
@@ -299,9 +314,6 @@ func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock
 			}
 			return save(JobFailed, "collection startup incomplete; full report: "+path)
 		}
-	}
-	if !invalidSpoolURL {
-		trace.Gaps = append(trace.Gaps, reconcileServer(ctx, cfg, store, spool, originalJobURL)...)
 	}
 	if !rootTriggerCandidate(spool, job.SessionID) {
 		return save(JobSkipped, "non-root session observed; the owning root aggregates it")
@@ -907,6 +919,11 @@ func assembleTrace(store *Store, spool *Spool, sessionID string) *Trace {
 	trace.Descendants = append(trace.Descendants, descendants...)
 	trace.SourceFiles = append(trace.SourceFiles, spool.SourceRefs...)
 	trace.Gaps = append(trace.Gaps, spool.Gaps...)
+	for _, marker := range spool.StartupGaps {
+		if marker.Seq > spool.AcceptedAfterSeq && !spool.startupCovered(marker) {
+			trace.Gaps = append(trace.Gaps, Gap{Kind: "missing_startup", Detail: "terminal segment lacks its opening user evidence: " + marker.MessageID})
+		}
+	}
 	for _, child := range trace.Descendants {
 		trace.Gaps = append(trace.Gaps, child.Gaps...)
 		if child.TerminalStatus == TaskStatusAborted || child.TerminalStatus == TaskStatusError {
