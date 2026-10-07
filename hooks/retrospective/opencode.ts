@@ -22,8 +22,8 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Plugin as NativePlugin } from "@opencode/plugin";
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync, statSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const ENVELOPE_VERSION = 1;
@@ -177,24 +177,27 @@ const spawnIngest: RunIngest = (envelope, cli) =>
     let child: ReturnType<typeof spawn>;
     try {
       child = spawn(cli, ["retrospective", "ingest", "--harness", "opencode"], {
-        stdio: ["pipe", "ignore", "ignore"],
+        stdio: ["pipe", "ignore", "pipe"],
         env: process.env,
       });
     } catch {
       resolve(1);
       return;
     }
+    let stderr = "";
+    child.stderr?.on("data", (chunk) => { stderr += chunk.toString(); });
+    const failed = (code: number) => { if (code !== EXIT_OK && code !== EXIT_DISABLED) reportIngestFailure(code, stderr); resolve(code); };
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      resolve(1);
+      failed(1);
     }, SPAWN_TIMEOUT_MS);
     child.on("close", (code) => {
       clearTimeout(timer);
-      resolve(typeof code === "number" ? code : 1);
+      failed(typeof code === "number" ? code : 1);
     });
     child.on("error", () => {
       clearTimeout(timer);
-      resolve(1);
+      failed(1);
     });
     const stdin = child.stdin;
     if (!stdin) {
@@ -205,6 +208,23 @@ const spawnIngest: RunIngest = (envelope, cli) =>
     stdin.on("error", () => {});
     stdin.end(JSON.stringify(envelope));
   });
+
+/** Full private diagnostic, not a transcript/environment dump. Never on disabled. */
+function reportIngestFailure(code: number, stderr: string): void {
+  for (const name of ["FASTINO_API_KEY", "TYPESAFE_API_KEY", "OPENCODE_PASSWORD", "OPENCODE_SERVER_PASSWORD"]) {
+    const value = process.env[name]; if (value) stderr = stderr.split(value).join("[REDACTED:credential]");
+  }
+  stderr = stderr.replace(/(Bearer\s+|Basic\s+)\S+/gi, "$1[REDACTED]").replace(/((?:token|password|api[_-]?key)\s*[=:]\s*)\S+/gi, "$1[REDACTED]");
+  const home = process.env.HOME ?? process.env.USERPROFILE;
+  const state = process.env.AGF_RETROSPECTIVE_STATE ?? (process.env.XDG_STATE_HOME ? path.join(process.env.XDG_STATE_HOME, "agent-fabric/retrospective") : home ? path.join(home, ".local/state/agent-fabric/retrospective") : undefined);
+  if (!state) { console.error("AGF retrospective: ingest failed; no private diagnostic root available"); return; }
+  try {
+    const directory = path.join(state, "observer-errors"); mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const report = path.join(directory, `${randomUUID()}.json`);
+    writeFileSync(report, JSON.stringify({ code, stderr, detail: "Ingest failed; original batch retained for bounded idempotent retry. No stdin or environment retained." }), { mode: 0o600 });
+    console.error(`AGF retrospective: ingest failed (exit ${code}); full diagnostic: ${report}`);
+  } catch { console.error("AGF retrospective: ingest failed; private diagnostic write failed (batch retained)"); }
+}
 
 /** basicAuthHeader builds the server's own HTTP Basic credentials from the
  * process env the plugin inherits (it runs inside the server). Returns
@@ -249,6 +269,9 @@ class Adapter {
   /** Last known identity of every observed session (title + parent). */
   private titles = new Map<string, string>();
   private parents = new Map<string, string>();
+  private identities = new Map<string, EnvelopeRecord>();
+  private flights = new Map<string, Promise<number | null>>();
+  private terminalPending = new Set<string>();
   /** Session ids carrying the trusted learning-origin marker title. */
   private suppressed = new Set<string>();
 
@@ -370,6 +393,7 @@ class Adapter {
       this.suppressed.add(id);
     }
     if (id) {
+      this.identities.set(id, { ...this.identities.get(id), ...record, directory: record.directory || this.identities.get(id)?.directory });
       this.titles.set(id, record.title ?? "");
       if (record.parent_id) {
         this.parents.set(id, record.parent_id);
@@ -399,6 +423,20 @@ class Adapter {
    * terminal trigger re-probes.
    */
   async flush(sessionID: string, trigger: boolean): Promise<number | null> {
+    if (trigger) this.terminalPending.add(sessionID);
+    const previous = this.flights.get(sessionID) ?? Promise.resolve(null);
+    const flight = previous.then(async () => {
+      let code = await this.flushOnce(sessionID);
+      // Stable record IDs and jobs make one terminal retry idempotent.
+      if (this.terminalPending.has(sessionID) && code !== EXIT_OK && code !== EXIT_DISABLED && code !== null) code = await this.flushOnce(sessionID);
+      return code;
+    });
+    this.flights.set(sessionID, flight);
+    try { return await flight; } finally { if (this.flights.get(sessionID) === flight) this.flights.delete(sessionID); }
+  }
+
+  private async flushOnce(sessionID: string): Promise<number | null> {
+    const trigger = this.terminalPending.has(sessionID);
     if (!(await this.ensureActive())) {
       return null;
     }
@@ -406,6 +444,9 @@ class Adapter {
     if (!buffer || buffer.length === 0) {
       return trigger ? EXIT_OK : null;
     }
+    const identities = Array.from(this.identities.values());
+    const identityRecords = identities.length > 128 ? [this.identities.get(sessionID), ...identities.slice(-127)].filter((row): row is EnvelopeRecord => Boolean(row)) : identities;
+    if (identities.length > 128) identityRecords.push({ kind: "removed", session_id: sessionID, record_id: "plugin-identity-overflow", detail: "identity map exceeds envelope bound; parent/child coverage incomplete" });
     const envelope: Envelope = {
       version: ENVELOPE_VERSION,
       harness: "opencode",
@@ -414,13 +455,25 @@ class Adapter {
       sdk_version: this.observedSDK,
       trigger,
       project_dir: this.projectDir || undefined,
-      records: buffer,
+      records: [...identityRecords, ...buffer],
     };
     this.buffers.set(sessionID, []);
-    const code = await this.run(envelope, this.cli ?? "");
+    let code: number | null;
+    try { code = await this.run(envelope, this.cli ?? ""); } catch { code = 1; }
     if (code === EXIT_DISABLED) {
       this.buffers.set(sessionID, []);
       this.mode = "inert";
+      this.terminalPending.delete(sessionID);
+    } else if (code !== EXIT_OK) {
+      const current = this.buffers.get(sessionID) ?? [];
+      const retained = [...buffer, ...current];
+      if (retained.length > MAX_BUFFERED_EVENTS) {
+        retained.splice(0, retained.length - MAX_BUFFERED_EVENTS + 1);
+        retained.unshift({ kind: "removed", session_id: sessionID, record_id: "plugin-buffer-overflow", detail: "failed ingest retention exceeded bound; evidence incomplete" });
+      }
+      this.buffers.set(sessionID, retained);
+    } else if (trigger) {
+      this.terminalPending.delete(sessionID);
     }
     return code;
   }
@@ -521,6 +574,21 @@ export default {
     // Do not permit replay-only environment stubs to grant live authority.
     if (process.env.AGF_PLUGIN_FAKE_HEALTH) throw new Error("AGF retrospective: replay health stub forbidden in native setup");
     await adapter.ensureActive();
+	// Location plugins may be loaded after session.created on the fresh first
+	// task. Prompt hooks run before generation: obtain current identity from the
+	// in-process native domain, and capture the actual admitted user message.
+	const intake = await ctx.session.hook("prompt", async (event) => {
+	  if (!adapter.isStaging()) return;
+	  try {
+	    const session = await ctx.session.get({ sessionID: event.sessionID }, { signal: AbortSignal.timeout(2000) });
+	    adapter.observeSessionRow({ kind: "session", session_id: session.id, parent_id: session.parentID, title: session.title, directory: session.location.directory });
+	  } catch {
+	    adapter.observe(event.sessionID, { kind: "removed", session_id: event.sessionID, record_id: "native-intake-identity-gap", detail: "native prompt identity unavailable; startup coverage incomplete" });
+	  }
+	  adapter.observe(event.sessionID, { kind: "message", session_id: event.sessionID, record_id: event.messageID, role: "user" });
+	  const part: EnvelopeRecord = { kind: "part", session_id: event.sessionID, record_id: `${event.messageID}:text`, message_id: event.messageID, part_type: "text" };
+	  boundedField(part, "text", event.prompt.text); adapter.observe(event.sessionID, part);
+	});
 	const provenance = await ctx.tool.hook("execute.after", async (event) => {
 	  if (event.tool !== "read" || event.status !== "completed") return;
 	  const file = observedPath(event.input, ctx.location.directory);
@@ -546,7 +614,7 @@ export default {
         }
       }
     })().catch(() => { if (!abort.signal.aborted) console.error("AGF retrospective: native event subscription failed; collection incomplete"); });
-    return async () => { abort.abort(); await provenance.dispose(); await consume; };
+    return async () => { abort.abort(); await intake.dispose(); await provenance.dispose(); await consume; };
   },
 };
 
@@ -587,17 +655,10 @@ function nativeRecords(event: any, tools: Map<string, { name?: string; input?: s
       const content = Array.isArray(d.content) ? d.content : [];
       boundedField(record, "output", content.filter((item: any) => item.type === "text").map((item: any) => item.text).join("\n"));
       if (content.some((item: any) => item.type !== "text")) record.detail = "unsupported tool result content withheld";
-      tools.delete(key);
+      if (tools.size > MAX_BUFFERED_EVENTS) tools.delete(tools.keys().next().value!);
       const records: EnvelopeRecord[] = [record];
-      // Provenance at the actual terminal read, never secret-file bodies.
-      if (prior.name === "read" && prior.input) {
-        try {
-          const file = observedPath(JSON.parse(prior.input));
-          if (file && !/(^|\/)(\.env|credentials|secrets|id_rsa|id_ed25519)|\.(pem|p12|pfx)$/i.test(file)) {
-            records.push({ kind: "source", session_id: session, path: file, sha256: createHash("sha256").update(readFileSync(file)).digest("hex") });
-          } else if (file) records.push({ kind: "source_gap", session_id: session, path: file, detail: "secret-file candidate: content never collected" });
-        } catch { records.push({ kind: "source_gap", session_id: session, detail: "native read provenance unavailable" }); }
-      }
+      // At-use provenance belongs only to execute.after. Failed reads load no
+      // source; bus replay must never hash today's file as an old read version.
       return records;
     }
     case "session.execution.failed":

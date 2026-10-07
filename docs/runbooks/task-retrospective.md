@@ -161,6 +161,16 @@ rows until the source hash changes.
 
 ## Recovery
 
+- **Opening observations/ingest batch missing.** Failed reads are terminal
+  task evidence, not source loads. Native prompt intake obtains current identity
+  before generation; read hashes must come from the actual successful read hook,
+  never today's file as a substitute for a past read. Ingest failures retain
+  the original batch, serialize later flushes and allow one terminal retry.
+  Server stderr names the full private `<state>/observer-errors/<id>.json`
+  diagnostic (no transcript/environment dump). Missing-startup terminal work
+  retains a job and incomplete report and cannot evaluate/repair. Do not invent
+  source hashes, user turns or manual jobs to make the report eligible.
+
 - **Process died during a native repair.** A durable write-ahead pending finding
   is saved and synced before source replacement, with preimage/postimage,
   canonical version/mode, reviewer/candidate digests and reserved attempt.

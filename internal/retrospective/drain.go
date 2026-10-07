@@ -290,6 +290,16 @@ func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock
 		}
 	}
 	trace := assembleTrace(store, spool, spool.SessionID)
+	for _, gap := range trace.Gaps {
+		if strings.Contains(gap.Detail, "terminal work observed without opening user turn") {
+			path := filepath.Join(store.Dir, "reports", drainReportName(firstNonEmpty(trace.Identities.TaskID, spool.SessionID)))
+			diagnostic := &Report{SchemaVersion: ReportSchemaVersion, Status: ReportStatusIncomplete, IncompleteReasons: []string{gap.Detail}, Trace: ReportTrace{Identities: trace.Identities}}
+			if err := WriteReport(path, diagnostic); err != nil {
+				return save(JobFailed, "cannot retain incomplete startup diagnostic")
+			}
+			return save(JobFailed, "collection startup incomplete; full report: "+path)
+		}
+	}
 	if !invalidSpoolURL {
 		trace.Gaps = append(trace.Gaps, reconcileServer(ctx, cfg, store, spool, originalJobURL)...)
 	}
@@ -303,6 +313,19 @@ func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock
 	client := choiceClientFor(cfg, opts.EnvKey)
 	report, err := Analyze(ctx, cfg, trace, raw, client)
 	if err != nil {
+		if len(trace.Gaps) > 0 {
+			// Malformed/missing startup identities can fail before analysis has
+			// a report. Retain an explicit incomplete diagnostic, not fake data.
+			path := filepath.Join(store.Dir, "reports", drainReportName(trace.Identities.TaskID))
+			if trace.Identities.TaskID == "" {
+				path = filepath.Join(store.Dir, "reports", drainReportName(spool.SessionID))
+			}
+			diagnostic := &Report{SchemaVersion: ReportSchemaVersion, Status: ReportStatusIncomplete, IncompleteReasons: []string{"collection startup incomplete; trace validation failed: " + err.Error()}, Trace: ReportTrace{Identities: trace.Identities}}
+			if writeErr := WriteReport(path, diagnostic); writeErr != nil {
+				return save(JobFailed, "cannot retain incomplete collection diagnostic")
+			}
+			return save(JobFailed, "collection incomplete; full report: "+path)
+		}
 		return save(JobFailed, "analyze: "+err.Error())
 	}
 	taskID := report.Trace.Identities.TaskID

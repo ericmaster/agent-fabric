@@ -355,9 +355,15 @@ func IngestEnvelope(opts IngestOptions, envelope *Envelope) (*IngestResult, erro
 		return result, nil
 	}
 	if !spoolHasUserTurn(spool) {
-		// An idle blip without any user turn is degenerate; it stays staged
-		// but never produces a drain job.
-		return result, nil
+		// A bare idle is degenerate, but terminal work whose startup was lost
+		// must remain inspectable and explicitly incomplete, never silently inert.
+		if len(spool.Parts) == 0 {
+			return result, nil
+		}
+		spool.appendGap(Gap{Kind: "partial_stream", Detail: "terminal work observed without opening user turn; startup coverage incomplete, unsafe evaluation blocked"})
+		if err := writeSpoolBounded(cfg, store, spool); err != nil {
+			return nil, err
+		}
 	}
 	_, created, err := persistTriggerJob(opts, spool)
 	if err != nil {

@@ -651,6 +651,28 @@ does not prevent local ingestion. No fake health environment is used by the
 native loader. Unload aborts the subscription. Existing opt-in standalone
 file ownership/install/sync/uninstall paths remain unchanged.
 
+Fresh first-task lifecycle: location plugin setup can follow session creation.
+The native session `prompt` hook captures the actual admitted user message and
+reads current session identity from the in-process `ctx.session.get` domain
+(flat SessionInfo, not an HTTP data envelope; bounded 2s). This does not recover
+historical source content. Every flushed envelope includes cached identity;
+bounded identity overflow is explicitly incomplete. Successful read provenance
+is captured only in `execute.after`, never by later bus-event file hashing.
+Failed reads load no source: preserve their terminal failure as task evidence,
+not a malformed pathless `source_gap`. Duplicate terminal tool IDs retain their
+observed input/name in a bounded cache.
+
+Flushes serialize per session, detach one snapshot and retain it on ingest
+failure ahead of concurrently arriving observations. Sticky terminal triggers
+survive an in-flight nonterminal handoff; at most one idempotent terminal retry
+uses original stable IDs/bytes. Overflow explicitly marks incomplete coverage.
+Non-disabled ingest failures expose a full private redacted stderr diagnostic
+locator under `<state>/observer-errors`, without stdin/environment dumps;
+disabled verdicts stop staging and create no failure report. No daemon or blind
+provider replay is added. A terminal stream with real parts but missing its
+opening user turn retains a drain job and explicit incomplete report with a
+locator, with no evaluator/correction request. A bare idle remains degenerate.
+
 - Native runtime pairing is OpenCode CLI `2.0.24` with `@opencode/plugin@2.0.24`.
   `@opencode-ai/plugin@1.18.35` and `@opencode-ai/sdk@1.18.35` are historical
   replay typings, not evidence of live loader compatibility.

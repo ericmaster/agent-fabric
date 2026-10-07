@@ -5,12 +5,13 @@
 import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Envelope } from "../opencode";
 import { RetrospectivePlugin } from "../opencode";
 import nativePlugin from "../opencode";
+import { execFileSync } from "node:child_process";
 // spec: docs/specs/task-retrospective.md (OpenCode observation adapter)
 
 // Compiled output lives at dist/tests; the recorded fixtures live at the
@@ -53,6 +54,71 @@ function loadEvents(name: string): unknown[] {
     .map((line) => JSON.parse(line));
 }
 
+test("fresh native opening failed reads survive real ingest validation and terminal batching", async () => {
+  const harness = fixtureCLI();
+  const previous = { state: process.env.AGF_RETROSPECTIVE_STATE, config: process.env.AGF_CONFIG, noSpawn: process.env.AGF_RETROSPECTIVE_NO_SPAWN };
+  delete process.env.AGF_PLUGIN_FAKE_HEALTH;
+  const root = path.join(harness.root, "proj");
+  const state = path.join(harness.root, "state");
+  const settings = path.join(harness.root, "settings.json");
+  writeFileSync(settings, JSON.stringify({ retrospective: { enabled: true } }));
+  process.env.AGF_CONFIG = settings;
+  process.env.AGF_RETROSPECTIVE_STATE = state;
+  process.env.AGF_RETROSPECTIVE_NO_SPAWN = "1";
+  const binary = path.join(harness.root, "agf");
+  const repository = path.resolve(FIXTURES, "../../..");
+  execFileSync("go", ["build", "-o", binary, "./cmd/agent-fabric"], { cwd: repository, timeout: 60000, env: { ...process.env, GOPROXY: "off", GOSUMDB: "off" } });
+  const proxy = path.join(harness.root, "ingest.cjs");
+  writeFileSync(proxy, `#!/usr/bin/env node\nconst fs=require('node:fs'),cp=require('node:child_process');let text='';process.stdin.on('data',c=>text+=c);process.stdin.on('end',()=>{const first=!fs.existsSync(${JSON.stringify(harness.captureFile)});const r=first?{status:1,stderr:'synthetic transient ingest failure\\n',stdout:''}:cp.spawnSync(${JSON.stringify(binary)},process.argv.slice(2),{input:text,encoding:'utf8',timeout:5000});fs.appendFileSync(${JSON.stringify(harness.captureFile)},JSON.stringify({argv:process.argv.slice(2),stdin:text,code:r.status,stderr:r.stderr})+'\\n');process.stdout.write(r.stdout||'');process.stderr.write(r.stderr||'');process.exit(r.status??1);});`);
+  chmodSync(proxy, 0o700); process.env.AGF_BIN = proxy;
+  const id = "ses_fresh_failed_reads";
+  let hook: any;
+  let intake: any;
+  const hash = createHash("sha256").update("owning instruction at read time\n").digest("hex");
+  const source = path.join(root, "AGENTS.md"); writeFileSync(source, "owning instruction at read time\n");
+  try {
+    const cleanup = await nativePlugin.setup({ app: { version: "2.0.24" }, location: { directory: root },
+      session: { async get() { return { id, title: "fresh task", location: { directory: root } }; }, async hook(_name: string, callback: any) { intake = callback; return { async dispose() {} }; } },
+      tool: { async hook(_name: string, callback: any) { hook = callback; return { async dispose() {} }; } },
+      event: { async *subscribe() {
+        // Fresh location setup missed creation/enqueue: actual prompt hook
+        // must preserve identity/user intake without inferring a past source.
+        await intake({ sessionID: id, messageID: "msg_user", prompt: { text: "Read owning instructions and recover stale paths." } });
+        for (let n = 0; n < 29; n++) {
+          const data = { sessionID: id, assistantMessageID: `msg_${n}`, id: "read:0" };
+          const file = n === 0 ? source : path.join(root, `missing-${n}.txt`);
+          yield { type: "session.step.started", data };
+          yield { type: "session.tool.input.started", data: { ...data, name: "read" } };
+          yield { type: "session.tool.called", data: { ...data, input: { path: file } } };
+          if (n === 0) {
+            await hook({ tool: "read", status: "completed", sessionID: id, input: { path: file } });
+            writeFileSync(source, "changed after the actual read\n");
+          }
+          yield { type: n > 0 && n < 4 ? "session.tool.failed" : "session.tool.success", data: { ...data, error: n > 0 && n < 4 ? { message: "File not found" } : undefined, content: [{ type: "text", text: "observable result" }] } };
+        }
+        yield { type: "session.text.ended", data: { sessionID: id, assistantMessageID: "msg_final", ordinal: 0, text: "DONE" } };
+        yield { type: "session.execution.succeeded", data: { sessionID: id } };
+      } },
+    } as any);
+    await cleanup();
+    const captures = capturesOf(harness.captureFile) as (CaptureRow & { code: number; stderr: string })[];
+    assert.equal(captures[0].code, 1);
+    assert.ok(captures.slice(1).every(row => row.code === 0), captures.map(row => row.stderr).join("\n"));
+    const spool = JSON.parse(readFileSync(path.join(state, "spool", `${id}.json`), "utf8"));
+    assert.equal(spool.source_refs[0].sha256, hash, "source hash must remain the observed version, not today's bytes");
+    assert.equal(spool.source_refs.length, 1);
+    assert.ok(spool.sessions[id]);
+    assert.equal(Object.values(spool.parts).filter((p: any) => p.part_type === "tool").length, 29);
+    assert.ok(JSON.parse(readFileSync(path.join(state, "jobs", `${id}.json`), "utf8")));
+    const reports = readdirSync(path.join(state, "observer-errors"));
+    assert.ok(reports.length > 0);
+    assert.match(readFileSync(path.join(state, "observer-errors", reports[0]), "utf8"), /synthetic transient ingest failure/);
+  } finally {
+    harness.restore();
+    for (const [name, value] of Object.entries({ AGF_RETROSPECTIVE_STATE: previous.state, AGF_CONFIG: previous.config, AGF_RETROSPECTIVE_NO_SPAWN: previous.noSpawn })) { if (value === undefined) delete process.env[name]; else process.env[name] = value; }
+  }
+});
+
 test("actual v2 default loader consumes recorded native stream and message-scoped call IDs", async () => {
   const harness = fixtureCLI();
   delete process.env.AGF_PLUGIN_FAKE_HEALTH;
@@ -65,6 +131,7 @@ test("actual v2 default loader consumes recorded native stream and message-scope
   try {
     const cleanup = await nativePlugin.setup({
       app: { version: "2.0.24" }, location: { directory: path.join(harness.root, "proj") },
+      session: { async hook() { return { async dispose() {} }; } },
       event: { async *subscribe() { for (const event of events) yield event; } },
       tool: { async hook() { return { async dispose() { disposed = true; } }; } },
     } as any);
@@ -177,6 +244,22 @@ function argvOf(harness: PluginHarness): string[] | undefined {
 }
 
 describe("retrospective opencode adapter replay", () => {
+  test("concurrent batching and idle preserve opening records and terminal trigger", async () => {
+    await withPlugin(0, async (hooks, harness) => {
+      const sessionID = "ses_concurrent";
+      await hooks.event({ event: { type: "session.created", properties: { info: { id: sessionID, directory: harness.root, title: "opening" } } } });
+      const pending = [hooks.event({ event: { type: "message.updated", properties: { info: { id: "msg_user", sessionID, role: "user" } } } })];
+      for (let n = 0; n < 60; n++) pending.push(hooks.event({ event: { type: "message.part.updated", properties: { part: { id: `part_${n}`, sessionID, messageID: "msg_user", type: "text", text: `observable ${n}` } } } }));
+      pending.push(hooks.event({ event: { type: "session.idle", properties: { sessionID } } }));
+      await Promise.all(pending);
+      const envelopes = envelopesOf(harness);
+      const parts = new Set(envelopes.flatMap(envelope => envelope.records).filter(record => record.kind === "part").map(record => record.record_id));
+      assert.equal(parts.size, 60);
+      assert.ok(envelopes.some(envelope => envelope.trigger));
+      assert.ok(envelopes.flatMap(envelope => envelope.records).some(record => record.record_id === "msg_user"));
+      assert.ok(envelopes.every(envelope => envelope.records.some(record => record.kind === "session")));
+    });
+  });
   test("streamed text updates collapse to the cumulative final part", async () => {
     await withPlugin(0, async (hooks, harness) => {
       await replay(hooks, loadEvents("streamed.jsonl"));
@@ -207,9 +290,9 @@ describe("retrospective opencode adapter replay", () => {
         "running + terminal + duplicate redelivery all forward (ingest upserts)",
       );
       const second = envelopes[1].records;
-      assert.deepEqual(second.map((record) => record.kind), ["part", "event"]);
-      assert.equal(second[0].record_id, "prt_tool_1");
-      assert.equal(second[0].tool_status, "completed");
+      assert.deepEqual(second.map((record) => record.kind), ["session", "part", "event"]);
+      assert.equal(second[1].record_id, "prt_tool_1");
+      assert.equal(second[1].tool_status, "completed");
     });
   });
 

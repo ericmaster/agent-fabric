@@ -2,6 +2,7 @@
 package retrospective
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -562,6 +563,55 @@ func TestIngestTriggerOnlyOnRootOwner(t *testing.T) {
 	}
 	if job, err := store.ReadDrainJob("ses_owner2"); err == nil {
 		t.Fatalf("degenerate trigger created a job: %+v", job)
+	}
+}
+
+func TestTerminalWorkWithMissingStartupCreatesInspectableIncompleteReport(t *testing.T) {
+	store := testStore(t)
+	cfg := observationConfig(store)
+	settings := filepath.Join(t.TempDir(), "settings.json")
+	if err := SetEnabled(settings, true); err != nil {
+		t.Fatal(err)
+	}
+	id := "ses_missing_startup"
+	envelope := &Envelope{Version: EnvelopeSchemaVersion, Harness: HarnessOpenCode, SessionID: id, Trigger: true, Records: []EnvelopeRecord{
+		{Kind: "part", SessionID: id, RecordID: "call_recovery", MessageID: "msg_recovery", PartType: "tool", CallID: "call_recovery", Tool: "read", ToolStatus: "completed", Input: `{"path":"records/1.txt"}`, Output: "1"},
+		{Kind: "event", SessionID: id, Event: "session.idle"},
+	}}
+	for n := 0; n < 2; n++ {
+		if _, err := IngestEnvelope(IngestOptions{Config: cfg, Store: store}, envelope); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.ReadDrainJob(id); err != nil {
+		t.Fatal("terminal work silently inert:", err)
+	}
+	summary, err := RunDrain(context.Background(), DrainOptions{Config: cfg, ConfigPath: settings})
+	if err != nil || summary.Processed != 1 {
+		t.Fatalf("incomplete job did not drain: %+v %v", summary, err)
+	}
+	entries, err := os.ReadDir(filepath.Join(store.Dir, "reports"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, entry := range entries {
+		body, err := os.ReadFile(filepath.Join(store.Dir, "reports", entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var report Report
+		if json.Unmarshal(body, &report) == nil && report.Status == ReportStatusIncomplete {
+			found = true
+		}
+	}
+	if !found {
+		job, _ := store.ReadDrainJob(id)
+		t.Fatalf("missing-startup completeness gap has no inspectable report: summary=%+v job=%+v entries=%v", summary, job, entries)
+	}
+	receipts, err := store.ListReceipts()
+	if err != nil || len(receipts) != 0 {
+		t.Fatal("incomplete startup dispatched correction")
 	}
 }
 
