@@ -892,9 +892,23 @@ patterns are denied last for both relative and absolute paths. No shell,
 execute/code runner, edit, network or subagent action is authorized. Packets
 declare no shell commands: independent judgments inspect files and causal
 evidence using allowed tools; Go owns cryptographic hash computation/gates.
-Before asynchronous QA, journal the exact postimage/preimage/diff as a pending
-finding. Resume verifies that exact postimage, finishes QA or hash-safe rollback,
-and never blindly reapplies. Validation rollback re-reads current bytes rather
+Before **any source mutation**, durably write the preimage and a write-ahead
+pending finding containing canonical source/version, planned postimage/diff,
+original mode, candidate/reviewer digests and the already-reserved repair attempt.
+Sync the journal files and directory entries before replacing the source.
+Preimage journal identifiers are single safe path tokens: separators, drive
+prefixes and navigation names cannot escape the owned state directory.
+Resume accepts only the exact recorded preimage (not yet applied) or postimage
+(already applied). A preimage with no QA submission may resume the one reserved
+write; an already attempted QA with a preimage is a restored/reverted conflict,
+not another application. A postimage resumes executed QA without duplicate roots
+or prompts. Missing/mismatched provenance, mode, preimage bytes or unrelated
+current bytes conflict without overwrite. Rollback restores only the recorded
+matching postimage, including after a crash during validation. Checkpoints at
+before-write, after-write, before-validator and after-validator are exercised
+through public Dispatch in subprocess-death tests with unrelated-edit controls;
+checkpoints are private test seams, not environment/CLI behavior.
+Validation rollback re-reads current bytes rather
 than using its stale pre-validation snapshot; concurrent user edits survive.
 Each stage is bounded by `dispatch_timeout`; timeout interrupts only the owned
 root. Lost create/prompt responses reconcile recorded stages without blind

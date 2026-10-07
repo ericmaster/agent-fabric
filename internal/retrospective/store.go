@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -89,6 +90,10 @@ type FindingResult struct {
 	Reviewer        string `json:"reviewer,omitempty"`
 	SelfCertified   bool   `json:"self_certified"`
 	Validation      string `json:"validation,omitempty"`
+	CandidateSHA256 string `json:"candidate_sha256,omitempty"`
+	ReviewSHA256    string `json:"review_sha256,omitempty"`
+	RepairAttempts  int    `json:"repair_attempts,omitempty"`
+	FileMode        uint32 `json:"file_mode,omitempty"`
 }
 
 // CopyNote records a generated-copy refresh or a preserved user edit.
@@ -305,6 +310,9 @@ func (s *Store) BindOrigin(sessionID, marker string) error {
 // WritePreimage stores the exact prior bytes of one repair.
 // Spec: docs/specs/task-retrospective.md via Store
 func (s *Store) WritePreimage(incident, findingID string, body []byte) error {
+	if !journalID(incident) || !journalID(findingID) {
+		return errors.New("invalid repair journal identifier")
+	}
 	dir := filepath.Join(s.Dir, "preimages", incident)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -315,7 +323,40 @@ func (s *Store) WritePreimage(incident, findingID string, body []byte) error {
 // ReadPreimage returns the stored prior bytes of one repair.
 // Spec: docs/specs/task-retrospective.md via Store
 func (s *Store) ReadPreimage(incident, findingID string) ([]byte, error) {
+	if !journalID(incident) || !journalID(findingID) {
+		return nil, errors.New("invalid repair journal identifier")
+	}
 	return os.ReadFile(filepath.Join(s.Dir, "preimages", incident, findingID))
+}
+
+// Spec: docs/specs/task-retrospective.md via WritePreimage
+func journalID(id string) bool {
+	return id != "" && id != "." && id != ".." && !strings.ContainsAny(id, `:/\`)
+}
+
+// syncRepairJournal commits all write-ahead files and directory entries before
+// the owning source may change. Native dispatch already fails closed off Unix.
+// Spec: docs/specs/task-retrospective.md via WritePreimage
+func (s *Store) syncRepairJournal(incident, findingID, key string) error {
+	for _, path := range []string{
+		filepath.Join(s.Dir, "preimages", incident, findingID), filepath.Join(s.Dir, "receipts", incident+".json"), filepath.Join(s.Dir, "findings", key+".json"),
+		filepath.Join(s.Dir, "preimages", incident), filepath.Join(s.Dir, "preimages"), filepath.Join(s.Dir, "receipts"), filepath.Join(s.Dir, "findings"), s.Dir, filepath.Dir(s.Dir),
+	} {
+		if err := syncPath(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Spec: docs/specs/task-retrospective.md via syncRepairJournal
+func syncPath(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return file.Sync()
 }
 
 // WriteFindingRecord stores the compact dedup row.

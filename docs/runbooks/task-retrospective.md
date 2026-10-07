@@ -161,6 +161,16 @@ rows until the source hash changes.
 
 ## Recovery
 
+- **Process died during a native repair.** A durable write-ahead pending finding
+  is saved and synced before source replacement, with preimage/postimage,
+  canonical version/mode, reviewer/candidate digests and reserved attempt.
+  Dispatch resume recognizes only those exact bytes. An unapplied preimage can
+  finish the reserved write once; a postimage resumes the existing QA stage.
+  Already attempted QA plus a preimage indicates restoration/reversion, not
+  permission to reapply. Changed bytes/mode/provenance conflict without overwrite.
+  Failed QA restores only the matching owned postimage. Do not delete the journal,
+  reset attempts, overwrite unrelated edits or create replacement worker roots.
+
 - **Backfill authentication rejected (401/403).** Configure the trusted
   server password and restart with a matching environment; random generated
   server passwords are not discoverable by the loop. This is an actionable

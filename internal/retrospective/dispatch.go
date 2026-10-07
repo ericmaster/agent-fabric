@@ -691,8 +691,11 @@ type DispatchOptions struct {
 	Retry          bool
 	Now            func() time.Time
 	ValidateRepair RepairValidator
-	RenderCopy     CopyRenderer
-	ManifestPaths  []string
+	// Private sink seams: native write-ahead preparation and crash regression injection.
+	prepareRepair    func(*FindingResult, []byte, int) error
+	repairCheckpoint func(string)
+	RenderCopy       CopyRenderer
+	ManifestPaths    []string
 	// SettingsPath is an extra protected user-config file, in addition to UserConfigPath.
 	SettingsPath string
 	// PromptProbe is the optional reconciliation probe; without it a session
@@ -1528,7 +1531,13 @@ func applyOne(opts DispatchOptions, store *Store, receipt *Receipt, finding Find
 		result.Action = StatusSuggested
 		result.Suggestion = "exact instruction version, failed behavior, recovery, and excerpt are required"
 	default:
-		applied := applyExcerpt(store, receipt.IncidentID, finding, resolution.Canonical, opts.ValidateRepair)
+		var prepare func(*FindingResult, []byte) error
+		if opts.prepareRepair != nil {
+			prepare = func(result *FindingResult, preimage []byte) error {
+				return opts.prepareRepair(result, preimage, attempts)
+			}
+		}
+		applied := applyExcerptWithJournal(store, receipt.IncidentID, finding, resolution.Canonical, opts.ValidateRepair, prepare, opts.repairCheckpoint)
 		applied.Reviewer = opts.Config.Reviewer
 		applied.SelfCertified = false
 		result = applied
@@ -1556,6 +1565,11 @@ func applyOne(opts DispatchOptions, store *Store, receipt *Receipt, finding Find
 // applyExcerpt replaces one unique excerpt after a fresh hash check.
 // Spec: docs/specs/task-retrospective.md via applyOne
 func applyExcerpt(store *Store, incident string, finding Finding, path string, validate RepairValidator) FindingResult {
+	return applyExcerptWithJournal(store, incident, finding, path, validate, nil, nil)
+}
+
+// Spec: docs/specs/task-retrospective.md via applyExcerpt
+func applyExcerptWithJournal(store *Store, incident string, finding Finding, path string, validate RepairValidator, prepare func(*FindingResult, []byte) error, checkpoint func(string)) FindingResult {
 	result := FindingResult{
 		ID: finding.ID, SourcePath: finding.SourcePath, CanonicalPath: path,
 		SourceSHA256: finding.SourceSHA256, Cause: finding.Cause,
@@ -1601,15 +1615,43 @@ func applyExcerpt(store *Store, incident string, finding Finding, path string, v
 		return result
 	}
 	next := []byte(strings.Replace(string(again), finding.Excerpt, finding.Replacement, 1))
+	result.PreimageSHA256 = sha256hex(again)
+	result.PostimageSHA256 = sha256hex(next)
+	result.Diff = excerptDiff(path, finding.Excerpt, finding.Replacement)
+	result.FileMode = uint32(info.Mode().Perm())
 	if err := store.WritePreimage(incident, finding.ID, again); err != nil {
 		result.Action = StatusConflict
 		result.Suggestion = err.Error()
 		return result
 	}
+	if prepare != nil {
+		if err := prepare(&result, again); err != nil {
+			result.Action = StatusConflict
+			result.Suggestion = "write-ahead preparation failed: " + err.Error()
+			return result
+		}
+	}
+	if checkpoint != nil {
+		checkpoint("before-write")
+	}
+	current, readErr := os.ReadFile(path)
+	currentInfo, statErr := os.Lstat(path)
+	realPath, resolveErr := filepath.EvalSymlinks(path)
+	if readErr != nil || statErr != nil || resolveErr != nil || !samePath(realPath, path) || !currentInfo.Mode().IsRegular() || currentInfo.Mode().Perm() != info.Mode().Perm() || sha256hex(current) != result.PreimageSHA256 {
+		result.Action = StatusConflict
+		result.Suggestion = "target changed after write-ahead preparation; unrelated work preserved"
+		return result
+	}
 	if err := writePreservingMode(path, next, info.Mode().Perm()); err != nil {
 		result.Action = StatusConflict
+		if prepare != nil {
+			result.Action = StatusPending
+		}
 		result.Suggestion = err.Error()
 		return result
+	}
+	if checkpoint != nil {
+		checkpoint("after-write")
 	}
 	written, err := os.ReadFile(path)
 	if err != nil {
@@ -1617,16 +1659,26 @@ func applyExcerpt(store *Store, incident string, finding Finding, path string, v
 		result.Suggestion = err.Error()
 		return result
 	}
-	result.PreimageSHA256 = sha256hex(again)
-	result.PostimageSHA256 = sha256hex(written)
-	result.Diff = excerptDiff(path, finding.Excerpt, finding.Replacement)
+	if sha256hex(written) != result.PostimageSHA256 {
+		result.Action = StatusConflict
+		result.Suggestion = "postimage changed before validation; unrelated work preserved"
+		return result
+	}
 	if validate == nil {
 		validate = defaultRepairCheck(info.Mode().Perm(), finding.Replacement)
 	}
-	if err := validate(path, written); err != nil {
+	if checkpoint != nil {
+		checkpoint("before-validator")
+	}
+	validationErr := validate(path, written)
+	if checkpoint != nil {
+		checkpoint("after-validator")
+	}
+	if err := validationErr; err != nil {
 		result.Validation = err.Error()
 		current, readErr := os.ReadFile(path)
-		if readErr == nil && sha256hex(current) == result.PostimageSHA256 {
+		currentInfo, statErr := os.Lstat(path)
+		if readErr == nil && statErr == nil && currentInfo.Mode().IsRegular() && currentInfo.Mode().Perm() == info.Mode().Perm() && sha256hex(current) == result.PostimageSHA256 {
 			if restoreErr := writePreservingMode(path, again, info.Mode().Perm()); restoreErr == nil {
 				result.Restored = true
 				result.Action = StatusConflict
@@ -1636,6 +1688,12 @@ func applyExcerpt(store *Store, incident string, finding Finding, path string, v
 		}
 		result.Action = StatusConflict
 		result.Suggestion = "validation failed and current bytes no longer match the repair"
+		return result
+	}
+	current, readErr = os.ReadFile(path)
+	if readErr != nil || sha256hex(current) != result.PostimageSHA256 {
+		result.Action = StatusConflict
+		result.Suggestion = "postimage changed during validation; unrelated work preserved"
 		return result
 	}
 	result.Validation = "passed"
@@ -1690,9 +1748,19 @@ func RestoreRepair(store *Store, incidentID, findingID string) error {
 	if err != nil {
 		return err
 	}
+	if sha256hex(preimage) != result.PreimageSHA256 {
+		return errors.New("stored preimage does not match its recorded source version; refusing overwrite")
+	}
 	info, err := os.Lstat(result.CanonicalPath)
 	if err != nil {
 		return err
+	}
+	realPath, resolveErr := filepath.EvalSymlinks(result.CanonicalPath)
+	if resolveErr != nil || !samePath(realPath, result.CanonicalPath) {
+		return errors.New("repair canonical path identity changed; refusing overwrite")
+	}
+	if !info.Mode().IsRegular() || info.Mode()&0111 != 0 || (result.FileMode != 0 && uint32(info.Mode().Perm()) != result.FileMode) {
+		return errors.New("repair target identity or mode changed; refusing overwrite")
 	}
 	return writePreservingMode(result.CanonicalPath, preimage, info.Mode().Perm())
 }
@@ -1795,13 +1863,19 @@ func writePreservingMode(path string, body []byte, mode os.FileMode) error {
 	if err = tmp.Chmod(mode); err == nil {
 		_, err = tmp.Write(body)
 	}
+	if err == nil {
+		err = tmp.Sync()
+	}
 	if closeErr := tmp.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil {
 		return err
 	}
-	return os.Rename(name, path)
+	if err := os.Rename(name, path); err != nil {
+		return err
+	}
+	return syncPath(filepath.Dir(path))
 }
 
 // excerptDiff records the exact replacement that was applied.

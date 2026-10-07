@@ -361,6 +361,23 @@ func finishNativeLearning(ctx context.Context, opts DispatchOptions, store *Stor
 		copyReport.Findings = candidate.Findings
 		copyOpts := opts
 		originalValidator := opts.ValidateRepair
+		copyOpts.prepareRepair = func(result *FindingResult, preimage []byte, attempts int) error {
+			result.Action = StatusPending
+			result.Reviewer = opts.Config.Reviewer
+			result.CandidateSHA256 = digest
+			result.ReviewSHA256 = sha256hex([]byte(receipt.ReviewVerdict))
+			result.RepairAttempts = attempts
+			receipt.Status = StatusPending
+			receipt.Findings = []FindingResult{*result}
+			if _, err := save(store, receipt); err != nil {
+				return err
+			}
+			key := findingKey(result.ID, result.SourcePath, result.SourceSHA256)
+			if err := store.WriteFindingRecord(&FindingRecord{Key: key, FindingID: result.ID, SourcePath: result.SourcePath, SourceSHA256: result.SourceSHA256, Attempts: attempts, LastAction: StatusPending, IncidentID: receipt.IncidentID}); err != nil {
+				return err
+			}
+			return store.syncRepairJournal(receipt.IncidentID, result.ID, key)
+		}
 		copyOpts.ValidateRepair = func(path string, body []byte) error {
 			if originalValidator != nil {
 				if err := originalValidator(path, body); err != nil {
@@ -368,17 +385,7 @@ func finishNativeLearning(ctx context.Context, opts DispatchOptions, store *Stor
 				}
 			}
 			finding := candidate.Findings[0]
-			info, err := os.Stat(path)
-			if err != nil {
-				return err
-			}
-			if err := defaultRepairCheck(info.Mode().Perm(), finding.Replacement)(path, body); err != nil {
-				return err
-			}
-			// Journal the actual postimage before a long-running independent QA.
-			// A crash resumes validation/rollback, never applies the finding twice.
-			receipt.Findings = []FindingResult{{ID: finding.ID, SourcePath: finding.SourcePath, CanonicalPath: path, SourceSHA256: finding.SourceSHA256, Cause: finding.Cause, Action: StatusPending, PreimageSHA256: finding.SourceSHA256, PostimageSHA256: sha256hex(body), Diff: excerptDiff(path, finding.Excerpt, finding.Replacement), Reviewer: opts.Config.Reviewer}}
-			if _, err := save(store, receipt); err != nil {
+			if err := defaultRepairCheck(os.FileMode(receipt.Findings[0].FileMode), finding.Replacement)(path, body); err != nil {
 				return err
 			}
 			return qa(path)
@@ -394,26 +401,15 @@ func finishNativeLearning(ctx context.Context, opts DispatchOptions, store *Stor
 		}
 	}
 	if len(receipt.Findings) == 1 && receipt.Findings[0].Action == StatusPending {
-		result := &receipt.Findings[0]
-		current, err := os.ReadFile(result.CanonicalPath)
-		if err != nil || sha256hex(current) != result.PostimageSHA256 {
-			result.Action = StatusConflict
-			result.Suggestion = "postimage changed while native QA was pending; unrelated work preserved"
-			return pending(errors.New(result.Suggestion))
-		}
-		if err := qa(result.CanonicalPath); err != nil {
-			if restoreErr := RestoreRepair(store, receipt.IncidentID, result.ID); restoreErr == nil {
-				result.Restored = true
-				result.Action = StatusConflict
-				result.Suggestion = "native QA rejected; recorded repair restored"
-			}
+		if err := resumeNativeRepair(opts, store, receipt, candidate, digest, qa); err != nil {
 			return pending(err)
 		}
-		result.Action = StatusRepaired
-		result.Validation = "passed"
 		if _, err := save(store, receipt); err != nil {
 			return nil, err
 		}
+	}
+	if len(receipt.Findings) == 1 && receipt.Findings[0].Action == StatusConflict {
+		return pending(errors.New(firstNonEmpty(receipt.Findings[0].Suggestion, receipt.Findings[0].Validation, "native repair conflict; no retry or additional worker")))
 	}
 	if err := qa(""); err != nil {
 		return pending(err)
@@ -425,4 +421,102 @@ func finishNativeLearning(ctx context.Context, opts DispatchOptions, store *Stor
 		receipt.Status = StatusSuggested
 	}
 	return save(store, receipt)
+}
+
+// resumeNativeRepair reconciles the durable write-ahead intent with exact bytes.
+// It consumes the already-reserved attempt, never calls applyOne again.
+// Spec: docs/specs/task-retrospective.md via finishNativeLearning
+func resumeNativeRepair(opts DispatchOptions, store *Store, receipt *Receipt, candidate NativeProposal, digest string, qa func(string) error) error {
+	result := &receipt.Findings[0]
+	conflict := func(message string) error {
+		result.Action = StatusConflict
+		result.Suggestion = message
+		return errors.New(message)
+	}
+	if len(candidate.Findings) != 1 || result.ID != candidate.Findings[0].ID || result.SourcePath != candidate.Findings[0].SourcePath || result.SourceSHA256 != candidate.Findings[0].SourceSHA256 || result.PreimageSHA256 != result.SourceSHA256 || result.CandidateSHA256 != digest || result.ReviewSHA256 != sha256hex([]byte(receipt.ReviewVerdict)) || result.Reviewer != opts.Config.Reviewer || result.RepairAttempts < 1 || result.RepairAttempts > opts.Config.MaxRepairAttempts || result.FileMode&0111 != 0 {
+		return conflict("native repair journal identity/version/reviewer or budget is unverifiable; no write")
+	}
+	finding := candidate.Findings[0]
+	resolution, err := ResolveSource(finding.SourcePath, opts.Config.CanonicalRoots, opts.ManifestPaths, opts.Config.StateDir, protectedConfigPaths(opts.SettingsPath))
+	if err != nil || !resolution.Owned || resolution.Immutable || !samePath(resolution.Canonical, result.CanonicalPath) {
+		return conflict("canonical ownership changed while native repair was pending; no write")
+	}
+	preimage, err := store.ReadPreimage(receipt.IncidentID, result.ID)
+	if err != nil || sha256hex(preimage) != result.PreimageSHA256 || strings.Count(string(preimage), finding.Excerpt) != 1 {
+		return conflict("native repair preimage is missing or does not match its version; no write")
+	}
+	next := []byte(strings.Replace(string(preimage), finding.Excerpt, finding.Replacement, 1))
+	if sha256hex(next) != result.PostimageSHA256 {
+		return conflict("native repair planned postimage does not match the reviewed proposal; no write")
+	}
+	current, err := os.ReadFile(result.CanonicalPath)
+	info, statErr := os.Lstat(result.CanonicalPath)
+	if err != nil || statErr != nil || !info.Mode().IsRegular() || uint32(info.Mode().Perm()) != result.FileMode {
+		return conflict("native repair target identity/mode changed; unrelated work preserved")
+	}
+	if sha256hex(current) == result.PreimageSHA256 {
+		if receipt.QACreateAttempted || receipt.QAPromptAttempted || receipt.QAVerdict != "" {
+			result.Restored = true
+			return conflict("source is restored/reverted after QA was attempted; no reapplication")
+		}
+		key := findingKey(result.ID, result.SourcePath, result.SourceSHA256)
+		if err := store.WriteFindingRecord(&FindingRecord{Key: key, FindingID: result.ID, SourcePath: result.SourcePath, SourceSHA256: result.SourceSHA256, Attempts: result.RepairAttempts, LastAction: StatusPending, IncidentID: receipt.IncidentID}); err != nil {
+			return err
+		}
+		if err := store.syncRepairJournal(receipt.IncidentID, result.ID, key); err != nil {
+			return err
+		}
+		if opts.repairCheckpoint != nil {
+			opts.repairCheckpoint("before-write")
+		}
+		fresh, err := os.ReadFile(result.CanonicalPath)
+		freshInfo, statErr := os.Lstat(result.CanonicalPath)
+		realPath, resolveErr := filepath.EvalSymlinks(result.CanonicalPath)
+		if err != nil || statErr != nil || resolveErr != nil || !samePath(realPath, result.CanonicalPath) || !freshInfo.Mode().IsRegular() || uint32(freshInfo.Mode().Perm()) != result.FileMode || sha256hex(fresh) != result.PreimageSHA256 {
+			return conflict("source changed before resumed write; unrelated work preserved")
+		}
+		if err := writePreservingMode(result.CanonicalPath, next, os.FileMode(result.FileMode)); err != nil {
+			return err
+		}
+		if opts.repairCheckpoint != nil {
+			opts.repairCheckpoint("after-write")
+		}
+	} else if sha256hex(current) != result.PostimageSHA256 {
+		return conflict("source differs from both journal images; unrelated work preserved")
+	}
+	current, err = os.ReadFile(result.CanonicalPath)
+	if err != nil || sha256hex(current) != result.PostimageSHA256 {
+		return conflict("postimage changed before resumed validation; unrelated work preserved")
+	}
+	if opts.repairCheckpoint != nil {
+		opts.repairCheckpoint("before-validator")
+	}
+	err = defaultRepairCheck(os.FileMode(result.FileMode), finding.Replacement)(result.CanonicalPath, current)
+	if err == nil && opts.ValidateRepair != nil {
+		err = opts.ValidateRepair(result.CanonicalPath, current)
+	}
+	if err == nil {
+		err = qa(result.CanonicalPath)
+	}
+	if opts.repairCheckpoint != nil {
+		opts.repairCheckpoint("after-validator")
+	}
+	if err != nil {
+		result.Validation = err.Error()
+		if restoreErr := RestoreRepair(store, receipt.IncidentID, result.ID); restoreErr == nil {
+			result.Restored = true
+			result.Action = StatusConflict
+			result.Suggestion = "native QA rejected; recorded repair restored"
+		}
+		return err
+	}
+	fresh, err := os.ReadFile(result.CanonicalPath)
+	freshInfo, statErr := os.Lstat(result.CanonicalPath)
+	if err != nil || statErr != nil || !freshInfo.Mode().IsRegular() || uint32(freshInfo.Mode().Perm()) != result.FileMode || sha256hex(fresh) != result.PostimageSHA256 {
+		return conflict("postimage changed during resumed validation; unrelated work preserved")
+	}
+	result.Action = StatusRepaired
+	result.Validation = "passed"
+	key := findingKey(result.ID, result.SourcePath, result.SourceSHA256)
+	return store.WriteFindingRecord(&FindingRecord{Key: key, FindingID: result.ID, SourcePath: result.SourcePath, SourceSHA256: result.SourceSHA256, Attempts: result.RepairAttempts, LastAction: StatusRepaired, IncidentID: receipt.IncidentID})
 }
