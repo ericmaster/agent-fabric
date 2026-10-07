@@ -472,7 +472,8 @@ func reconcileServer(ctx context.Context, cfg *Config, store *Store, spool *Spoo
 	if base == "" {
 		return nil
 	}
-	client := &HTTPSessionClient{BaseURL: base, Generation: cfg.DispatchEndpoint}
+	client := OpenSessionClient(cfg)
+	client.BaseURL = base
 	rows, err := client.Messages(ctx, spool.SessionID)
 	if err != nil {
 		if errors.Is(err, ErrCapability) {

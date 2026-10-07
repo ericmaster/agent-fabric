@@ -376,6 +376,8 @@ Added to the same `Config` struct, not a second defaults table:
 | key | default | meaning |
 |---|---|---|
 | `dispatch_server` | empty | OpenCode server base URL. Empty queues; it is not the Jev `endpoint`. |
+| `dispatch_server_username` | empty | HTTP Basic username for the session transport; empty falls back to `OPENCODE_SERVER_USERNAME`, then `opencode`. |
+| `dispatch_server_password` | empty | HTTP Basic password; empty falls back to the server env (`OPENCODE_PASSWORD`, then `OPENCODE_SERVER_PASSWORD`). Sent only as the Authorization header; never logged or persisted. |
 | `dispatch_ui_template` | empty | `http` or `https` URL with exactly one `{id}`, no userinfo. |
 | `dispatch_model` | empty | Optional host model string sent to the server. Never copied into canonical agent text. |
 | `dispatch_directory` | empty | Directory recorded on the root. Falls back to the report execution root. |
@@ -782,12 +784,32 @@ queued receipts block the task for manual reconciliation.
 - `prompt` (default) — the Phase 2 contract exactly: `POST /session` body
   `{title, directory}` (no `parentID` key), prompt `POST /session/{id}/prompt`
   with the marker echo, reconcile by session read.
-- `message` — the installed 2.0.24 generation: `POST /session` body
-  `{title}` (the project directory comes from the server's working
-  directory), prompt `POST /session/{id}/prompt_async` (HTTP 204 accepted =
-  prompt delivered and confirmed), reconcile of a lost prompt by
-  `GET /session/{id}/message` searching for the marker text in message
-  parts. 404/501 queue the report exactly as before; no hidden fallback.
+- `message` — the verified live 2.x contract (empirically confirmed against
+  an isolated OpenCode 2.0.24 server; recorded in
+  `fixtures/retrospective/opencode/live-api-2.0.24.json`): every route is
+  served under the `/api` prefix; requests carry HTTP Basic auth when
+  credentials resolve (see below); `POST /api/session` body `{title}` returns
+  a `{"data": …}` envelope (the project directory comes from the server's
+  working directory); the session list and per-session history are
+  `{"data": …, "cursor": {next}}` pages the clients follow to exhaustion
+  (bounded; a page limit fails closed); prompt delivery uses the synchronous
+  `POST /api/session/{id}/prompt` with the flat body
+  `{"text": …, "agent": "learning-corrector"}` — the 2xx user-message echo
+  confirms delivery without requiring a model, and the marker stays in the
+  prompt text; reconcile of a lost prompt searches the flat
+  `{id, time, text, type}` history rows for the marker. 404/501 queue the
+  report exactly as before; no hidden fallback.
+
+**Authentication.** The live server requires HTTP Basic auth on every `/api`
+route (a server started without a password generates a random one, which the
+loop cannot learn — such servers report the capability gap and stay queued).
+Credentials resolve in order: `dispatch_server_username` /
+`dispatch_server_password` config keys, else the OpenCode server process
+environment (`OPENCODE_SERVER_USERNAME`; `OPENCODE_PASSWORD`, then
+`OPENCODE_SERVER_PASSWORD` — the names the server itself reads; the drain
+worker inherits the server env). An empty username with a non-empty password
+uses the documented server default `opencode`. Credentials are only ever sent
+as the Authorization header — never logged, persisted, or echoed in receipts.
 
 Both generations refuse a returned child session (`parentID` non-empty) and
 both reconcile a lost create by exact marker list match. The receipt contract

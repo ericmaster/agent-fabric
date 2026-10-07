@@ -45,12 +45,17 @@ func (s *loopSessionServer) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		// The loop dispatches with credentials; the mock asserts they are sent.
+		if r.Header.Get("Authorization") == "" {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
 		if s.statusCode != 0 {
 			w.WriteHeader(s.statusCode)
 			return
 		}
 		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/session":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/session":
 			body := readAllString(r)
 			if strings.Contains(body, "parentID") {
 				http.Error(w, "parentID key is not part of the loop contract", http.StatusBadRequest)
@@ -58,7 +63,7 @@ func (s *loopSessionServer) handler() http.Handler {
 			}
 			if s.loseCreate {
 				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{}`))
+				_, _ = w.Write([]byte(`{"data":{}}`))
 				return
 			}
 			var req struct {
@@ -73,27 +78,41 @@ func (s *loopSessionServer) handler() http.Handler {
 			}
 			s.sessions = append(s.sessions, session)
 			s.creates = append(s.creates, session.ID)
-			_ = json.NewEncoder(w).Encode(session)
-		case r.Method == http.MethodGet && r.URL.Path == "/session":
-			_ = json.NewEncoder(w).Encode(s.sessions)
-		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/session/") && strings.HasSuffix(r.URL.Path, "/message"):
+			_ = json.NewEncoder(w).Encode(struct {
+				Data Session `json:"data"`
+			}{session})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/session":
+			_ = json.NewEncoder(w).Encode(struct {
+				Data   []Session `json:"data"`
+				Cursor struct {
+					Next string `json:"next"`
+				} `json:"cursor"`
+			}{Data: s.sessions})
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/session/") && strings.HasSuffix(r.URL.Path, "/message"):
 			// The reconcile reads the full observable history; the mock
-			// returns none (the streamed fixture coverage is complete).
-			_, _ = w.Write([]byte("[]"))
-		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/session/"):
-			sessionID := strings.TrimPrefix(r.URL.Path, "/session/")
+			// returns an empty data page (the streamed fixture coverage is
+			// complete).
+			_, _ = w.Write([]byte(`{"data":[],"cursor":{"previous":null,"next":null}}`))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/session/"):
+			sessionID := strings.TrimPrefix(r.URL.Path, "/api/session/")
 			for _, session := range s.sessions {
 				if session.ID == sessionID {
-					_ = json.NewEncoder(w).Encode(session)
+					_ = json.NewEncoder(w).Encode(struct {
+						Data Session `json:"data"`
+					}{session})
 					return
 				}
 			}
 			http.NotFound(w, r)
-		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/prompt_async"):
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/prompt"):
 			body := readAllString(r)
 			s.prompts = append(s.prompts, body)
-			s.promptIDs = append(s.promptIDs, strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/session/"), "/prompt_async"))
-			w.WriteHeader(http.StatusNoContent)
+			s.promptIDs = append(s.promptIDs, strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/session/"), "/prompt"))
+			var req struct {
+				Text string `json:"text"`
+			}
+			_ = json.Unmarshal([]byte(body), &req)
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"data":{"id":"msg_%d","type":"user","payload":{"text":%q}}}`, len(s.prompts), req.Text)))
 		default:
 			http.NotFound(w, r)
 		}
@@ -227,6 +246,8 @@ func newLoopFixture(t *testing.T, script func(subject, scope string) (string, []
 	cfg.Endpoint = jevAPI.URL
 	cfg.DispatchServer = sessionAPI.URL
 	cfg.DispatchEndpoint = EndpointMessage
+	cfg.DispatchServerUsername = "opencode"
+	cfg.DispatchServerPassword = "synthetic-loop-key"
 	cfg.DispatchUITemplate = sessionAPI.URL + "/tui/{id}"
 	cfg.CanonicalRoots = []string{projectDir}
 	cfg.Reviewer = "ground-keeper-1"
@@ -483,10 +504,7 @@ func TestLoopDrainSuccessFixesOwningInstructionExactlyOnce(t *testing.T) {
 		t.Fatalf("prompt submissions = %d ids=%v creates=%v", len(prompts), promptIDs, creates)
 	}
 	var promptPayload struct {
-		Parts []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"parts"`
+		Text  string `json:"text"`
 		Agent string `json:"agent"`
 	}
 	if err := json.Unmarshal([]byte(prompts[0]), &promptPayload); err != nil {
@@ -495,8 +513,8 @@ func TestLoopDrainSuccessFixesOwningInstructionExactlyOnce(t *testing.T) {
 	if promptPayload.Agent != LearningCorrectorID {
 		t.Fatalf("correcting agent = %q", promptPayload.Agent)
 	}
-	if !strings.Contains(promptPayload.Parts[0].Text, "Report locator:") {
-		t.Fatalf("intake packet missing the report locator: %s", promptPayload.Parts[0].Text)
+	if !strings.Contains(promptPayload.Text, "Report locator:") {
+		t.Fatalf("intake packet missing the report locator: %s", promptPayload.Text)
 	}
 	// The success payload / pages order: the stage one question is sent
 	// before any stage-two page; the outcome must have been "succeeded".
@@ -750,7 +768,8 @@ func TestBackfillConcurrentWithIngestLosesNoRecords(t *testing.T) {
 	// The server backfill returns an empty history (no overlap with staged
 	// rows); the race is the merge window itself, exercised by hammering
 	// ingest flushes against serialized backfills.
-	client := &HTTPSessionClient{BaseURL: f.sessionAPI.URL, Generation: f.cfg.DispatchEndpoint}
+	client := OpenSessionClient(f.cfg)
+	client.BaseURL = f.sessionAPI.URL
 	var wg sync.WaitGroup
 	errs := make(chan error, 64)
 	for i := 0; i < 16; i++ {
@@ -813,7 +832,8 @@ func TestBackfillCyclicParentTopologyTerminates(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	client := &HTTPSessionClient{BaseURL: f.sessionAPI.URL, Generation: f.cfg.DispatchEndpoint}
+	client := OpenSessionClient(f.cfg)
+	client.BaseURL = f.sessionAPI.URL
 	done := make(chan []Gap, 1)
 	go func() {
 		budget := DrainMaxBackfillChildren

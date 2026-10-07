@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -320,10 +319,7 @@ func runRetrospectiveDispatch(args []string) error {
 	}
 	var client retrospective.SessionClient
 	if enabled && cfg.DispatchServer != "" {
-		client = &retrospective.HTTPSessionClient{
-			BaseURL: cfg.DispatchServer,
-			HTTP:    &http.Client{Timeout: cfg.DispatchTimeout + time.Second},
-		}
+		client = retrospective.OpenSessionClient(cfg)
 	}
 	sourceRoot, sourceErr := sourceDir(options{})
 	if sourceErr != nil {

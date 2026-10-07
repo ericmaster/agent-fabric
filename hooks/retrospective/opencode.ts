@@ -203,10 +203,27 @@ const spawnIngest: RunIngest = (envelope, cli) =>
     stdin.end(JSON.stringify(envelope));
   });
 
-/** healthProbe pins the installed server generation (GET /global/health). */
+/** basicAuthHeader builds the server's own HTTP Basic credentials from the
+ * process env the plugin inherits (it runs inside the server). Returns
+ * undefined when the server runs without an explicit password. */
+function basicAuthHeader(env: NodeJS.ProcessEnv): string | undefined {
+  const password = env.OPENCODE_PASSWORD || env.OPENCODE_SERVER_PASSWORD;
+  if (!password) return undefined;
+  const username = env.OPENCODE_SERVER_USERNAME || "opencode";
+  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+}
+
+/** healthProbe pins the installed server generation (GET /api/info on the
+ * live 2.x server; Basic auth from the process env). */
 async function healthProbe(base: URL): Promise<{ version?: string } | null> {
-  const target = new URL("/global/health", base);
-  const response = await fetch(target, { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) });
+  const target = new URL("/api/info", base);
+  const headers: Record<string, string> = {};
+  const authorization = basicAuthHeader(process.env);
+  if (authorization) headers.Authorization = authorization;
+  const response = await fetch(target, {
+    headers,
+    signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+  });
   if (!response.ok) {
     return null;
   }

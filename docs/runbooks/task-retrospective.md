@@ -53,9 +53,11 @@ agf retrospective enable
 }
 ```
 
-`dispatch_endpoint` is `"message"` for the installed OpenCode 2.0.24 server
-(`POST /session` + `POST /session/{id}/prompt_async` + message-list
-reconciliation). `"prompt"` is the legacy 1.18.x transport default.
+`dispatch_endpoint` is `"message"` for the installed OpenCode 2.x server
+(every route under `/api` with HTTP Basic auth — run the server with
+`OPENCODE_PASSWORD` set so the loop can authenticate; flat-text prompt
+delivery via `POST /api/session/{id}/prompt` + message-history reconcile).
+`"prompt"` is the legacy 1.18.x transport default.
 
 4. The drain worker inherits the Jev key from the host environment
    (`TYPESAFE_API_KEY`, read at request time, never persisted) and the

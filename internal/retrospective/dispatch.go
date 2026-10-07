@@ -81,23 +81,70 @@ type SessionClient interface {
 }
 
 // HTTPSessionClient is the documented OpenCode session transport. The empty
-// Generation keeps the Phase 2 `prompt` contract; `message` selects the 2.x
-// generation (POST /session/{id}/prompt_async + message reconciliation).
+// Generation keeps the Phase 2 `prompt` contract; `message` selects the
+// installed-2.x live contract verified against OpenCode 2.0.24: every route
+// sits under the /api prefix, requests carry HTTP Basic auth when a password
+// is configured (config keys or the server process env), list/read responses
+// are {"data": ...}-enveloped with cursor pagination, prompts deliver through
+// the synchronous POST /session/{id}/prompt {"text": ...} route, and the
+// message history is a flat {id, time, text, type} row list.
 // Spec: docs/specs/task-retrospective.md via SessionClient
 type HTTPSessionClient struct {
 	BaseURL    string
 	HTTP       *http.Client
 	Generation string
+	Username   string
+	Password   string
 }
 
 // OpenSessionClient builds the configured transport for dispatch and drain.
+// Credentials resolve from the config keys first, then the OpenCode server
+// process environment (the drain worker inherits it), and are only ever sent
+// as the Authorization header — never logged, persisted, or echoed in receipts.
 // Spec: docs/specs/task-retrospective.md via OpenSessionClient
 func OpenSessionClient(cfg *Config) *HTTPSessionClient {
+	user, pass := ResolveDispatchAuth(cfg)
 	return &HTTPSessionClient{
 		BaseURL:    cfg.DispatchServer,
 		Generation: cfg.DispatchEndpoint,
 		HTTP:       &http.Client{Timeout: cfg.DispatchTimeout + time.Second},
+		Username:   user,
+		Password:   pass,
 	}
+}
+
+// ResolveDispatchAuth picks the Basic-auth credentials for the session
+// transport: the dispatch_server_username/dispatch_server_password config
+// keys override, else the server process env (OPENCODE_SERVER_USERNAME,
+// then OPENCODE_PASSWORD or OPENCODE_SERVER_PASSWORD — the names the OpenCode
+// server itself reads). A non-empty password with an empty username uses the
+// documented server default username "opencode".
+// Spec: docs/specs/task-retrospective.md via OpenSessionClient
+func ResolveDispatchAuth(cfg *Config) (string, string) {
+	user := os.Getenv("OPENCODE_SERVER_USERNAME")
+	pass := firstNonEmpty(os.Getenv("OPENCODE_PASSWORD"), os.Getenv("OPENCODE_SERVER_PASSWORD"))
+	if cfg != nil {
+		if cfg.DispatchServerUsername != "" {
+			user = cfg.DispatchServerUsername
+		}
+		if cfg.DispatchServerPassword != "" {
+			pass = cfg.DispatchServerPassword
+		}
+	}
+	if user == "" && pass != "" {
+		user = "opencode"
+	}
+	return user, pass
+}
+
+// elem maps a documented route onto the generation's real path: the message
+// generation serves every route under the /api prefix.
+// Spec: docs/specs/task-retrospective.md via HTTPSessionClient
+func (c *HTTPSessionClient) elem(route string) string {
+	if c.messageGeneration() {
+		return "/api" + route
+	}
+	return route
 }
 
 // messageGeneration reports the installed-2.x transport mode.
@@ -130,6 +177,16 @@ func (c *HTTPSessionClient) CreateRoot(ctx context.Context, req CreateRootReques
 		return Session{}, errors.New("refusing to send parentID")
 	}
 	var session Session
+	if c.messageGeneration() {
+		var envelope struct {
+			Data Session `json:"data"`
+		}
+		if err := c.exchangeInto(ctx, http.MethodPost, "/session", body, &envelope); err != nil {
+			return Session{}, err
+		}
+		session = envelope.Data
+		return session, nil
+	}
 	err = c.exchange(ctx, http.MethodPost, "/session", body, &session)
 	return session, err
 }
@@ -141,65 +198,122 @@ func (c *HTTPSessionClient) Read(ctx context.Context, id string) (Session, error
 		return Session{}, err
 	}
 	var session Session
+	if c.messageGeneration() {
+		var envelope struct {
+			Data Session `json:"data"`
+		}
+		if err := c.exchangeInto(ctx, http.MethodGet, "/session/"+url.PathEscape(id), nil, &envelope); err != nil {
+			return Session{}, err
+		}
+		return envelope.Data, nil
+	}
 	err := c.exchange(ctx, http.MethodGet, "/session/"+url.PathEscape(id), nil, &session)
 	return session, err
 }
 
-// List returns the JSON session array used to reconcile a lost create.
+// listPageLimit bounds cursor pagination of the message-generation session
+// list; beyond it the list fails closed instead of silently truncating.
+// Spec: docs/specs/task-retrospective.md via HTTPSessionClient
+const listPageLimit = 50
+
+// List returns the session array used to reconcile a lost create. The
+// message generation follows the documented cursor pagination to exhaustion.
 // Spec: docs/specs/task-retrospective.md via HTTPSessionClient
 func (c *HTTPSessionClient) List(ctx context.Context) ([]Session, error) {
-	raw, err := c.roundTrip(ctx, http.MethodGet, "/session", nil)
-	if err != nil {
-		return nil, err
+	if !c.messageGeneration() {
+		raw, err := c.roundTrip(ctx, http.MethodGet, "/session", nil)
+		if err != nil {
+			return nil, err
+		}
+		raw = bytes.TrimSpace(raw)
+		if len(raw) == 0 || raw[0] != '[' {
+			return nil, errors.New("session list must be a JSON array")
+		}
+		var sessions []Session
+		if err := json.Unmarshal(raw, &sessions); err != nil {
+			return nil, err
+		}
+		return sessions, nil
 	}
-	raw = bytes.TrimSpace(raw)
-	if len(raw) == 0 || raw[0] != '[' {
-		return nil, errors.New("session list must be a JSON array")
+	var all []Session
+	cursor := ""
+	for page := 0; page < listPageLimit; page++ {
+		elem := "/session"
+		if cursor != "" {
+			elem += "?cursor=" + url.QueryEscape(cursor)
+		}
+		raw, err := c.roundTrip(ctx, http.MethodGet, elem, nil)
+		if err != nil {
+			return nil, err
+		}
+		var envelope struct {
+			Data   []Session `json:"data"`
+			Cursor struct {
+				Next string `json:"next"`
+			} `json:"cursor"`
+		}
+		if err := json.Unmarshal(raw, &envelope); err != nil {
+			return nil, fmt.Errorf("decode session list page: %w", err)
+		}
+		all = append(all, envelope.Data...)
+		if envelope.Cursor.Next == "" {
+			return all, nil
+		}
+		cursor = envelope.Cursor.Next
 	}
-	var sessions []Session
-	if err := json.Unmarshal(raw, &sessions); err != nil {
-		return nil, err
-	}
-	return sessions, nil
+	return nil, errors.New("session list exceeded the cursor page limit")
 }
 
 // Prompt submits the correcting prompt and does not set a parent. The
-// message generation posts prompt_async (a 2xx confirms delivery inline) and
-// never adds the marker as a schema-unknown body field; the marker stays in
-// the prompt text for reconciliation.
+// message generation uses the verified live 2.x contract: the synchronous
+// POST /session/{id}/prompt route with a flat {"text": ...} body — a 2xx
+// confirms delivery of the user message (no model required) and the marker
+// stays in the prompt text for history reconciliation. The prompt generation
+// keeps the Phase 2 parts body on the same route.
 // Spec: docs/specs/task-retrospective.md via HTTPSessionClient
 func (c *HTTPSessionClient) Prompt(ctx context.Context, id string, req PromptRequest) error {
 	if err := checkSessionID(id); err != nil {
 		return err
 	}
-	payload := struct {
-		Parts []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"parts"`
-		Marker string `json:"marker"`
-		Agent  string `json:"agent"`
-		Model  string `json:"model,omitempty"`
-	}{
-		Parts: []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		}{{Type: "text", Text: req.Text}},
-		Marker: req.Marker,
-		Agent:  req.Agent,
-		Model:  req.Model,
-	}
+	var body []byte
+	var err error
 	if c.messageGeneration() {
-		payload.Marker = ""
+		// The verified live route accepts the flat text body plus optional
+		// agent/model keys; delivery is confirmed by the 2xx user-message echo.
+		type flatPrompt struct {
+			Text  string `json:"text"`
+			Agent string `json:"agent,omitempty"`
+			Model string `json:"model,omitempty"`
+		}
+		prompt := flatPrompt{Text: req.Text, Agent: req.Agent, Model: req.Model}
+		if prompt.Agent == "" {
+			prompt.Agent = "learning-corrector"
+		}
+		body, err = json.Marshal(prompt)
+	} else {
+		payload := struct {
+			Parts []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"parts"`
+			Marker string `json:"marker"`
+			Agent  string `json:"agent"`
+			Model  string `json:"model,omitempty"`
+		}{
+			Parts: []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}{{Type: "text", Text: req.Text}},
+			Marker: req.Marker,
+			Agent:  req.Agent,
+			Model:  req.Model,
+		}
+		body, err = json.Marshal(payload)
 	}
-	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
 	elem := "/session/" + url.PathEscape(id) + "/prompt"
-	if c.messageGeneration() {
-		elem = "/session/" + url.PathEscape(id) + "/prompt_async"
-	}
 	_, err = c.roundTrip(ctx, http.MethodPost, elem, body)
 	return err
 }
@@ -244,26 +358,77 @@ type SessionToolState struct {
 // closed rather than pretending to reconcile what it did not read.
 const exchangeLimit = 8 << 20
 
+// messagePageLimit bounds cursor pagination of one session history; beyond it
+// the fetch fails closed instead of pretending it reconciled what it did not read.
+// Spec: docs/specs/task-retrospective.md via HTTPSessionClient
+const messagePageLimit = 200
+
 // Messages fetches the full observable history of one session for backfill
-// and reconciliation.
+// and reconciliation. The message generation decodes the verified live shape
+// — {"data": [ {id, time, text, type} ], "cursor": {next}} — following
+// cursors to exhaustion and mapping each flat row onto the internal
+// info/parts structure; the prompt generation keeps the bare array shape.
 // Spec: docs/specs/task-retrospective.md via HTTPSessionClient
 func (c *HTTPSessionClient) Messages(ctx context.Context, id string) ([]SessionMessageRow, error) {
 	if err := checkSessionID(id); err != nil {
 		return nil, err
 	}
-	raw, err := c.roundTrip(ctx, http.MethodGet, "/session/"+url.PathEscape(id)+"/message", nil)
-	if err != nil {
-		return nil, err
+	if !c.messageGeneration() {
+		raw, err := c.roundTrip(ctx, http.MethodGet, "/session/"+url.PathEscape(id)+"/message", nil)
+		if err != nil {
+			return nil, err
+		}
+		raw = bytes.TrimSpace(raw)
+		if len(raw) == 0 || raw[0] != '[' {
+			return nil, errors.New("session message history must be a JSON array")
+		}
+		var rows []SessionMessageRow
+		if err := json.Unmarshal(raw, &rows); err != nil {
+			return nil, err
+		}
+		return rows, nil
 	}
-	raw = bytes.TrimSpace(raw)
-	if len(raw) == 0 || raw[0] != '[' {
-		return nil, errors.New("session message history must be a JSON array")
+	var all []SessionMessageRow
+	cursor := ""
+	for page := 0; page < messagePageLimit; page++ {
+		elem := "/session/" + url.PathEscape(id) + "/message"
+		if cursor != "" {
+			elem += "?cursor=" + url.QueryEscape(cursor)
+		}
+		raw, err := c.roundTrip(ctx, http.MethodGet, elem, nil)
+		if err != nil {
+			return nil, err
+		}
+		var envelope struct {
+			Data []struct {
+				ID   string `json:"id"`
+				Text string `json:"text"`
+				Type string `json:"type"`
+			} `json:"data"`
+			Cursor struct {
+				Next string `json:"next"`
+			} `json:"cursor"`
+		}
+		if err := json.Unmarshal(raw, &envelope); err != nil {
+			return nil, fmt.Errorf("decode session history page: %w", err)
+		}
+		for _, row := range envelope.Data {
+			all = append(all, SessionMessageRow{
+				Info: struct {
+					ID        string          `json:"id"`
+					SessionID string          `json:"sessionID"`
+					Role      string          `json:"role"`
+					Error     json.RawMessage `json:"error,omitempty"`
+				}{ID: row.ID, SessionID: id, Role: row.Type},
+				Parts: []SessionPartRow{{ID: row.ID, SessionID: id, MessageID: row.ID, Type: "text", Text: row.Text}},
+			})
+		}
+		if envelope.Cursor.Next == "" {
+			return all, nil
+		}
+		cursor = envelope.Cursor.Next
 	}
-	var rows []SessionMessageRow
-	if err := json.Unmarshal(raw, &rows); err != nil {
-		return nil, err
-	}
-	return rows, nil
+	return nil, errors.New("session history exceeded the cursor page limit")
 }
 
 // messageProbe returns the reconciliation probe of the message generation:
@@ -293,8 +458,14 @@ func (c *HTTPSessionClient) messageProbe() PromptProbe {
 
 // exchange performs one JSON call and decodes a session object.
 // Spec: docs/specs/task-retrospective.md via HTTPSessionClient
-func (c *HTTPSessionClient) exchange(ctx context.Context, method, elem string, body []byte, dst *Session) error {
-	raw, err := c.roundTrip(ctx, method, elem, body)
+func (c *HTTPSessionClient) exchange(ctx context.Context, method, route string, body []byte, dst *Session) error {
+	return c.exchangeInto(ctx, method, route, body, dst)
+}
+
+// exchangeInto decodes an arbitrary destination from one generation-mapped call.
+// Spec: docs/specs/task-retrospective.md via HTTPSessionClient
+func (c *HTTPSessionClient) exchangeInto(ctx context.Context, method, route string, body []byte, dst any) error {
+	raw, err := c.roundTrip(ctx, method, route, body)
 	if err != nil {
 		return err
 	}
@@ -305,8 +476,11 @@ func (c *HTTPSessionClient) exchange(ctx context.Context, method, elem string, b
 }
 
 // roundTrip sends one request and fails closed on redirects and missing capability.
+// The message generation maps the documented route onto its /api-prefixed path
+// and attaches HTTP Basic credentials when configured.
 // Spec: docs/specs/task-retrospective.md via HTTPSessionClient
-func (c *HTTPSessionClient) roundTrip(ctx context.Context, method, elem string, body []byte) ([]byte, error) {
+func (c *HTTPSessionClient) roundTrip(ctx context.Context, method, route string, body []byte) ([]byte, error) {
+	elem := c.elem(route)
 	endpoint, err := url.Parse(c.BaseURL)
 	if err != nil {
 		return nil, err
@@ -326,6 +500,9 @@ func (c *HTTPSessionClient) roundTrip(ctx context.Context, method, elem string, 
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if c.Password != "" {
+		req.SetBasicAuth(c.Username, c.Password)
 	}
 	client := c.HTTP
 	if client == nil {

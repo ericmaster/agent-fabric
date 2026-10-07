@@ -97,9 +97,19 @@ type Config struct {
 	// DrainMaxJobs caps the jobs one drain worker pass may process.
 	DrainMaxJobs int `json:"drain_max_jobs,omitempty"`
 	// DispatchEndpoint selects the OpenCode session transport generation:
-	// "prompt" (default, <=1.18.x) or "message" (2.x prompt_async + message
-	// reconcile). Empty means the default.
+	// "prompt" (default, <=1.18.x) or "message" (the verified live 2.x
+	// contract: /api prefix, Basic auth, data envelopes, sync prompt).
+	// Empty means the default.
 	DispatchEndpoint string `json:"dispatch_endpoint,omitempty"`
+	// DispatchServerUsername is the HTTP Basic username for the session
+	// transport. Empty falls back to OPENCODE_SERVER_USERNAME, then the
+	// documented server default "opencode".
+	DispatchServerUsername string `json:"dispatch_server_username,omitempty"`
+	// DispatchServerPassword is the HTTP Basic password for the session
+	// transport. Empty falls back to the server process env
+	// (OPENCODE_PASSWORD, then OPENCODE_SERVER_PASSWORD). It is only ever
+	// sent as the Authorization header — never logged or persisted.
+	DispatchServerPassword string `json:"dispatch_server_password,omitempty"`
 }
 
 // DefaultConfig returns the conservative defaults of the config contract.
@@ -234,6 +244,7 @@ var configJSONKeys = map[string]struct{}{
 	"dispatch_directory": {}, "dispatch_timeout": {}, "canonical_roots": {},
 	"reviewer": {}, "state_dir": {}, "max_repair_attempts": {},
 	"spool_max_bytes": {}, "drain_max_jobs": {}, "dispatch_endpoint": {},
+	"dispatch_server_username": {}, "dispatch_server_password": {},
 }
 
 // UnmarshalJSON decodes a config document over the receiver so omitted keys
@@ -314,6 +325,12 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if err := assign("dispatch_directory", &c.DispatchDirectory); err != nil {
+		return err
+	}
+	if err := assign("dispatch_server_username", &c.DispatchServerUsername); err != nil {
+		return err
+	}
+	if err := assign("dispatch_server_password", &c.DispatchServerPassword); err != nil {
 		return err
 	}
 	if err := assign("canonical_roots", &c.CanonicalRoots); err != nil {
