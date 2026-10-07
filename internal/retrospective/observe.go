@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Envelope schema and staging bounds. Bounds stop an exuberant server from
@@ -491,17 +492,38 @@ func stageRecords(redactor *Redactor, records []EnvelopeRecord, spool *Spool) in
 }
 
 // truncateRecord clips one oversize record field to the cap; the drain-time
-// server reconcile restores full observable state when possible.
+// server reconcile restores full observable state when possible. Clips back
+// to the nearest rune start (the Phase 1 utf8Slices discipline: a mid-rune
+// cut would surface as U+FFFD after JSON marshal and fail byte-equality
+// against the backfilled evidence).
 // Spec: docs/specs/task-retrospective.md via stageRecords
 func truncateRecord(record *EnvelopeRecord) {
 	for _, field := range []*string{&record.Text, &record.Input, &record.Output, &record.Title, &record.Error, &record.Path, &record.Directory} {
 		if len(*field) > EnvelopeRecordMaxBytes {
-			*field = (*field)[:EnvelopeRecordMaxBytes]
+			*field = clipRuneBoundary(*field, EnvelopeRecordMaxBytes)
 		}
 	}
 	if len(record.Detail) > EnvelopeErrorDetailBytes {
-		record.Detail = record.Detail[:EnvelopeErrorDetailBytes]
+		record.Detail = clipRuneBoundary(record.Detail, EnvelopeErrorDetailBytes)
 	}
+}
+
+// clipRuneBoundary returns the first limit bytes of value, backed off to the
+// nearest rune start so the result is valid UTF-8. A single oversize rune is
+// kept whole.
+// Spec: docs/specs/task-retrospective.md via truncateRecord
+func clipRuneBoundary(value string, limit int) string {
+	if limit < 1 || len(value) <= limit {
+		return value
+	}
+	end := limit
+	for end > 0 && !utf8.RuneStart(value[end]) {
+		end--
+	}
+	if end == 0 {
+		end = 1
+	}
+	return value[:end]
 }
 
 // upsert merges one envelope record into the spool.
@@ -759,8 +781,12 @@ func writeSpoolBounded(cfg *Config, store *Store, spool *Spool) error {
 	}
 	if len(body) > limit {
 		// A spool whose fixed metadata alone exceeds the bound: refuse
-		// growth and keep the previously staged document inspectable.
-		spool.Overflows++
+		// growth and keep the previously staged document inspectable. The
+		// in-memory spool is discarded by callers on this error, so the
+		// count is deliberately not incremented here — an unpersisted bump
+		// would leave memory and disk inconsistent. The refusal itself is
+		// the observable record (ingest exits 1 with this message on
+		// stderr; drain jobs fail with it recorded).
 		return errors.New("retrospective spool bound exceeded; refusing growth")
 	}
 	if dropped > 0 {
@@ -778,7 +804,8 @@ func writeSpoolBounded(cfg *Config, store *Store, spool *Spool) error {
 			return err
 		}
 		if len(spooledBody) > limit {
-			spool.Overflows++
+			// Same consistency rule as above: no unpersisted bump; the
+			// refusal is the observable record.
 			return errors.New("retrospective spool bound exceeded; refusing growth")
 		}
 		body = spooledBody

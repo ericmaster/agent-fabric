@@ -406,14 +406,12 @@ func coordinatorFindings(store *Store, taskID string) ([]Finding, error) {
 }
 
 // drainReportName is one stable per-task report file name; WriteReport
-// replaces it atomically.
+// replaces it atomically. Task ids are always hashed to 65 chars by spoolKey
+// (colon syntax never reaches a filename), so no secondary truncation is
+// applied here.
 // Spec: docs/specs/task-retrospective.md via processDrainJob
 func drainReportName(taskID string) string {
-	name := spoolKey(taskID)
-	if len(name) > 80 {
-		name = name[:80]
-	}
-	return "drain-" + name + ".json"
+	return "drain-" + spoolKey(taskID) + ".json"
 }
 
 // spoolIntervalEnd returns the highest staged sequence of one spool.
@@ -465,7 +463,9 @@ func choiceClientFor(cfg *Config, apiKey string) ChoiceClient {
 // reconcileServer merges the terminal server snapshot (message history of the
 // owner and its descendant tree) into the staged spools and returns gaps. A
 // capability miss (404/501) leaves the streamed coverage intact; every other
-// transport failure is a gap, never invented coverage.
+// transport failure is a gap, never invented coverage. The owner's history is
+// fetched exactly once per job and handed to the backfill; only a failed
+// probe falls back to a diagnostic gap without any fetch.
 // Spec: docs/specs/task-retrospective.md via processDrainJob
 func reconcileServer(ctx context.Context, cfg *Config, store *Store, spool *Spool, serverURL string) []Gap {
 	base := firstNonEmpty(serverURL, cfg.DispatchServer, spool.ServerURL)
@@ -473,7 +473,8 @@ func reconcileServer(ctx context.Context, cfg *Config, store *Store, spool *Spoo
 		return nil
 	}
 	client := &HTTPSessionClient{BaseURL: base, Generation: cfg.DispatchEndpoint}
-	if _, err := client.Messages(ctx, spool.SessionID); err != nil {
+	rows, err := client.Messages(ctx, spool.SessionID)
+	if err != nil {
 		if errors.Is(err, ErrCapability) {
 			return nil
 		}
@@ -481,24 +482,36 @@ func reconcileServer(ctx context.Context, cfg *Config, store *Store, spool *Spoo
 	}
 	var gaps []Gap
 	budget := DrainMaxBackfillChildren
-	gaps = append(gaps, backfillSession(ctx, client, store, cfg, spool.SessionID, &budget)...)
+	gaps = append(gaps, backfillSession(ctx, client, store, cfg, spool.SessionID, &budget, rows)...)
 	return gaps
 }
 
-// backfillSession fetches one session's message history into its staged spool
-// and recurses into its observed descendants.
+// backfillSession merges one session's fetched message history into its
+// staged spool (load+stage+write under that session's spool lock, the same
+// lock the ingest path holds) and recurses into its observed descendants.
+// Lock order is always drain.lock → spool.lock (the ingest path takes only
+// the spool lock), so a concurrent plugin flush cannot lose staged records
+// to this backfill and no deadlock is possible.
 // Spec: docs/specs/task-retrospective.md via reconcileServer
-func backfillSession(ctx context.Context, client *HTTPSessionClient, store *Store, cfg *Config, sessionID string, budget *int) []Gap {
+func backfillSession(ctx context.Context, client *HTTPSessionClient, store *Store, cfg *Config, sessionID string, budget *int, rows []SessionMessageRow) []Gap {
+	unlock, err := spoolLock(store, sessionID)
+	if err != nil {
+		return []Gap{{Kind: "partial_stream", Detail: "spool lock " + sessionID + ": " + boundedGapDetail(err.Error())}}
+	}
+	defer unlock()
 	spool, err := loadSpool(store, sessionID)
 	if err != nil {
 		return []Gap{{Kind: "partial_stream", Detail: "spool " + sessionID + ": " + boundedGapDetail(err.Error())}}
 	}
-	rows, err := client.Messages(ctx, sessionID)
-	if err != nil {
-		if errors.Is(err, ErrCapability) {
-			return nil
+	if rows == nil {
+		fetched, err := client.Messages(ctx, sessionID)
+		if err != nil {
+			if errors.Is(err, ErrCapability) {
+				return nil
+			}
+			return []Gap{{Kind: "partial_stream", Detail: "message reconcile failed: " + sessionID + ": " + boundedGapDetail(err.Error())}}
 		}
-		return []Gap{{Kind: "partial_stream", Detail: "message reconcile failed: " + sessionID + ": " + boundedGapDetail(err.Error())}}
+		rows = fetched
 	}
 	var records []EnvelopeRecord
 	for _, row := range rows {
@@ -535,7 +548,7 @@ func backfillSession(ctx context.Context, client *HTTPSessionClient, store *Stor
 		if *budget < 0 {
 			return append(gaps, Gap{Kind: "partial_stream", Detail: "child reconcile cap reached before " + id})
 		}
-		gaps = append(gaps, backfillSession(ctx, client, store, cfg, id, budget)...)
+		gaps = append(gaps, backfillSession(ctx, client, store, cfg, id, budget, nil)...)
 	}
 	return gaps
 }
@@ -594,13 +607,11 @@ func partEnvelopeRecord(row *SessionPartRow) EnvelopeRecord {
 	return record
 }
 
-// limitRecordBytes clips a string to the record cap.
-// Spec: docs/specs/task-retrospective.md via truncateRecord
+// limitRecordBytes clips a string to the record cap, backed off to the
+// nearest rune start (same discipline as clipRuneBoundary).
+// Spec: docs/specs/task-retrospective.md via partEnvelopeRecord
 func limitRecordBytes(value string) string {
-	if len(value) > EnvelopeRecordMaxBytes {
-		return value[:EnvelopeRecordMaxBytes]
-	}
-	return value
+	return clipRuneBoundary(value, EnvelopeRecordMaxBytes)
 }
 
 // rawErrorName extracts a bounded error name/text from a raw error value.
@@ -977,11 +988,8 @@ func terminalEventStatus(spool *Spool) (string, string) {
 	return TaskStatusError, last.Detail
 }
 
-// limitDetail clips a string to the record cap.
+// limitDetail clips a string to the record cap, rune-safe.
 // Spec: docs/specs/task-retrospective.md via limitRecordBytes
 func limitDetail(value string) string {
-	if len(value) > EnvelopeRecordMaxBytes {
-		return value[:EnvelopeRecordMaxBytes]
-	}
-	return value
+	return clipRuneBoundary(value, EnvelopeRecordMaxBytes)
 }

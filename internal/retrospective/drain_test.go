@@ -726,3 +726,66 @@ func TestStatusCountsJobsAndSpools(t *testing.T) {
 		t.Fatalf("spools: %d", status.Spools)
 	}
 }
+
+func TestBackfillConcurrentWithIngestLosesNoRecords(t *testing.T) {
+	// Regression: backfillSession serializes on the per-session spool lock,
+	// the same lock IngestEnvelope holds, so a plugin flush racing a drain
+	// backfill can no longer rename-overwrite the newer staged records.
+	f := newLoopFixture(t, successScript(t))
+	f.setEnabledFor(t, t.TempDir(), true)
+	session := "ses_race"
+	// Seed a spool with several staged parts the backfill will keep.
+	seed := &Envelope{Version: EnvelopeSchemaVersion, Harness: HarnessOpenCode, SessionID: session, Records: []EnvelopeRecord{
+		{Kind: "session", SessionID: session, Title: "race", Directory: f.root},
+		{Kind: "message", RecordID: "msg_u", SessionID: session, Role: "user"},
+	}}
+	for i := 0; i < 8; i++ {
+		id := fmt.Sprintf("prt_seed_%d", i)
+		seed.Records = append(seed.Records, EnvelopeRecord{Kind: "part", RecordID: id, SessionID: session, MessageID: "msg_u", PartType: "text", Text: fmt.Sprintf("seed %d", i)})
+	}
+	if _, err := IngestEnvelope(IngestOptions{Config: f.cfg, Store: f.store}, seed); err != nil {
+		t.Fatal(err)
+	}
+	// The server backfill returns an empty history (no overlap with staged
+	// rows); the race is the merge window itself, exercised by hammering
+	// ingest flushes against serialized backfills.
+	client := &HTTPSessionClient{BaseURL: f.sessionAPI.URL, Generation: f.cfg.DispatchEndpoint}
+	var wg sync.WaitGroup
+	errs := make(chan error, 64)
+	for i := 0; i < 16; i++ {
+		wg.Add(2)
+		go func(n int) {
+			defer wg.Done()
+			flush := &Envelope{Version: EnvelopeSchemaVersion, Harness: HarnessOpenCode, SessionID: session, Records: []EnvelopeRecord{
+				{Kind: "part", RecordID: fmt.Sprintf("prt_flush_%d", n), SessionID: session, MessageID: "msg_u", PartType: "text", Text: fmt.Sprintf("flush %d", n)},
+			}}
+			if _, err := IngestEnvelope(IngestOptions{Config: f.cfg, Store: f.store}, flush); err != nil {
+				errs <- err
+			}
+		}(i)
+		go func() {
+			defer wg.Done()
+			budget := DrainMaxBackfillChildren
+			backfillSession(context.Background(), client, f.store, f.cfg, session, &budget, nil)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
+	}
+	spool, err := loadSpool(f.store, session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 8; i++ {
+		if spool.Parts[fmt.Sprintf("prt_seed_%d", i)] == nil {
+			t.Fatalf("seed part %d lost to the backfill race", i)
+		}
+	}
+	for i := 0; i < 16; i++ {
+		if spool.Parts[fmt.Sprintf("prt_flush_%d", i)] == nil {
+			t.Fatalf("flush part %d lost to the backfill race", i)
+		}
+	}
+}

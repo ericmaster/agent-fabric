@@ -655,9 +655,14 @@ state directory, written temp-file + rename behind the shared `spool.lock`:
 | `suppressed` | true once the session matched a suppression rule |
 
 Bounds are enforced at ingest: envelope ≤ 2,000 records, each record field
-≤ 64 KiB, spool size ≤ `spool_max_bytes` (default 2,000,000). Over the spool
-bound the remainder of that envelope is dropped with a `partial_stream` gap
-and an `overflows` increment; backfill may restore the evidence later.
+≤ 64 KiB (clipped to the nearest rune start, so truncation never produces
+replacement characters), spool size ≤ `spool_max_bytes` (default
+2,000,000). Over the spool bound the remainder of that envelope is dropped
+with a `partial_stream` gap and an `overflows` increment; backfill may
+restore the evidence later. A bound refusal that leaves fixed metadata alone
+above the bound discards the in-memory spool and keeps the last persisted
+document: the refusal is the observable record, not an unpersisted counter
+bump, so memory and disk stay consistent.
 
 ### Event → trace normalization mapping (drain, Go side)
 
@@ -716,9 +721,13 @@ worker. The worker:
   re-scanning after the last pass to pick up jobs created while it ran
   (bounded re-check), then exits — there is no always-on daemon;
 - per job: reconciles the terminal snapshot from the server when
-  `server_url` is known (message-history upsert for the owner and every
-  known child, marking a `partial_stream` gap when the reconcile fails —
-  transport errors are recorded as gaps, never invented as coverage);
+  `server_url` is known (the owner's history fetched exactly once per job;
+  every spool load+stage+write — owner and children — holds that session's
+  spool lock in drain.lock → spool.lock order, the same lock ingest holds,
+  so a racing plugin flush can never lose staged records; the only other
+  lock order is ingest's spool-lock-only, so no deadlock is possible;
+  marking a `partial_stream` gap when the reconcile fails — transport
+  errors are recorded as gaps, never invented as coverage);
   assembles the trace; validates; runs `analyze` (Jev budgets per config);
   writes the report into `<state>/reports/`; runs `dispatch` under the same
   global-enable re-check and request budgets; records the receipt status in
@@ -808,7 +817,10 @@ The plugin is an opt-in owned asset, never a default install:
 - Go replay tests replay the same fixtures through `ingest` covering
   streamed updates, duplicate/out-of-order terminal events, root/child
   aggregation, abort/error-then-idle, multi-turn boundaries, history
-  compaction, restart resume, and learning-session suppression.
+  compaction, restart resume, learning-session suppression,
+  concurrent-ingest-vs-backfill serialization (no lost staged records),
+  rune-safe truncation (no replacement characters), and bound-refusal
+  memory/disk consistency.
 - Loop e2e tests run ingest → drain → analyze (mock Jev endpoint) → dispatch
   (mock session server) and prove: only the bounded stage-one payload is sent
   before the success gate, stage-two pages only after success, exactly one

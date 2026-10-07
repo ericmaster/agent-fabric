@@ -21,8 +21,9 @@ func spawnDrainWorker(cliBin string) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	// The detached worker is reaped by waitpid reaping via the kernel-side
-	// session leader; drop the handle so the child outlives this process.
+	// The child runs in its own session (Setsid) and the caller drops the
+	// handle immediately: the daemon-less worker outlives this process and
+	// is reaped by init/systemd (PID 1) when it exits.
 	go func() { _, _ = cmd.Process.Wait() }()
 	return nil
 }

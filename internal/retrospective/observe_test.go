@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 )
 
 // fixtureRoot resolves the recorded OpenCode replay fixtures (shared with
@@ -612,5 +613,72 @@ func TestInstructionLikePathFilter(t *testing.T) {
 		if got := instructionLikePath(path); got != want {
 			t.Fatalf("instructionLikePath(%s) = %t, want %t", path, got, want)
 		}
+	}
+}
+
+func TestTruncateRecordIsRuneSafe(t *testing.T) {
+	// Multi-byte runes straddling the 64 KiB cap must be backed off to a
+	// rune start (the Phase 1 utf8Slices discipline), never byte-split into
+	// U+FFFD on marshal.
+	multi := strings.Repeat("é☃🚨x", 40*1024) // ~7 bytes per cycle, > 64 KiB total
+	record := EnvelopeRecord{Kind: "part", RecordID: "p", MessageID: "m", Text: multi, Input: multi, Output: multi}
+	truncateRecord(&record)
+	for name, field := range map[string]string{"text": record.Text, "input": record.Input, "output": record.Output} {
+		if !utf8.ValidString(field) {
+			t.Fatalf("%s is not valid UTF-8 after truncation", name)
+		}
+		if len(field) > EnvelopeRecordMaxBytes {
+			t.Fatalf("%s exceeds the cap: %d", name, len(field))
+		}
+		if !strings.HasPrefix(multi, field) {
+			t.Fatalf("%s is not a prefix of the source", name)
+		}
+	}
+	body, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "\\ufffd") {
+		t.Fatalf("truncation produced replacement characters")
+	}
+	// An oversize single rune survives whole rather than vanishing.
+	huge := strings.Repeat("字", 100*1024)
+	clipped := clipRuneBoundary(huge, EnvelopeRecordMaxBytes)
+	if !utf8.ValidString(clipped) || len(clipped) == 0 {
+		t.Fatalf("oversize single-rune clipping invalid: %d bytes", len(clipped))
+	}
+	// Detail clips to its own bound, rune-safe as well.
+	record = EnvelopeRecord{Kind: "event", Detail: multi}
+	truncateRecord(&record)
+	if !utf8.ValidString(record.Detail) || len(record.Detail) > EnvelopeErrorDetailBytes {
+		t.Fatalf("detail clipping wrong: valid=%t len=%d", utf8.ValidString(record.Detail), len(record.Detail))
+	}
+}
+
+func TestWriteSpoolBoundRefusalKeepsDiskConsistent(t *testing.T) {
+	// When fixed metadata alone exceeds the bound, the write refuses and
+	// the on-disk document keeps its prior count: no unpersisted bump.
+	store := testStore(t)
+	cfg := observationConfig(store)
+	cfg.SpoolMaxBytes = 256
+	spool, err := loadSpool(store, "ses_tiny")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeSpoolBounded(cfg, store, spool); err != nil {
+		t.Fatalf("empty spool must fit a 256-byte bound: %v", err)
+	}
+	before := loadSpoolFor(t, store, "ses_tiny")
+	if before.Overflows != 0 {
+		t.Fatalf("fresh spool overflows = %d", before.Overflows)
+	}
+	// Blow the fixed metadata past the bound: one giant session title.
+	spool.Sessions = map[string]*SpoolSession{"ses_tiny": {Title: strings.Repeat("T", 1024)}}
+	if err := writeSpoolBounded(cfg, store, spool); err == nil {
+		t.Fatal("expected a refusal when fixed metadata exceeds the bound")
+	}
+	after := loadSpoolFor(t, store, "ses_tiny")
+	if after.Overflows != 0 {
+		t.Fatalf("refusal must not bump the persisted count: %d", after.Overflows)
 	}
 }
