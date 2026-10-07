@@ -203,6 +203,30 @@ Declared Root, locator, hook, and inspection boundaries live only in
 that those safeguards render through every adapter; they do not prove model
 compliance or add runtime transport.
 
+## Task Retrospective (opt-in)
+
+Agent Fabric can observe OpenCode tasks, replay them through a bounded
+success-gated retrospective, and dispatch one visible correcting root that
+repairs verified instruction defects — after one explicit opt-in only:
+
+```sh
+agf install --all --tools opencode --assets retrospective --yes
+agf retrospective enable
+```
+
+The observation loop is `hooks/retrospective/opencode.ts` (a thin
+self-contained OpenCode plugin that forwards versioned event envelopes to the
+packaged CLI over stdin) plus `agf retrospective ingest` (spooled staging) and
+`agf retrospective drain` (a daemon-less detached worker). Success gating,
+evaluation, dispatch, suppression of its own learning sessions, and every
+business rule live in the Go CLI; the OpenCode server is contacted only for
+the visible correcting root and terminal reconciliation. A
+`.retrospective-disabled` marker file in a project tree scopes it off.
+Setup, status, disable, and recovery are documented in
+[`docs/runbooks/task-retrospective.md`](docs/runbooks/task-retrospective.md);
+the full contract in
+[`docs/specs/task-retrospective.md`](docs/specs/task-retrospective.md).
+
 ## Release And Maintainer Checks
 
 ```sh

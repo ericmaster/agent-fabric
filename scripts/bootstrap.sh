@@ -52,8 +52,8 @@ mkdir -p "$install_dir"
 tar -xzf "$tmp/$asset" -C "$tmp"
 if [[ "$os" == windows ]]; then bin="agent-fabric.exe"; else bin="agent-fabric"; fi
 install -m 0755 "$tmp/$bin" "$install_dir/$bin"
-rm -rf "$install_dir/agents" "$install_dir/adapters" "$install_dir/assets"
-cp -R "$tmp/agents" "$tmp/adapters" "$install_dir/"
+rm -rf "$install_dir/agents" "$install_dir/adapters" "$install_dir/hooks" "$install_dir/assets"
+cp -R "$tmp/agents" "$tmp/adapters" "$tmp/hooks" "$install_dir/"
 if [[ -d "$tmp/assets" ]]; then
   cp -R "$tmp/assets" "$install_dir/"
 fi

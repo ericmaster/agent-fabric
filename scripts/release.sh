@@ -13,7 +13,11 @@ for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; d
   work="$(mktemp -d)"
   GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$work/agent-fabric${suffix}" "$root/cmd/agent-fabric"
   cp -R "$root/agents" "$root/adapters" "$root/hooks" "$root/assets" "$work/"
-  find -P "$work" \( -name '__pycache__' -o -name '*.pyc' \) -prune -exec rm -rf {} +
+  # The retrospective hooks package ships its runtime plugin file and npm
+  # metadata only; its developer tooling (tests, record tools, fixtures,
+  # compiled build output, installed node_modules) stays out of the archive.
+  find -P "$work" \( -name '__pycache__' -o -name '*.pyc' -o -name 'node_modules' -o -name 'dist' -o -name '*.tsbuildinfo' -o -name '.record-captures.jsonl' \) -prune -exec rm -rf {} +
+  rm -rf "$work/hooks/retrospective/tests" "$work/hooks/retrospective/tools"
   tar -C "$work" -czf "$out/${name}.tar.gz" "agent-fabric${suffix}" agents adapters hooks assets
   rm -rf "$work"
 done

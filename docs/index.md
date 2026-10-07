@@ -35,8 +35,8 @@ document's home is ambiguous, and apply the frontmatter from §4.
 ## Specs
 
 - [`specs/agent-fabric.md`](specs/agent-fabric.md) — Portable agent schema, multi-harness adapter rendering, and manifest tracking.
-- [`specs/task-retrospective.md`](specs/task-retrospective.md) — Task retrospective replay, report schema v1, and Phase 2 dispatch/repair.
+- [`specs/task-retrospective.md`](specs/task-retrospective.md) — Task retrospective replay, report schema v1, dispatch/repair, and the Phase 3 OpenCode observation loop.
 
 ## Runbooks
 
-<!-- TODO: one line per runbook -->
+- [`runbooks/task-retrospective.md`](runbooks/task-retrospective.md) — Opt-in OpenCode observation loop: setup, disable, status, recovery.
