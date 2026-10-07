@@ -34,6 +34,8 @@ var (
 	// ErrMalformedResponse is returned when a 200 response is not parseable
 	// into the choice contract across all attempts.
 	ErrMalformedResponse = errors.New("jev: malformed response")
+	// ErrInvalidRequest is an encoding/validation failure, never a size rejection.
+	ErrInvalidRequest = errors.New("evaluator: invalid request")
 )
 
 // systemOnePath is the shared decision-engine route appended to the endpoint.
@@ -203,12 +205,12 @@ func NewJevClient(endpoint, apiKey string, cfg *Config) *JevClient {
 // Spec: docs/specs/task-retrospective.md via JevClient
 func systemOneWireRequest(request *ChoiceRequest) (*systemOneRequest, error) {
 	if request == nil {
-		return nil, ErrContentOverBudget
+		return nil, ErrInvalidRequest
 	}
 	state := request.State
 	var stateMap map[string]json.RawMessage
 	if err := json.Unmarshal(state, &stateMap); err != nil || stateMap == nil {
-		return nil, ErrContentOverBudget
+		return nil, ErrInvalidRequest
 	}
 	var evidence map[string]json.RawMessage
 	for _, question := range providerQuestions(request) {
@@ -216,7 +218,7 @@ func systemOneWireRequest(request *ChoiceRequest) (*systemOneRequest, error) {
 			continue
 		}
 		if !json.Valid(question.Evidence) || bytes.Equal(bytes.TrimSpace(question.Evidence), []byte("null")) {
-			return nil, ErrContentOverBudget
+			return nil, ErrInvalidRequest
 		}
 		if evidence == nil {
 			evidence = make(map[string]json.RawMessage)
@@ -251,18 +253,18 @@ func systemOneWireRequest(request *ChoiceRequest) (*systemOneRequest, error) {
 	}
 	for _, question := range providerQuestions(request) {
 		if question.ID == "" || question.Subject == "" || question.Text == "" || len(question.Choices) == 0 || len(question.Choices) > 255 {
-			return nil, ErrContentOverBudget
+			return nil, ErrInvalidRequest
 		}
 		if _, exists := wire.Questions[question.ID]; exists {
-			return nil, ErrContentOverBudget
+			return nil, ErrInvalidRequest
 		}
 		criteria := make(map[string]string, len(question.Choices))
 		for _, choice := range question.Choices {
 			if choice == "" {
-				return nil, ErrContentOverBudget
+				return nil, ErrInvalidRequest
 			}
 			if _, exists := criteria[choice]; exists {
-				return nil, ErrContentOverBudget
+				return nil, ErrInvalidRequest
 			}
 			criteria[choice] = choice
 		}
@@ -312,7 +314,7 @@ func (j *JevClient) Choice(ctx context.Context, request *ChoiceRequest) (*Choice
 		return nil, fmt.Errorf("jev client requires a config")
 	}
 	if request == nil {
-		return nil, ErrContentOverBudget
+		return nil, ErrInvalidRequest
 	}
 	if j.profile != EvaluatorGlide {
 		return nil, fmt.Errorf("%w: Jev contract is not verified", ErrPermanent)
@@ -322,7 +324,7 @@ func (j *JevClient) Choice(ctx context.Context, request *ChoiceRequest) (*Choice
 	request = &copyRequest
 	wire, err := systemOneWireRequest(request)
 	if err != nil {
-		return nil, ErrContentOverBudget
+		return nil, fmt.Errorf("encode evaluator request: %w", err)
 	}
 	body, err := json.Marshal(wire)
 	if err != nil {

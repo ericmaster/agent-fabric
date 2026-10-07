@@ -57,6 +57,11 @@ agf retrospective enable
 (every route under `/api` with HTTP Basic auth — run the server with
 `OPENCODE_PASSWORD` set so the loop can authenticate; flat-text prompt
 delivery via `POST /api/session/{id}/prompt` + message-history reconcile).
+The Basic credential destination is exactly the configured server origin
+(scheme + hostname + effective port). Observer or persisted URLs cannot
+retarget it, even to another loopback port. Invalid collection URLs leave a
+gap; mismatched backfill origins send no request. Never put credentials,
+queries, fragments or non-root paths in a server URL.
 `"prompt"` is the legacy 1.18.x transport default.
 
 4. The drain worker inherits the Fastino key from the host environment
@@ -73,7 +78,10 @@ blocks a session on evaluation. OpenCode must be restarted to load, unload, or
 replace the plugin file.
 
 The verified 2.0.24 user-message echo confirms prompt delivery only, not
-agent/model selection or autonomous correction completion. Visible-root
+agent/model selection or autonomous correction completion: extra agent/model
+keys are ignored, so the live prompt sends text only. A root must echo the
+authorized execution/dispatch directory before any prompt or local repair;
+absent/mismatched directory remains pending with no such side effects. Visible-root
 reconnect/repair QA and live provider calibration remain unverified.
 
 ## Scoped disable (without a global off)
@@ -99,6 +107,12 @@ Reports/traces under `reports/` and `traces/` are retained 30 days; finding
 rows until the source hash changes.
 
 ## Recovery
+
+- **Backfill authentication rejected (401/403).** Configure the trusted
+  server password and restart with a matching environment; random generated
+  server passwords are not discoverable by the loop. This is an actionable
+  completeness gap, not a queued dispatch receipt. Ineligible reports do not
+  create receipts. An eligible dispatch rejected by auth remains pending.
 
 - **A drain worker crashed.** Jobs left in `running`/`pending` are resumed by
   the next trigger, or start one now: `agf retrospective drain`. A second

@@ -8,17 +8,17 @@
     },
     "POST /api/session": {
       "auth": true,
-      "request": { "title": "string", "parentID": "optional string" },
-      "response": { "data": { "id": "ses_…", "parentID": "absent for roots", "projectID": "…", "title": "…", "time": { "created": 0, "updated": 0 }, "location": { "directory": "…" } } }
+      "request": { "title": "learning fixture" },
+      "response": { "data": { "id": "ses_fixture", "projectID": "project_fixture", "title": "learning fixture", "time": { "created": 0, "updated": 0 }, "location": { "directory": "/fixture/project" } } }
     },
     "GET /api/session": {
       "auth": true,
       "paginated": "?cursor=<cursor.next> until next is null; page limit fails closed",
-      "response": { "data": [ "session objects as above" ], "cursor": { "previous": null, "next": null } }
+      "response": { "data": [ { "id": "ses_fixture", "projectID": "project_fixture", "title": "learning fixture", "location": { "directory": "/fixture/project" } } ], "cursor": { "previous": null, "next": null } }
     },
     "GET /api/session/{id}": {
       "auth": true,
-      "response": { "data": { "session object" } }
+      "response": { "data": { "id": "ses_fixture", "projectID": "project_fixture", "title": "learning fixture", "location": { "directory": "/fixture/project" } } }
     },
     "GET /api/session/{id}/message": {
       "auth": true,
@@ -27,9 +27,9 @@
     },
     "POST /api/session/{id}/prompt": {
       "auth": true,
-      "request": { "text": "string", "agent": "optional, accepted", "model": "optional, accepted" },
+      "request": { "text": "string" },
       "response": { "data": { "id": "msg_…", "sessionID": "ses_…", "time": { "created": 0 }, "type": "user", "payload": { "text": "…" }, "delivery": "steer" } },
-      "notes": "Synchronous; 2xx confirms delivery of the user message without a configured model. prompt_async and message POST routes do NOT exist on 2.0.24 (404)."
+      "notes": "Synchronous; 2xx confirms user-message delivery only (delivery=steer), not autonomous correction. Extra agent/model keys are ignored; role/model selection is not verified. prompt_async and message POST routes do NOT exist on 2.0.24 (404)."
     }
   },
   "rejected_assumptions": {

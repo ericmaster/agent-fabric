@@ -73,6 +73,7 @@ go build -o agent-fabric ./cmd/agent-fabric
 - Unit tests in `internal/agent`, `internal/adapter`, `internal/manifest`, `internal/retrospective`, and `cmd/agent-fabric`.
 - Golden fixture comparison in `internal/adapter/adapter_test.go` checks rendered output against `fixtures/`.
 - Retrospective uses Fastino GLiDE by default (`FASTINO_API_KEY`, `/v1/systemone`); Jev is unavailable pending verified contract. Tests use local mock HTTP/synthetic traces only, never real provider keys or servers. Live prompt delivery is not autonomous-correction QA.
+- Retrospective Basic auth is bound to the configured dispatch origin (scheme/host/effective port); observer/persisted URLs cannot grant authority. Live correcting roots must echo the intended directory before repair/prompt; 2.0.24 accepts text delivery, not agent/model selection.
 - The retrospective hooks package (`hooks/retrospective/`) owns the npm/TS tooling: `npm ci --prefix hooks/retrospective`, then `npm test --prefix hooks/retrospective` and `npm run typecheck --prefix hooks/retrospective` are deterministic and offline after ci. Recorded OpenCode event/envelope fixtures are shared with the Go replay tests in `fixtures/retrospective/opencode/`.
 - Release/bootstrap fixture tests: `python3 -m unittest discover -s tests -p 'test_retrospective_release.py'` (local fake curl; no network, no real OpenCode server).
 - Run `go test ./...` before committing.

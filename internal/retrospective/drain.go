@@ -225,6 +225,10 @@ func persistTriggerJob(opts IngestOptions, spool *Spool) (*DrainJob, bool, error
 // Spec: docs/specs/task-retrospective.md via RunDrain
 func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock func() time.Time, job DrainJob) string {
 	cfg := opts.Config
+	originalJobURL := job.ServerURL
+	if job.ServerURL != "" && !collectionServerURL(job.ServerURL, cfg) {
+		job.ServerURL = ""
+	}
 	now := clock().UTC().Format(time.RFC3339)
 	save := func(status, message string) string {
 		job.Status = status
@@ -267,8 +271,28 @@ func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock
 	if spool.SessionID != job.SessionID {
 		return save(JobFailed, fmt.Sprintf("staged spool belongs to %q, job says %q", spool.SessionID, job.SessionID))
 	}
+	invalidSpoolURL := spool.ServerURL != "" && !collectionServerURL(spool.ServerURL, cfg)
+	if invalidSpoolURL {
+		unlock, err := spoolLock(store, spool.SessionID)
+		if err != nil {
+			return save(JobFailed, "cannot sanitize invalid persisted server URL")
+		}
+		latest, err := loadSpool(store, spool.SessionID)
+		if err == nil {
+			latest.ServerURL = ""
+			latest.Gaps = append(latest.Gaps, Gap{Kind: "partial_stream", Detail: "persisted observation server URL rejected; no backfill request sent"})
+			err = writeSpoolBounded(cfg, store, latest)
+			spool = latest
+		}
+		unlock()
+		if err != nil {
+			return save(JobFailed, "cannot sanitize invalid persisted server URL")
+		}
+	}
 	trace := assembleTrace(store, spool, spool.SessionID)
-	trace.Gaps = append(trace.Gaps, reconcileServer(ctx, cfg, store, spool, job.ServerURL)...)
+	if !invalidSpoolURL {
+		trace.Gaps = append(trace.Gaps, reconcileServer(ctx, cfg, store, spool, originalJobURL)...)
+	}
 	if !rootTriggerCandidate(spool, job.SessionID) {
 		return save(JobSkipped, "non-root session observed; the owning root aggregates it")
 	}
@@ -472,6 +496,11 @@ func reconcileServer(ctx context.Context, cfg *Config, store *Store, spool *Spoo
 	if base == "" {
 		return nil
 	}
+	for _, location := range []string{base, spool.ServerURL, serverURL} {
+		if location != "" && (!collectionServerURL(location, cfg) || !trustedServerURL(location, cfg.DispatchServer)) {
+			return []Gap{{Kind: "partial_stream", Detail: "backfill server origin is not the configured trusted dispatch origin; no credentials or request sent"}}
+		}
+	}
 	client := OpenSessionClient(cfg)
 	client.BaseURL = base
 	rows, err := client.Messages(ctx, spool.SessionID)
@@ -552,6 +581,17 @@ func backfillLoadStage(ctx context.Context, client *HTTPSessionClient, store *St
 	spool, err := loadSpool(store, sessionID)
 	if err != nil {
 		return nil, []Gap{{Kind: "partial_stream", Detail: "spool " + sessionID + ": " + boundedGapDetail(err.Error())}}
+	}
+	if spool.ServerURL != "" && (!collectionServerURL(spool.ServerURL, cfg) || !trustedServerURL(spool.ServerURL, cfg.DispatchServer)) {
+		gap := Gap{Kind: "partial_stream", Detail: "persisted descendant/server origin rejected; no backfill request sent"}
+		if !collectionServerURL(spool.ServerURL, cfg) {
+			spool.ServerURL = ""
+			spool.Gaps = append(spool.Gaps, gap)
+			if err := writeSpoolBounded(cfg, store, spool); err != nil {
+				return nil, []Gap{{Kind: "partial_stream", Detail: "cannot sanitize persisted descendant server URL"}}
+			}
+		}
+		return nil, []Gap{gap}
 	}
 	if rows == nil {
 		fetched, err := client.Messages(ctx, sessionID)

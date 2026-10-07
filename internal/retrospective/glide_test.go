@@ -94,9 +94,13 @@ func TestGlideRedirectNeverTransmitsKey(t *testing.T) {
 	defer source.Close()
 	cfg := DefaultConfig()
 	cfg.Endpoint = source.URL
-	cfg.MaxAttemptsPerRequest = 1
-	if _, err := NewJevClient(cfg.Endpoint, "CANARY-API-KEY", cfg).Choice(context.Background(), stageSampleRequest()); err == nil {
+	cfg.MaxAttemptsPerRequest = 3
+	client := NewJevClient(cfg.Endpoint, "CANARY-API-KEY", cfg)
+	if _, err := client.Choice(context.Background(), stageSampleRequest()); !errors.Is(err, ErrPermanent) {
 		t.Fatal("redirect accepted")
+	}
+	if client.Usage().Requests != 1 || client.Usage().Retries != 0 {
+		t.Fatal("redirect replayed credentials")
 	}
 	if hits != 0 {
 		t.Fatal("redirect followed with sensitive header")

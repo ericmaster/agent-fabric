@@ -39,6 +39,7 @@ type loopSessionServer struct {
 	promptIDs  []string
 	statusCode int
 	loseCreate bool
+	directory  string
 }
 
 func (s *loopSessionServer) handler() http.Handler {
@@ -73,21 +74,19 @@ func (s *loopSessionServer) handler() http.Handler {
 			session := Session{
 				ID:        fmt.Sprintf("ses_loop_%d", len(s.sessions)+1),
 				Title:     req.Title,
-				Directory: "/proj/fixture",
+				Directory: s.directory,
+				Project:   "project_loop",
 				ParentID:  "",
 			}
 			s.sessions = append(s.sessions, session)
 			s.creates = append(s.creates, session.ID)
-			_ = json.NewEncoder(w).Encode(struct {
-				Data Session `json:"data"`
-			}{session})
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": loopWireSession(session)})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/session":
-			_ = json.NewEncoder(w).Encode(struct {
-				Data   []Session `json:"data"`
-				Cursor struct {
-					Next string `json:"next"`
-				} `json:"cursor"`
-			}{Data: s.sessions})
+			data := []any{}
+			for _, session := range s.sessions {
+				data = append(data, loopWireSession(session))
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": data, "cursor": map[string]any{"next": nil}})
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/session/") && strings.HasSuffix(r.URL.Path, "/message"):
 			// The reconcile reads the full observable history; the mock
 			// returns an empty data page (the streamed fixture coverage is
@@ -97,9 +96,7 @@ func (s *loopSessionServer) handler() http.Handler {
 			sessionID := strings.TrimPrefix(r.URL.Path, "/api/session/")
 			for _, session := range s.sessions {
 				if session.ID == sessionID {
-					_ = json.NewEncoder(w).Encode(struct {
-						Data Session `json:"data"`
-					}{session})
+					_ = json.NewEncoder(w).Encode(map[string]any{"data": loopWireSession(session)})
 					return
 				}
 			}
@@ -236,6 +233,7 @@ func newLoopFixture(t *testing.T, script func(subject, scope string) (string, []
 	store := testStore(t)
 	root := t.TempDir()
 	projectDir := filepath.Join(root, "fixture-project")
+	sessions.directory = projectDir
 	if err := os.MkdirAll(projectDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -515,8 +513,8 @@ func TestLoopDrainSuccessFixesOwningInstructionExactlyOnce(t *testing.T) {
 	if err := json.Unmarshal([]byte(prompts[0]), &promptPayload); err != nil {
 		t.Fatal(err)
 	}
-	if promptPayload.Agent != LearningCorrectorID {
-		t.Fatalf("correcting agent = %q", promptPayload.Agent)
+	if promptPayload.Agent != "" {
+		t.Fatal("live prompt must not pretend ignored agent key selects a role")
 	}
 	if !strings.Contains(promptPayload.Text, "Report locator:") {
 		t.Fatalf("intake packet missing the report locator: %s", promptPayload.Text)

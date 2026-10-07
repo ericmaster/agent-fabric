@@ -310,7 +310,19 @@ func IngestEnvelope(opts IngestOptions, envelope *Envelope) (*IngestResult, erro
 		return nil, err
 	}
 	staged := stageRecords(redactor, envelope.Records, spool)
-	spool.ServerURL = firstNonEmpty(envelope.ServerURL, spool.ServerURL)
+	serverURLRejected := false
+	for _, location := range []string{spool.ServerURL, envelope.ServerURL} {
+		if location == "" {
+			continue
+		}
+		if !collectionServerURL(location, cfg) {
+			serverURLRejected = true
+			spool.ServerURL = ""
+			spool.Gaps = append(spool.Gaps, Gap{Kind: "partial_stream", Detail: "observation server URL rejected; require loopback or configured host without URL credentials/query/fragment"})
+			continue
+		}
+		spool.ServerURL = location
+	}
 	spool.ObservedSDK = firstNonEmpty(envelope.SDKVersion, spool.ObservedSDK)
 	if reasons := suppressionReasons(store, spool, envelope.SessionID); len(reasons) > 0 {
 		// The store is authoritative: remove half-captured learning
@@ -326,7 +338,7 @@ func IngestEnvelope(opts IngestOptions, envelope *Envelope) (*IngestResult, erro
 		}
 		return &IngestResult{Suppressed: true}, nil
 	}
-	if staged == 0 && !envelope.Trigger {
+	if staged == 0 && !envelope.Trigger && !serverURLRejected {
 		return &IngestResult{}, nil
 	}
 	if err := writeSpoolBounded(cfg, store, spool); err != nil {

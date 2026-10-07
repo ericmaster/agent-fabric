@@ -90,11 +90,12 @@ type SessionClient interface {
 // message history is a flat {id, time, text, type} row list.
 // Spec: docs/specs/task-retrospective.md via SessionClient
 type HTTPSessionClient struct {
-	BaseURL    string
-	HTTP       *http.Client
-	Generation string
-	Username   string
-	Password   string
+	BaseURL       string
+	HTTP          *http.Client
+	Generation    string
+	Username      string
+	Password      string
+	TrustedOrigin string
 }
 
 // OpenSessionClient builds the configured transport for dispatch and drain.
@@ -105,12 +106,30 @@ type HTTPSessionClient struct {
 func OpenSessionClient(cfg *Config) *HTTPSessionClient {
 	user, pass := ResolveDispatchAuth(cfg)
 	return &HTTPSessionClient{
-		BaseURL:    cfg.DispatchServer,
-		Generation: cfg.DispatchEndpoint,
-		HTTP:       &http.Client{Timeout: cfg.DispatchTimeout + time.Second},
-		Username:   user,
-		Password:   pass,
+		BaseURL:       cfg.DispatchServer,
+		TrustedOrigin: cfg.DispatchServer,
+		Generation:    cfg.DispatchEndpoint,
+		HTTP:          &http.Client{Timeout: cfg.DispatchTimeout + time.Second},
+		Username:      user,
+		Password:      pass,
 	}
+}
+
+// liveSession is the external 2.0.24 shape, separate from legacy Session.
+// Spec: docs/specs/task-retrospective.md via HTTPSessionClient
+type liveSession struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	ParentID  string `json:"parentID"`
+	ProjectID string `json:"projectID"`
+	Location  struct {
+		Directory string `json:"directory"`
+	} `json:"location"`
+}
+
+// Spec: docs/specs/task-retrospective.md via liveSession
+func (s liveSession) normalized() Session {
+	return Session{ID: s.ID, Title: s.Title, ParentID: s.ParentID, Project: s.ProjectID, Directory: s.Location.Directory}
 }
 
 // ResolveDispatchAuth picks the Basic-auth credentials for the session
@@ -179,12 +198,12 @@ func (c *HTTPSessionClient) CreateRoot(ctx context.Context, req CreateRootReques
 	var session Session
 	if c.messageGeneration() {
 		var envelope struct {
-			Data Session `json:"data"`
+			Data liveSession `json:"data"`
 		}
 		if err := c.exchangeInto(ctx, http.MethodPost, "/session", body, &envelope); err != nil {
 			return Session{}, err
 		}
-		session = envelope.Data
+		session = envelope.Data.normalized()
 		return session, nil
 	}
 	err = c.exchange(ctx, http.MethodPost, "/session", body, &session)
@@ -200,12 +219,12 @@ func (c *HTTPSessionClient) Read(ctx context.Context, id string) (Session, error
 	var session Session
 	if c.messageGeneration() {
 		var envelope struct {
-			Data Session `json:"data"`
+			Data liveSession `json:"data"`
 		}
 		if err := c.exchangeInto(ctx, http.MethodGet, "/session/"+url.PathEscape(id), nil, &envelope); err != nil {
 			return Session{}, err
 		}
-		return envelope.Data, nil
+		return envelope.Data.normalized(), nil
 	}
 	err := c.exchange(ctx, http.MethodGet, "/session/"+url.PathEscape(id), nil, &session)
 	return session, err
@@ -247,7 +266,7 @@ func (c *HTTPSessionClient) List(ctx context.Context) ([]Session, error) {
 			return nil, err
 		}
 		var envelope struct {
-			Data   []Session `json:"data"`
+			Data   []liveSession `json:"data"`
 			Cursor struct {
 				Next string `json:"next"`
 			} `json:"cursor"`
@@ -255,7 +274,9 @@ func (c *HTTPSessionClient) List(ctx context.Context) ([]Session, error) {
 		if err := json.Unmarshal(raw, &envelope); err != nil {
 			return nil, fmt.Errorf("decode session list page: %w", err)
 		}
-		all = append(all, envelope.Data...)
+		for _, session := range envelope.Data {
+			all = append(all, session.normalized())
+		}
 		if envelope.Cursor.Next == "" {
 			return all, nil
 		}
@@ -278,17 +299,11 @@ func (c *HTTPSessionClient) Prompt(ctx context.Context, id string, req PromptReq
 	var body []byte
 	var err error
 	if c.messageGeneration() {
-		// The verified live route accepts the flat text body plus optional
-		// agent/model keys; delivery is confirmed by the 2xx user-message echo.
+		// 2.0.24 ignores extra agent/model keys; only text delivery is verified.
 		type flatPrompt struct {
-			Text  string `json:"text"`
-			Agent string `json:"agent,omitempty"`
-			Model string `json:"model,omitempty"`
+			Text string `json:"text"`
 		}
-		prompt := flatPrompt{Text: req.Text, Agent: req.Agent, Model: req.Model}
-		if prompt.Agent == "" {
-			prompt.Agent = "learning-corrector"
-		}
+		prompt := flatPrompt{Text: req.Text}
 		body, err = json.Marshal(prompt)
 	} else {
 		payload := struct {
@@ -480,16 +495,25 @@ func (c *HTTPSessionClient) exchangeInto(ctx context.Context, method, route stri
 // and attaches HTTP Basic credentials when configured.
 // Spec: docs/specs/task-retrospective.md via HTTPSessionClient
 func (c *HTTPSessionClient) roundTrip(ctx context.Context, method, route string, body []byte) ([]byte, error) {
+	if err := validateHTTPBase(c.BaseURL); err != nil {
+		return nil, err
+	}
+	if c.Password != "" && !trustedServerURL(c.BaseURL, c.TrustedOrigin) {
+		return nil, errors.New("session credential destination is not the configured trusted origin")
+	}
 	elem := c.elem(route)
 	endpoint, err := url.Parse(c.BaseURL)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("invalid session base URL")
 	}
 	ref, err := url.Parse(elem)
 	if err != nil {
 		return nil, err
 	}
 	target := endpoint.ResolveReference(ref)
+	if target.User != nil || !trustedServerURL(target.Scheme+"://"+target.Host, c.BaseURL) {
+		return nil, errors.New("session route escaped the validated server origin")
+	}
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
@@ -507,16 +531,26 @@ func (c *HTTPSessionClient) roundTrip(ctx context.Context, method, route string,
 	client := c.HTTP
 	if client == nil {
 		client = &http.Client{CheckRedirect: refuseRedirect}
-	} else if client.CheckRedirect == nil {
+	} else {
 		clone := *client
 		clone.CheckRedirect = refuseRedirect
 		client = &clone
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		var timeout net.Error
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("session transport failed: %w", ctx.Err())
+		}
+		if errors.As(err, &timeout) && timeout.Timeout() {
+			return nil, fmt.Errorf("session transport failed: %w", context.DeadlineExceeded)
+		}
+		return nil, errors.New("session transport failed; verify configured server availability")
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return nil, fmt.Errorf("OpenCode authentication rejected (HTTP %d); configure the trusted server password and restart with matching environment", resp.StatusCode)
+	}
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNotImplemented {
 		return nil, fmt.Errorf("%w: HTTP %d from %s", ErrCapability, resp.StatusCode, elem)
 	}
@@ -578,17 +612,8 @@ func BuildUIURL(template, id string) (string, error) {
 // validateHTTPBase checks a server base URL. It is not the Jev endpoint.
 // Spec: docs/specs/task-retrospective.md via Config
 func validateHTTPBase(raw string) error {
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return err
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return errors.New("scheme must be http or https")
-	}
-	if parsed.Host == "" || parsed.User != nil {
-		return errors.New("host is missing or contains userinfo")
-	}
-	return nil
+	_, err := serverOrigin(raw)
+	return err
 }
 
 // checkCanonicalRoot rejects empty, relative, root, and symlink roots.
@@ -773,7 +798,7 @@ func continueReceipt(ctx context.Context, opts DispatchOptions, store *Store, re
 		return reconcileCreate(ctx, opts, store, receipt, report, marker)
 	}
 	if receipt.RootID != "" && receipt.PromptAttempted && !receipt.PromptConfirmed {
-		return reconcilePrompt(ctx, opts, store, receipt, marker)
+		return reconcilePrompt(ctx, opts, store, receipt, report, marker)
 	}
 	if opts.Retry && receipt.PromptConfirmed {
 		return receipt, nil
@@ -855,10 +880,15 @@ func bindAndFinish(ctx context.Context, opts DispatchOptions, store *Store, rece
 	receipt.Title = session.Title
 	receipt.Directory = session.Directory
 	receipt.Project = session.Project
+	receipt.UIURL = ui
+	if err := verifyRootDirectory(opts.Config, report, session); err != nil {
+		receipt.Status = StatusPending
+		receipt.Error = err.Error()
+		return save(store, receipt)
+	}
 	if receipt.Project == "" && session.Directory != "" {
 		receipt.Project = filepath.Base(session.Directory)
 	}
-	receipt.UIURL = ui
 	if err := store.BindOrigin(session.ID, marker); err != nil {
 		return nil, err
 	}
@@ -871,6 +901,20 @@ func bindAndFinish(ctx context.Context, opts DispatchOptions, store *Store, rece
 // finishVerified applies repairs once, then submits the prompt once.
 // Spec: docs/specs/task-retrospective.md via Dispatch
 func finishVerified(ctx context.Context, opts DispatchOptions, store *Store, receipt *Receipt, report *Report, marker string) (*Receipt, error) {
+	session, err := call(ctx, opts.Config.DispatchTimeout, func(ctx context.Context) (Session, error) { return opts.Client.Read(ctx, receipt.RootID) })
+	if err == nil {
+		err = acceptRoot(session, marker)
+	}
+	if err == nil {
+		err = verifyRootDirectory(opts.Config, report, session)
+	}
+	if err != nil {
+		receipt.Status = StatusPending
+		receipt.Error = "root verification failed: " + err.Error()
+		return save(store, receipt)
+	}
+	receipt.Directory = session.Directory
+	receipt.Project = session.Project
 	if len(receipt.Findings) == 0 {
 		results, notes, err := applyFindings(opts, store, receipt, report)
 		if err != nil {
@@ -887,13 +931,13 @@ func finishVerified(ctx context.Context, opts DispatchOptions, store *Store, rec
 		return save(store, receipt)
 	}
 	if receipt.PromptAttempted {
-		return reconcilePrompt(ctx, opts, store, receipt, marker)
+		return reconcilePrompt(ctx, opts, store, receipt, report, marker)
 	}
 	receipt.PromptAttempted = true
 	if _, err := save(store, receipt); err != nil {
 		return nil, err
 	}
-	err := callErr(ctx, opts.Config.DispatchTimeout, func(ctx context.Context) error {
+	err = callErr(ctx, opts.Config.DispatchTimeout, func(ctx context.Context) error {
 		return opts.Client.Prompt(ctx, receipt.RootID, PromptRequest{
 			Text:   correctingPrompt(receipt, report),
 			Marker: marker,
@@ -907,7 +951,7 @@ func finishVerified(ctx context.Context, opts DispatchOptions, store *Store, rec
 		return save(store, receipt)
 	}
 	if err != nil && timedOut(err) {
-		return reconcilePrompt(ctx, opts, store, receipt, marker)
+		return reconcilePrompt(ctx, opts, store, receipt, report, marker)
 	}
 	if err != nil {
 		receipt.Status = StatusPending
@@ -924,10 +968,21 @@ func finishVerified(ctx context.Context, opts DispatchOptions, store *Store, rec
 // again. The optional probe checks server state the plain read cannot echo
 // (the message generation searches the history for the marker text).
 // Spec: docs/specs/task-retrospective.md via Dispatch
-func reconcilePrompt(ctx context.Context, opts DispatchOptions, store *Store, receipt *Receipt, marker string) (*Receipt, error) {
+func reconcilePrompt(ctx context.Context, opts DispatchOptions, store *Store, receipt *Receipt, report *Report, marker string) (*Receipt, error) {
 	session, err := call(ctx, opts.Config.DispatchTimeout, func(ctx context.Context) (Session, error) {
 		return opts.Client.Read(ctx, receipt.RootID)
 	})
+	if err == nil {
+		err = acceptRoot(session, marker)
+	}
+	if err == nil {
+		err = verifyRootDirectory(opts.Config, report, session)
+	}
+	if err != nil {
+		receipt.Status = StatusPending
+		receipt.Error = "root verification failed during prompt reconcile: " + err.Error()
+		return save(store, receipt)
+	}
 	if err == nil && session.PromptMarker == marker && session.ParentID == "" {
 		receipt.PromptConfirmed = true
 		receipt.Error = ""
@@ -1010,6 +1065,15 @@ func acceptRoot(session Session, marker string) error {
 	}
 	if !strings.Contains(session.Title, marker) {
 		return errors.New("read-back did not echo the learning-origin marker")
+	}
+	return nil
+}
+
+// Spec: docs/specs/task-retrospective.md via finishVerified
+func verifyRootDirectory(cfg *Config, report *Report, session Session) error {
+	expected := firstNonEmpty(cfg.DispatchDirectory, report.Trace.Identities.ExecutionRoot)
+	if !filepath.IsAbs(expected) || !filepath.IsAbs(session.Directory) || filepath.Clean(expected) != filepath.Clean(session.Directory) {
+		return errors.New("correcting root directory does not match authorized execution/dispatch directory; no prompt or repair")
 	}
 	return nil
 }

@@ -199,6 +199,26 @@ func TestRetrospectiveAnalyzeRequiresInputAndOutput(t *testing.T) {
 	}
 }
 
+// Spec: docs/specs/task-retrospective.md via runRetrospectiveDispatch
+func TestDispatchCLIRejectsCredentialURLWithoutEchoOrState(t *testing.T) {
+	for _, server := range []string{"http://user:CANARY-URL@localhost:123", "http://localhost:123?token=CANARY-URL", "http://localhost:123#CANARY-URL", "http://localhost:99999", "http://[invalid"} {
+		dir := t.TempDir()
+		state := filepath.Join(dir, "state")
+		config := filepath.Join(dir, "config.json")
+		body, _ := json.Marshal(map[string]any{"dispatch_server": server, "dispatch_server_password": "CANARY-PASSWORD", "state_dir": state})
+		if err := os.WriteFile(config, body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		err := runRetrospectiveDispatch([]string{"--report", filepath.Join(dir, "absent-report.json"), "--config", config})
+		if err == nil || strings.Contains(err.Error(), "CANARY") {
+			t.Fatalf("unsafe dispatch config not safely rejected: %v", err)
+		}
+		if _, err := os.Stat(state); !os.IsNotExist(err) {
+			t.Fatal("invalid config created state")
+		}
+	}
+}
+
 func TestRetrospectiveRejectsUnknownSubcommand(t *testing.T) {
 	if err := runRetrospective([]string{"not-a-command"}); err == nil {
 		t.Fatal("unknown subcommand accepted")

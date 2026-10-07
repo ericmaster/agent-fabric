@@ -32,6 +32,7 @@ ledgers are never a retrospective database).
 - `internal/retrospective/report.go` — report assembly and atomic write.
 - `internal/retrospective/store.go` — local state, locks, retention, settings entry.
 - `internal/retrospective/dispatch.go` — session dispatch, canonical resolution, repair.
+- `internal/retrospective/transport_boundary.go` — validated collection URLs and exact-origin credential authority.
 - `internal/retrospective/observe.go` — OpenCode observation envelope validation, staged spool, ingest, trigger.
 - `internal/retrospective/drain.go` — persisted drain jobs, spool→trace assembly, server backfill, detached worker.
 - `hooks/retrospective/opencode.ts` — thin OpenCode observation adapter (plugin asset).
@@ -169,6 +170,10 @@ wire encoder measures packing, stage one, and the final client pre-send
 gate; criteria and folded evidence/overlap count. No trimming is permitted.
 Retries include 425/429/503 and transport/5xx errors with bounded backoff;
 Retry-After is honored on all these statuses, capped at configured 30s.
+Encoding/validation failures return their actual error (not size rejection),
+fail closed without send, and never request halving/repacking. Only measured
+overruns or provider size rejection are size errors. GLiDE 3xx is a deliberate
+permanent failure: no redirect follow, retry or credential replay.
 The existing 30s per-request timeout remains configurable; Fastino recommends
 at least 300s for live read timeouts. No redirects are followed (API keys
 cannot propagate). Responses over 4 MiB are detected, not truncated.
@@ -847,15 +852,39 @@ queued receipts block the task for manual reconciliation.
   `{"data": …, "cursor": {next}}` pages the clients follow to exhaustion
   (bounded; a page limit fails closed); prompt delivery uses the synchronous
   `POST /api/session/{id}/prompt` with the flat body
-  `{"text": …, "agent": "learning-corrector"}` — the 2xx user-message echo
+  `{"text": …}` — the 2xx user-message echo
   confirms delivery without requiring a model, and the marker stays in the
   prompt text; reconcile of a lost prompt searches the flat
   `{id, time, text, type}` history rows for the marker. 404/501 queue the
   report exactly as before; no hidden fallback.
 
+**Credential destination boundary.** Only the configured dispatch-server
+origin (scheme, lowercase hostname, effective port) authorizes Basic auth.
+Observer stdin and persisted job/spool URLs never grant credential authority.
+Collection URLs must be HTTP(S) loopback or the configured hostname, with no
+userinfo, query, fragment, or non-root path. Invalid URLs are dropped with a
+generic `partial_stream` gap, never echoed into errors or new state. Backfill
+independently validates old/persisted URLs and requires the exact configured
+origin; mismatch/missing authority yields a gap without network. Another
+loopback port or scheme is not trusted. Direct HTTP clients with credentials
+must declare `TrustedOrigin`; mutating BaseURL cannot retarget credentials.
+All redirects are refused, including custom-client same-host redirects.
+Config/base URL parse errors never echo the supplied URL.
+
+Live `message` sessions decode `projectID` and `location.directory` on create,
+read, and list. Before any prompt or local repair, root read-back must match
+the authorized `dispatch_directory` (else report execution root), as an
+absolute cleaned directory; absent/mismatched directory leaves a visible
+pending receipt and performs no prompt or repair. Legacy fields stay intact.
+The live route delivers text only; accepted extra agent/model fields are
+ignored by 2.0.24 and cannot prove role or model selection.
+
 **Authentication.** The live server requires HTTP Basic auth on every `/api`
 route (a server started without a password generates a random one, which the
-loop cannot learn — such servers report the capability gap and stay queued).
+loop cannot learn). A trusted backfill 401/403 is an actionable completeness
+gap (configure the server password and restart under that environment), not
+a queued dispatch receipt. An ineligible report never fabricates a queued
+disposition; eligible dispatch authentication failures remain pending.
 Credentials resolve in order: `dispatch_server_username` /
 `dispatch_server_password` config keys, else the OpenCode server process
 environment (`OPENCODE_SERVER_USERNAME`; `OPENCODE_PASSWORD`, then
