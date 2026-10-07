@@ -640,9 +640,39 @@ func backfillLoadStage(ctx context.Context, client *HTTPSessionClient, store *St
 	}
 	var records []EnvelopeRecord
 	for _, row := range rows {
-		if row.Info.ID != "" {
+		if row.Control != "" {
+			// Remove only the old native adapter's exact empty control-as-text
+			// projection, confirmed by this trusted, validated history snapshot.
+			if message := spool.Messages[row.Info.ID]; message != nil && message.Role == row.Control {
+				if part := spool.Parts[row.Info.ID]; part != nil && part.PartType == "text" && part.Text == "" && part.MessageID == row.Info.ID {
+					if part.Tool != "" || part.CallID != "" || part.Input != "" || part.Output != "" || part.Error != "" {
+						spool.appendGap(Gap{Kind: "partial_stream", Detail: "native control projection has unexpected tool payload; evidence retained"})
+						continue
+					}
+					delete(spool.Parts, row.Info.ID)
+					delete(spool.Messages, row.Info.ID)
+				} else {
+					spool.appendGap(Gap{Kind: "partial_stream", Detail: "native control projection has unverified payload; evidence retained"})
+				}
+			}
+		}
+		if row.Native && row.Info.Role != "" {
+			if part := spool.Parts[row.Info.ID]; part != nil && part.PartType == "text" && part.MessageID == row.Info.ID && part.Tool == "" && part.CallID == "" && part.Input == "" && part.Output == "" && part.Error == "" {
+				// The old converter emitted an extra empty assistant text for
+				// every flat row. It is not a genuine text/content ordinal.
+				if part.Text == "" {
+					delete(spool.Parts, row.Info.ID)
+				} else if row.Info.Role == "user" && len(row.Parts) == 1 {
+					if original := spool.Parts[row.Parts[0].ID]; original != nil && original.Text == part.Text && row.Parts[0].Text == part.Text {
+						delete(spool.Parts, row.Info.ID)
+					}
+				}
+			}
+		}
+		if row.Info.ID != "" && row.Info.Role != "" {
 			records = append(records, EnvelopeRecord{Kind: "message", SessionID: row.Info.SessionID, RecordID: row.Info.ID, Role: row.Info.Role})
 		}
+		records = append(records, row.Events...)
 		for i := range row.Parts {
 			records = append(records, partEnvelopeRecord(&row.Parts[i]))
 		}
@@ -691,8 +721,12 @@ func partEnvelopeRecord(row *SessionPartRow) EnvelopeRecord {
 		MessageID: row.MessageID,
 		PartType:  row.Type,
 		Synthetic: row.Synthetic,
+		NonFinal:  row.NonFinal,
 		Tool:      row.Tool,
 		CallID:    row.CallID,
+	}
+	if row.Type == "text" {
+		record.Text = row.Text
 	}
 	if row.Type == "tool" {
 		state := SessionToolState{}
@@ -783,9 +817,10 @@ func assembleTrace(store *Store, spool *Spool, sessionID string) *Trace {
 	// Aggregate text parts per observable message id; a message record is
 	// one normalized task message.
 	type aggregate struct {
-		texts  []string
-		minSeq int
-		maxSeq int
+		texts    []string
+		minSeq   int
+		maxSeq   int
+		nonFinal bool
 	}
 	texts := map[string]*aggregate{}
 	var messageIDs []string
@@ -801,6 +836,7 @@ func assembleTrace(store *Store, spool *Spool, sessionID string) *Trace {
 			messageIDs = append(messageIDs, part.MessageID)
 		}
 		entry.texts = append(entry.texts, part.Text)
+		entry.nonFinal = entry.nonFinal || part.NonFinal
 		if part.Seq < entry.minSeq {
 			entry.minSeq = part.Seq
 		}
@@ -822,7 +858,7 @@ func assembleTrace(store *Store, spool *Spool, sessionID string) *Trace {
 	finalID := ""
 	var lastFinalSeq int
 	for _, id := range messageIDs {
-		if messageRole(spool, id) != "assistant" {
+		if messageRole(spool, id) != "assistant" || texts[id].nonFinal {
 			continue
 		}
 		if seq := texts[id].maxSeq; seq > lastFinalSeq {

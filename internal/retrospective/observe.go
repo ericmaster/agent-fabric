@@ -96,6 +96,7 @@ type EnvelopeRecord struct {
 	Text       string `json:"text,omitempty"`
 	Synthetic  bool   `json:"synthetic,omitempty"`
 	Reasoning  bool   `json:"reasoning,omitempty"`
+	NonFinal   bool   `json:"non_final,omitempty"`
 	Tool       string `json:"tool,omitempty"`
 	ToolStatus string `json:"tool_status,omitempty"`
 	Input      string `json:"input,omitempty"`
@@ -223,6 +224,7 @@ type SpoolPart struct {
 	Text       string `json:"text,omitempty"`
 	Synthetic  bool   `json:"synthetic,omitempty"`
 	Reasoning  bool   `json:"reasoning,omitempty"`
+	NonFinal   bool   `json:"non_final,omitempty"`
 	Tool       string `json:"tool,omitempty"`
 	ToolStatus string `json:"tool_status,omitempty"`
 	Input      string `json:"input,omitempty"`
@@ -629,6 +631,7 @@ func (spool *Spool) upsert(record *EnvelopeRecord) {
 		}
 		if record.Text != "" || record.PartType == "text" {
 			entry.Text = record.Text
+			entry.NonFinal = record.NonFinal
 		}
 		if record.Synthetic {
 			entry.Synthetic = true

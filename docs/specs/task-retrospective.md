@@ -34,6 +34,7 @@ ledgers are never a retrospective database).
 - `internal/retrospective/dispatch.go` — session dispatch, canonical resolution, repair.
 - `internal/retrospective/transport_boundary.go` — validated collection URLs and exact-origin credential authority.
 - `internal/retrospective/native_learning.go` — actual v2 corrector/reviewer/QA execution and bound result evidence.
+- `internal/retrospective/native_history.go` — strict v2 history/control/content adapter before backfill.
 - `internal/retrospective/observe.go` — OpenCode observation envelope validation, staged spool, ingest, trigger.
 - `internal/retrospective/drain.go` — persisted drain jobs, spool→trace assembly, server backfill, detached worker.
 - `hooks/retrospective/opencode.ts` — thin OpenCode observation adapter (plugin asset).
@@ -988,7 +989,48 @@ routes `/api/session/{id}/agent|model`, and native completion wait
    assistant agent/model, time.completed and final text from message content;
    it does not blindly repost an attempted stage. Legacy marker/history
    reconciliation remains separate. 404/501 queue the
-  report exactly as before; no hidden fallback.
+   report exactly as before; no hidden fallback.
+
+Native history rows are a tagged union, not message roles. The literal
+`native-history-2.0.24.json` fixture preserves six exact redacted rows from the
+synthetic 43716df QA history (two of its 29 tool attempts, user, genuine completed
+answer, idle and agent selection); it is not full live learning acceptance.
+Authority: pinned `@opencode/schema@2.0.24` SessionMessage schema. Only actual
+`user.text` and `assistant.content` become user/assistant messages. Assistant
+text is message/ordinal scoped; tools are message/tool-ID scoped and retain
+input, status, public error message and textual results. Reasoning bodies,
+provider state, control metadata and compaction summaries are never evidence.
+Text from unfinished/non-stop/tool-call assistant frames remains observable
+but explicitly non-final. The last assistant must contain completed stop text;
+idle alone cannot fill a missing final or establish success.
+
+Known idle outcomes project terminal candidate/error/abort events, not roles;
+older idles preceding the latest actual user in native chronology cannot become
+tail errors merely because backfill arrived later. Agent/model selections have
+no task-message projection. Valid location changes/compactions mark incomplete
+coverage rather than synthesizing execution identity or assistant text.
+Unknown row/content tags, incompatible fields, missing identity/time/content,
+unmodeled attachments/results, truncated tool output or malformed state fail
+backfill closed with an inspectable gap/report. Native visible fields beyond
+the 64KiB record bound fail with a gap before common spool clipping. Core roles remain strictly
+user/assistant. Local completeness refusal sets report status incomplete as
+well as its gated outcome, so drain never advances accepted boundaries for a
+gap, aborted task or missing final. No evaluator or correction is requested.
+
+Pagination must exhaust with valid data/cursor fields. Repeated cursors, 200-page
+exhaustion, >2,000 raw rows or normalized records, or >8MiB aggregate wire fail
+closed; controls count against budgets even though they are not messages. The
+shared 8MiB HTTP response cap detects overflow rather than silently clipping a
+valid prefix. Pages are ordered by actual created time before staging; streamed
+stable IDs retain their first observation sequence. A trusted validated native
+control row may remove only the previous adapter's same-ID empty control-as-text
+projection; any unexpected old payload stays with a completeness gap. Valid
+native message rows also remove old same-ID empty assistant projections and
+an exact duplicate user projection only when its original text part is already
+present and matches the immutable wire text. Genuine parts/attempts stay. At-use
+source refs are never refreshed from current disk content. Legacy history wire,
+role validation, origin/auth/redirect/directory gates and numerical thresholds
+remain unchanged.
 
 **Credential destination boundary.** Only the configured dispatch-server
 origin (scheme, lowercase hostname, effective port) authorizes Basic auth.

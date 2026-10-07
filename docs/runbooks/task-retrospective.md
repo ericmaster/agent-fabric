@@ -161,6 +161,15 @@ rows until the source hash changes.
 
 ## Recovery
 
+- **Native history control/unknown-row failure.** Native idle/agent/model
+  selections are not user/assistant messages. Inspect the retained job/report
+  and redacted history. Valid snapshot normalization preserves actual tool
+  attempts and the completed final; malformed/unknown content leaves a gap
+  with no evaluation/repair or accepted-boundary advance. Do not invent a role,
+  final answer or historical source hash, or force a job eligible. Existing
+  same-ID empty control projections can reconcile from trusted valid history;
+  unexpected payloads remain incomplete. A supervisor owns any live retry.
+
 - **Opening observations/ingest batch missing.** Failed reads are terminal
   task evidence, not source loads. Native prompt intake obtains current identity
   before generation; read hashes must come from the actual successful read hook,

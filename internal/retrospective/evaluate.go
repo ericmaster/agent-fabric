@@ -187,6 +187,8 @@ func (a *analysis) runStageOne(ctx context.Context) {
 			Choice:  localOutcomeChoice(a.normalized),
 			Reasons: a.outcomeReasons(),
 		}
+		a.status = ReportStatusIncomplete
+		a.incompleteReasons = append(a.incompleteReasons, a.outcome.Reasons...)
 		a.gate = a.gateState(false)
 		return
 	}

@@ -372,7 +372,10 @@ type SessionMessageRow struct {
 		Role      string          `json:"role"`
 		Error     json.RawMessage `json:"error,omitempty"`
 	} `json:"info"`
-	Parts []SessionPartRow `json:"parts"`
+	Parts   []SessionPartRow `json:"parts"`
+	Events  []EnvelopeRecord `json:"-"` // normalized native controls, never message roles
+	Control string           `json:"-"`
+	Native  bool             `json:"-"`
 }
 
 // SessionPartRow is one message part of the history list.
@@ -384,6 +387,7 @@ type SessionPartRow struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text,omitempty"`
 	Synthetic bool            `json:"synthetic,omitempty"`
+	NonFinal  bool            `json:"-"`
 	Tool      string          `json:"tool,omitempty"`
 	CallID    string          `json:"callID,omitempty"`
 	State     json.RawMessage `json:"state,omitempty"`
@@ -410,9 +414,9 @@ const messagePageLimit = 200
 
 // Messages fetches the full observable history of one session for backfill
 // and reconciliation. The message generation decodes the verified live shape
-// — {"data": [ {id, time, text, type} ], "cursor": {next}} — following
-// cursors to exhaustion and mapping each flat row onto the internal
-// info/parts structure; the prompt generation keeps the bare array shape.
+// — {"data": [ tagged SessionMessage rows ], "cursor": {next}} — through
+// the native history adapter; controls are never message roles. The prompt
+// generation keeps the bare info/parts array shape.
 // Spec: docs/specs/task-retrospective.md via HTTPSessionClient
 func (c *HTTPSessionClient) Messages(ctx context.Context, id string) ([]SessionMessageRow, error) {
 	if err := checkSessionID(id); err != nil {
@@ -433,47 +437,7 @@ func (c *HTTPSessionClient) Messages(ctx context.Context, id string) ([]SessionM
 		}
 		return rows, nil
 	}
-	var all []SessionMessageRow
-	cursor := ""
-	for page := 0; page < messagePageLimit; page++ {
-		elem := "/session/" + url.PathEscape(id) + "/message"
-		if cursor != "" {
-			elem += "?cursor=" + url.QueryEscape(cursor)
-		}
-		raw, err := c.roundTrip(ctx, http.MethodGet, elem, nil)
-		if err != nil {
-			return nil, err
-		}
-		var envelope struct {
-			Data []struct {
-				ID   string `json:"id"`
-				Text string `json:"text"`
-				Type string `json:"type"`
-			} `json:"data"`
-			Cursor struct {
-				Next string `json:"next"`
-			} `json:"cursor"`
-		}
-		if err := json.Unmarshal(raw, &envelope); err != nil {
-			return nil, fmt.Errorf("decode session history page: %w", err)
-		}
-		for _, row := range envelope.Data {
-			all = append(all, SessionMessageRow{
-				Info: struct {
-					ID        string          `json:"id"`
-					SessionID string          `json:"sessionID"`
-					Role      string          `json:"role"`
-					Error     json.RawMessage `json:"error,omitempty"`
-				}{ID: row.ID, SessionID: id, Role: row.Type},
-				Parts: []SessionPartRow{{ID: row.ID, SessionID: id, MessageID: row.ID, Type: "text", Text: row.Text}},
-			})
-		}
-		if envelope.Cursor.Next == "" {
-			return all, nil
-		}
-		cursor = envelope.Cursor.Next
-	}
-	return nil, errors.New("session history exceeded the cursor page limit")
+	return c.nativeHistory(ctx, id)
 }
 
 // messageProbe returns the reconciliation probe of the message generation:
@@ -587,7 +551,14 @@ func (c *HTTPSessionClient) roundTrip(ctx context.Context, method, route string,
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("session %s %s: HTTP %d", method, elem, resp.StatusCode)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, exchangeLimit))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, exchangeLimit+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > exchangeLimit {
+		return nil, errors.New("session response exceeded byte limit")
+	}
+	return raw, nil
 }
 
 // refuseRedirect rejects redirects instead of following them off the server.
