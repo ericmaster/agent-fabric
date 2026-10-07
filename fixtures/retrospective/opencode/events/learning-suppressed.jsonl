@@ -1,0 +1,8 @@
+{"properties": {"info": {"directory": "{{execution_root}}", "id": "ses_learning", "projectID": "proj_synth", "time": {"created": 1, "updated": 2}, "title": "learning: retro-task [agf-learning-origin:v1:0000000000000000000000000000000000000000000000000000000000000000]", "version": "2.0.24"}}, "type": "session.created"}
+{"properties": {"info": {"directory": "{{execution_root}}", "id": "ses_learning_child", "parentID": "ses_learning", "projectID": "proj_synth", "time": {"created": 1, "updated": 2}, "title": "child of the correction", "version": "2.0.24"}}, "type": "session.created"}
+{"properties": {"info": {"agent": "build", "id": "msg_learn_u1", "model": {"modelID": "synthetic", "providerID": "synthetic"}, "role": "user", "sessionID": "ses_learning", "time": {"created": 1}}}, "type": "message.updated"}
+{"properties": {"part": {"id": "prt_learn_u1", "messageID": "msg_learn_u1", "sessionID": "ses_learning", "text": "Correct the runbook text", "type": "text"}}, "type": "message.part.updated"}
+{"properties": {"info": {"id": "msg_learn_a1", "parentID": "", "role": "assistant", "sessionID": "ses_learning", "time": {"completed": 3, "created": 2}}}, "type": "message.updated"}
+{"properties": {"part": {"callID": "call_learn_fix", "id": "prt_learn_tool", "messageID": "msg_learn_a1", "sessionID": "ses_learning", "state": {"input": {"filePath": "{{execution_root}}/docs/runbook.md"}, "output": "edited", "status": "completed", "title": "edit {\"filePath\": \"{{execution_root}}"}, "tool": "edit", "type": "tool"}}, "type": "message.part.updated"}
+{"properties": {"sessionID": "ses_learning"}, "type": "session.idle"}
+{"properties": {"sessionID": "ses_learning_child"}, "type": "session.idle"}

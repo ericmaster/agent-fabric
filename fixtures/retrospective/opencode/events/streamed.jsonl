@@ -1,0 +1,10 @@
+{"properties": {"info": {"directory": "{{execution_root}}", "id": "ses_stream", "projectID": "proj_synth", "time": {"created": 1, "updated": 2}, "title": "Streaming fixture task", "version": "2.0.24"}}, "type": "session.created"}
+{"properties": {"info": {"agent": "build", "id": "msg_u1", "model": {"modelID": "synthetic", "providerID": "synthetic"}, "role": "user", "sessionID": "ses_stream", "time": {"created": 1}}}, "type": "message.updated"}
+{"properties": {"part": {"id": "prt_u1", "messageID": "msg_u1", "sessionID": "ses_stream", "text": "Report the current onboarding instructions", "type": "text"}}, "type": "message.part.updated"}
+{"properties": {"info": {"id": "msg_a1", "parentID": "", "role": "assistant", "sessionID": "ses_stream", "time": {"completed": 3, "created": 2}}}, "type": "message.updated"}
+{"properties": {"part": {"id": "prt_a1", "messageID": "msg_a1", "sessionID": "ses_stream", "text": "Reading the onboarding", "type": "text"}}, "type": "message.part.updated"}
+{"properties": {"part": {"id": "prt_a1", "messageID": "msg_a1", "sessionID": "ses_stream", "text": "Reading the onboarding instructions now", "type": "text"}}, "type": "message.part.updated"}
+{"properties": {"part": {"id": "prt_a1", "messageID": "msg_a1", "sessionID": "ses_stream", "text": "Reading the onboarding instructions now and preparing the summary", "type": "text"}}, "type": "message.part.updated"}
+{"properties": {"part": {"callID": "call_stream_read", "id": "prt_tool_1", "messageID": "msg_a1", "sessionID": "ses_stream", "state": {"input": {"filePath": "{{execution_root}}/AGENTS.md"}, "output": "onboarding reads", "status": "completed", "title": "read {\"filePath\": \"{{execution_root}}"}, "tool": "read", "type": "tool"}}, "type": "message.part.updated"}
+{"properties": {"part": {"id": "prt_final", "messageID": "msg_a1", "sessionID": "ses_stream", "text": "Onboarding instructions summarized.", "type": "text"}}, "type": "message.part.updated"}
+{"properties": {"sessionID": "ses_stream"}, "type": "session.idle"}

@@ -80,20 +80,49 @@ type SessionClient interface {
 	Prompt(ctx context.Context, id string, req PromptRequest) error
 }
 
-// HTTPSessionClient is the documented OpenCode session transport.
+// HTTPSessionClient is the documented OpenCode session transport. The empty
+// Generation keeps the Phase 2 `prompt` contract; `message` selects the 2.x
+// generation (POST /session/{id}/prompt_async + message reconciliation).
 // Spec: docs/specs/task-retrospective.md via SessionClient
 type HTTPSessionClient struct {
-	BaseURL string
-	HTTP    *http.Client
+	BaseURL    string
+	HTTP       *http.Client
+	Generation string
+}
+
+// OpenSessionClient builds the configured transport for dispatch and drain.
+// Spec: docs/specs/task-retrospective.md via OpenSessionClient
+func OpenSessionClient(cfg *Config) *HTTPSessionClient {
+	return &HTTPSessionClient{
+		BaseURL:    cfg.DispatchServer,
+		Generation: cfg.DispatchEndpoint,
+		HTTP:       &http.Client{Timeout: cfg.DispatchTimeout + time.Second},
+	}
+}
+
+// messageGeneration reports the installed-2.x transport mode.
+// Spec: docs/specs/task-retrospective.md via SessionClient
+func (c *HTTPSessionClient) messageGeneration() bool {
+	return c.Generation == EndpointMessage
 }
 
 // CreateRoot posts a root session. The JSON body never contains parentID.
+// The message generation creates the session under the server's own project
+// directory, so it sends only the title.
 // Spec: docs/specs/task-retrospective.md via HTTPSessionClient
 func (c *HTTPSessionClient) CreateRoot(ctx context.Context, req CreateRootRequest) (Session, error) {
-	body, err := json.Marshal(struct {
-		Title     string `json:"title"`
-		Directory string `json:"directory"`
-	}{req.Title, req.Directory})
+	var body []byte
+	var err error
+	if c.messageGeneration() {
+		body, err = json.Marshal(struct {
+			Title string `json:"title"`
+		}{req.Title})
+	} else {
+		body, err = json.Marshal(struct {
+			Title     string `json:"title"`
+			Directory string `json:"directory"`
+		}{req.Title, req.Directory})
+	}
 	if err != nil {
 		return Session{}, err
 	}
@@ -134,7 +163,10 @@ func (c *HTTPSessionClient) List(ctx context.Context) ([]Session, error) {
 	return sessions, nil
 }
 
-// Prompt submits the correcting prompt and does not set a parent.
+// Prompt submits the correcting prompt and does not set a parent. The
+// message generation posts prompt_async (a 2xx confirms delivery inline) and
+// never adds the marker as a schema-unknown body field; the marker stays in
+// the prompt text for reconciliation.
 // Spec: docs/specs/task-retrospective.md via HTTPSessionClient
 func (c *HTTPSessionClient) Prompt(ctx context.Context, id string, req PromptRequest) error {
 	if err := checkSessionID(id); err != nil {
@@ -157,12 +189,106 @@ func (c *HTTPSessionClient) Prompt(ctx context.Context, id string, req PromptReq
 		Agent:  req.Agent,
 		Model:  req.Model,
 	}
+	if c.messageGeneration() {
+		payload.Marker = ""
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	_, err = c.roundTrip(ctx, http.MethodPost, "/session/"+url.PathEscape(id)+"/prompt", body)
+	elem := "/session/" + url.PathEscape(id) + "/prompt"
+	if c.messageGeneration() {
+		elem = "/session/" + url.PathEscape(id) + "/prompt_async"
+	}
+	_, err = c.roundTrip(ctx, http.MethodPost, elem, body)
 	return err
+}
+
+// SessionMessageRow is one row of the server message-history list
+// (GET /session/{id}/message). Spec: docs/specs/task-retrospective.md via HTTPSessionClient
+type SessionMessageRow struct {
+	Info struct {
+		ID        string          `json:"id"`
+		SessionID string          `json:"sessionID"`
+		Role      string          `json:"role"`
+		Error     json.RawMessage `json:"error,omitempty"`
+	} `json:"info"`
+	Parts []SessionPartRow `json:"parts"`
+}
+
+// SessionPartRow is one message part of the history list.
+// Spec: docs/specs/task-retrospective.md via HTTPSessionClient
+type SessionPartRow struct {
+	ID        string          `json:"id"`
+	SessionID string          `json:"sessionID"`
+	MessageID string          `json:"messageID"`
+	Type      string          `json:"type"`
+	Text      string          `json:"text,omitempty"`
+	Synthetic bool            `json:"synthetic,omitempty"`
+	Tool      string          `json:"tool,omitempty"`
+	CallID    string          `json:"callID,omitempty"`
+	State     json.RawMessage `json:"state,omitempty"`
+}
+
+// SessionToolState is the tool state block of one history tool part.
+// Spec: docs/specs/task-retrospective.md via HTTPSessionClient
+type SessionToolState struct {
+	Status string          `json:"status,omitempty"`
+	Input  json.RawMessage `json:"input,omitempty"`
+	Output string          `json:"output,omitempty"`
+	Error  json.RawMessage `json:"error,omitempty"`
+}
+
+// exchangeLimit is the read cap of one session-history fetch; a complete
+// observable task history stays far below it, and a larger history fails
+// closed rather than pretending to reconcile what it did not read.
+const exchangeLimit = 8 << 20
+
+// Messages fetches the full observable history of one session for backfill
+// and reconciliation.
+// Spec: docs/specs/task-retrospective.md via HTTPSessionClient
+func (c *HTTPSessionClient) Messages(ctx context.Context, id string) ([]SessionMessageRow, error) {
+	if err := checkSessionID(id); err != nil {
+		return nil, err
+	}
+	raw, err := c.roundTrip(ctx, http.MethodGet, "/session/"+url.PathEscape(id)+"/message", nil)
+	if err != nil {
+		return nil, err
+	}
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || raw[0] != '[' {
+		return nil, errors.New("session message history must be a JSON array")
+	}
+	var rows []SessionMessageRow
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// messageProbe returns the reconciliation probe of the message generation:
+// the marker is inside the prompt text, so the session history confirms
+// delivery. The prompt generation uses the session read echo instead (nil
+// probe keeps the Phase 2 behavior).
+// Spec: docs/specs/task-retrospective.md via reconcilePrompt
+func (c *HTTPSessionClient) messageProbe() PromptProbe {
+	if !c.messageGeneration() {
+		return nil
+	}
+	return func(ctx context.Context, sessionID, marker string) (bool, error) {
+		rows, err := c.Messages(ctx, sessionID)
+		if err != nil {
+			return false, err
+		}
+		for _, row := range rows {
+			for _, part := range row.Parts {
+				if strings.Contains(part.Text, marker) {
+					return true, nil
+				}
+			}
+		}
+		return false, nil
+	}
 }
 
 // exchange performs one JSON call and decodes a session object.
@@ -220,7 +346,7 @@ func (c *HTTPSessionClient) roundTrip(ctx context.Context, method, elem string, 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("session %s %s: HTTP %d", method, elem, resp.StatusCode)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	return io.ReadAll(io.LimitReader(resp.Body, exchangeLimit))
 }
 
 // refuseRedirect rejects redirects instead of following them off the server.
@@ -318,6 +444,11 @@ type CopyRenderer func(agentID, target, managedPath string) ([]byte, error)
 // Spec: docs/specs/task-retrospective.md via Dispatch
 type RepairValidator func(path string, post []byte) error
 
+// PromptProbe reconciles a lost prompt submission against server state the
+// plain session read cannot echo (the message generation's history list).
+// Spec: docs/specs/task-retrospective.md via reconcilePrompt
+type PromptProbe func(ctx context.Context, sessionID, marker string) (bool, error)
+
 // DispatchOptions is the dispatch request. Enabled false skips every side effect.
 // Spec: docs/specs/task-retrospective.md via Dispatch
 type DispatchOptions struct {
@@ -332,6 +463,9 @@ type DispatchOptions struct {
 	ManifestPaths  []string
 	// SettingsPath is an extra protected user-config file, in addition to UserConfigPath.
 	SettingsPath string
+	// PromptProbe is the optional reconciliation probe; without it a session
+	// whose read does not echo the marker stays pending (never re-posted).
+	PromptProbe PromptProbe
 }
 
 // Dispatch turns one eligible report into at most one visible correcting root.
@@ -609,7 +743,9 @@ func finishVerified(ctx context.Context, opts DispatchOptions, store *Store, rec
 	return save(store, receipt)
 }
 
-// reconcilePrompt reads the session after a lost prompt and does not post again.
+// reconcilePrompt reads the session after a lost prompt and does not post
+// again. The optional probe checks server state the plain read cannot echo
+// (the message generation searches the history for the marker text).
 // Spec: docs/specs/task-retrospective.md via Dispatch
 func reconcilePrompt(ctx context.Context, opts DispatchOptions, store *Store, receipt *Receipt, marker string) (*Receipt, error) {
 	session, err := call(ctx, opts.Config.DispatchTimeout, func(ctx context.Context) (Session, error) {
@@ -621,9 +757,26 @@ func reconcilePrompt(ctx context.Context, opts DispatchOptions, store *Store, re
 		receipt.Status = outcomeStatus(receipt.Findings)
 		return save(store, receipt)
 	}
+	if opts.PromptProbe != nil {
+		confirmed, probeErr := callProbe(ctx, opts, receipt.RootID, marker)
+		if probeErr == nil && confirmed {
+			receipt.PromptConfirmed = true
+			receipt.Error = ""
+			receipt.Status = outcomeStatus(receipt.Findings)
+			return save(store, receipt)
+		}
+	}
 	receipt.Status = StatusPending
 	receipt.Error = "prompt response lost; reconciliation did not confirm delivery, not posting again"
 	return save(store, receipt)
+}
+
+// callProbe bounds one reconciliation probe.
+// Spec: docs/specs/task-retrospective.md via reconcilePrompt
+func callProbe(ctx context.Context, opts DispatchOptions, sessionID, marker string) (bool, error) {
+	cctx, cancel := context.WithTimeout(ctx, opts.Config.DispatchTimeout)
+	defer cancel()
+	return opts.PromptProbe(cctx, sessionID, marker)
 }
 
 // queueMissing records an actionable capability gap and does not call the server.

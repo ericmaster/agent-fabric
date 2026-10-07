@@ -866,8 +866,46 @@ func optionalAssetWrites(o options, source string) ([]pendingWrite, error) {
 			target:   "retrospective",
 			resource: manifest.ResourceLearningOrigin,
 		})
+		pluginPath := filepath.Join(source, "hooks", "retrospective", "opencode.ts")
+		pluginInfo, err := os.Lstat(pluginPath)
+		if err != nil || pluginInfo.Mode()&os.ModeSymlink != 0 || !pluginInfo.Mode().IsRegular() {
+			return nil, fmt.Errorf("packaged retrospective plugin is missing or not a regular file")
+		}
+		pluginBody, err := os.ReadFile(pluginPath)
+		if err != nil {
+			return nil, err
+		}
+		destination, err := retrospectivePluginDestination(o)
+		if err != nil {
+			return nil, err
+		}
+		writes = append(writes, pendingWrite{
+			path:     destination,
+			body:     string(pluginBody),
+			target:   "retrospective",
+			resource: manifest.ResourceRetrospectivePlugin,
+		})
 	}
 	return writes, nil
+}
+
+// retrospectivePluginDestination is the opt-in owned plugin path for the
+// selected scope: global <home>/.config/opencode/plugins/retrospective.ts,
+// project <project>/.opencode/plugins/retrospective.ts.
+// Spec: docs/specs/task-retrospective.md via optionalAssetWrites
+func retrospectivePluginDestination(o options) (string, error) {
+	if o.project != "" {
+		project, err := filepath.Abs(o.project)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(project, ".opencode", "plugins", "retrospective.ts"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "opencode", "plugins", "retrospective.ts"), nil
 }
 
 func expectedManagedPath(o options, file manifest.File) (string, error) {
@@ -875,16 +913,26 @@ func expectedManagedPath(o options, file manifest.File) (string, error) {
 		if file.Agent != "" {
 			return "", fmt.Errorf("resource %q must not use an agent id", file.Resource)
 		}
-		if file.Resource != manifest.ResourceLearningOrigin {
+		if file.Resource != manifest.ResourceLearningOrigin && file.Resource != manifest.ResourceRetrospectivePlugin {
 			return "", fmt.Errorf("unknown resource %q", file.Resource)
 		}
-		root, _, err := scopeRoot(o)
-		if err != nil {
-			return "", err
-		}
-		expected, err := filepath.Abs(filepath.Join(root, "retrospective", "learning-origin.json"))
-		if err != nil {
-			return "", err
+		var expected string
+		if file.Resource == manifest.ResourceRetrospectivePlugin {
+			var err error
+			expected, err = retrospectivePluginDestination(o)
+			if err != nil {
+				return "", err
+			}
+		} else {
+			root, _, err := scopeRoot(o)
+			if err != nil {
+				return "", err
+			}
+			var absErr error
+			expected, absErr = filepath.Abs(filepath.Join(root, "retrospective", "learning-origin.json"))
+			if absErr != nil {
+				return "", absErr
+			}
 		}
 		actual, err := filepath.Abs(file.Path)
 		if err != nil {

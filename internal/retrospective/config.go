@@ -13,6 +13,15 @@ import (
 // JevModel is the pinned Jev model identifier for retrospective choices.
 const JevModel = "jev-1.13.0"
 
+// OpenCode session transport generations (dispatch_endpoint).
+const (
+	// EndpointPrompt is the <=1.18.x transport: POST /session/{id}/prompt.
+	EndpointPrompt = "prompt"
+	// EndpointMessage is the 2.x transport: POST /session/{id}/prompt_async
+	// (204 accepted) with message-list reconciliation.
+	EndpointMessage = "message"
+)
+
 // RubricVersion identifies the deterministic counting rubric of the report.
 const RubricVersion = "task-retrospective-rubric-1"
 
@@ -83,6 +92,14 @@ type Config struct {
 	StateDir string `json:"state_dir,omitempty"`
 	// MaxRepairAttempts caps one initial run plus one repair per source version.
 	MaxRepairAttempts int `json:"max_repair_attempts,omitempty"`
+	// SpoolMaxBytes bounds each staged per-session observation spool.
+	SpoolMaxBytes int `json:"spool_max_bytes,omitempty"`
+	// DrainMaxJobs caps the jobs one drain worker pass may process.
+	DrainMaxJobs int `json:"drain_max_jobs,omitempty"`
+	// DispatchEndpoint selects the OpenCode session transport generation:
+	// "prompt" (default, <=1.18.x) or "message" (2.x prompt_async + message
+	// reconcile). Empty means the default.
+	DispatchEndpoint string `json:"dispatch_endpoint,omitempty"`
 }
 
 // DefaultConfig returns the conservative defaults of the config contract.
@@ -108,6 +125,9 @@ func DefaultConfig() *Config {
 		RedactPatterns:            nil,
 		DispatchTimeout:           30 * time.Second,
 		MaxRepairAttempts:         2,
+		SpoolMaxBytes:             2_000_000,
+		DrainMaxJobs:              10,
+		DispatchEndpoint:          EndpointPrompt,
 	}
 }
 
@@ -189,6 +209,15 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("retrospective config: %w", err)
 		}
 	}
+	if c.SpoolMaxBytes < EnvelopeRecordMaxBytes {
+		return fmt.Errorf("retrospective config: spool_max_bytes must be >= %d", EnvelopeRecordMaxBytes)
+	}
+	if c.DrainMaxJobs < 1 {
+		return fmt.Errorf("retrospective config: drain_max_jobs must be >= 1")
+	}
+	if c.DispatchEndpoint != EndpointPrompt && c.DispatchEndpoint != EndpointMessage {
+		return fmt.Errorf("retrospective config: dispatch_endpoint must be %q or %q", EndpointPrompt, EndpointMessage)
+	}
 	return nil
 }
 
@@ -204,6 +233,7 @@ var configJSONKeys = map[string]struct{}{
 	"dispatch_server": {}, "dispatch_ui_template": {}, "dispatch_model": {},
 	"dispatch_directory": {}, "dispatch_timeout": {}, "canonical_roots": {},
 	"reviewer": {}, "state_dir": {}, "max_repair_attempts": {},
+	"spool_max_bytes": {}, "drain_max_jobs": {}, "dispatch_endpoint": {},
 }
 
 // UnmarshalJSON decodes a config document over the receiver so omitted keys
@@ -296,6 +326,15 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if err := assign("max_repair_attempts", &c.MaxRepairAttempts); err != nil {
+		return err
+	}
+	if err := assign("spool_max_bytes", &c.SpoolMaxBytes); err != nil {
+		return err
+	}
+	if err := assign("drain_max_jobs", &c.DrainMaxJobs); err != nil {
+		return err
+	}
+	if err := assign("dispatch_endpoint", &c.DispatchEndpoint); err != nil {
 		return err
 	}
 	if value, ok := raw["http_timeout"]; ok {

@@ -107,6 +107,10 @@ type Store struct {
 	Dir string
 }
 
+// ErrLockBusy reports that another single-host worker holds a named lock.
+// Spec: docs/specs/task-retrospective.md via Store
+var ErrLockBusy = errors.New("another drain worker holds the lock")
+
 // DefaultStateDir resolves the user state directory without creating it.
 // Spec: docs/specs/task-retrospective.md via Store
 func DefaultStateDir() (string, error) {
@@ -156,7 +160,7 @@ func OpenStore(dir string) (*Store, error) {
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return nil, err
 	}
-	for _, name := range []string{"receipts", "markers", "reports", "traces", "findings", "origins", "preimages"} {
+	for _, name := range []string{"receipts", "markers", "reports", "traces", "findings", "origins", "preimages", "spool", "jobs"} {
 		sub := filepath.Join(dir, name)
 		if err := os.MkdirAll(sub, 0o700); err != nil {
 			return nil, err
@@ -171,12 +175,41 @@ func OpenStore(dir string) (*Store, error) {
 // Lock holds the single-host exclusive lock until unlock is called.
 // Spec: docs/specs/task-retrospective.md via Store
 func (s *Store) Lock() (func(), error) {
-	f, err := os.OpenFile(filepath.Join(s.Dir, "lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	return s.LockAt("lock")
+}
+
+// LockAt holds one named single-host exclusive lock until unlock is called.
+// Named locks separate the spool (frequent ingest bursts) and the drain
+// worker (bounded worker runs) from the dispatch claim lock.
+// Spec: docs/specs/task-retrospective.md via Store
+func (s *Store) LockAt(name string) (func(), error) {
+	f, err := os.OpenFile(filepath.Join(s.Dir, name), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}
 	if err := lockOS(f); err != nil {
 		f.Close()
+		return nil, err
+	}
+	return func() {
+		_ = unlockOS(f)
+		_ = f.Close()
+	}, nil
+}
+
+// TryLockAt holds one named single-host exclusive lock until unlock, without
+// waiting. It fails with ErrLockBusy (wrapped) when a peer holds the lock.
+// Spec: docs/specs/task-retrospective.md via Store
+func (s *Store) TryLockAt(name string) (func(), error) {
+	f, err := os.OpenFile(filepath.Join(s.Dir, name), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := tryLockOS(f); err != nil {
+		f.Close()
+		if isLockBusy(err) {
+			return nil, ErrLockBusy
+		}
 		return nil, err
 	}
 	return func() {
@@ -456,6 +489,8 @@ type StatusSummary struct {
 	StateDir string         `json:"state_dir,omitempty"`
 	Counts   map[string]int `json:"counts"`
 	Errors   []string       `json:"errors,omitempty"`
+	Jobs     map[string]int `json:"jobs,omitempty"`
+	Spools   int            `json:"spools,omitempty"`
 }
 
 // Status reads enablement and local receipts. A missing state directory is empty.
@@ -490,7 +525,115 @@ func Status(configPath, stateDir string) (*StatusSummary, error) {
 			summary.Errors = append(summary.Errors, receipt.IncidentID+": "+receipt.Error)
 		}
 	}
+	summary.Jobs, summary.Spools, err = store.summaryObservation()
+	if err != nil {
+		return nil, err
+	}
 	return summary, nil
+}
+
+// summaryObservation counts drain jobs by status and staged spools.
+// Spec: docs/specs/task-retrospective.md via Status
+func (s *Store) summaryObservation() (map[string]int, int, error) {
+	jobs := map[string]int{}
+	entries, err := os.ReadDir(filepath.Join(s.Dir, "jobs"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, 0, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		job, err := s.ReadDrainJob(entry.Name()[:len(entry.Name())-len(".json")])
+		if err != nil {
+			continue
+		}
+		jobs[job.Status]++
+	}
+	spools := 0
+	entries, err = os.ReadDir(filepath.Join(s.Dir, "spool"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, 0, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".json" {
+			spools++
+		}
+	}
+	return jobs, spools, nil
+}
+
+// DrainJob is one persisted observation job. It is not a supervisor ledger.
+// Spec: docs/specs/task-retrospective.md via Store
+type DrainJob struct {
+	Schema        int               `json:"schema"`
+	SessionID     string            `json:"session_id"`
+	ServerURL     string            `json:"server_url,omitempty"`
+	Status        string            `json:"status"`
+	Attempts      int               `json:"attempts"`
+	Incidents     map[string]string `json:"incidents,omitempty"`
+	ReportPath    string            `json:"report_path,omitempty"`
+	ReceiptStatus string            `json:"receipt_status,omitempty"`
+	Error         string            `json:"error,omitempty"`
+	CreatedAt     string            `json:"created_at"`
+	UpdatedAt     string            `json:"updated_at,omitempty"`
+}
+
+// WriteDrainJob atomically stores one drain job at 0600.
+// Spec: docs/specs/task-retrospective.md via Store
+func (s *Store) WriteDrainJob(job *DrainJob) error {
+	return writePrivate(jobsPath(s, job.SessionID), mustMarshalJob(job))
+}
+
+// mustMarshalJob encodes one job.
+// Spec: docs/specs/task-retrospective.md via WriteDrainJob
+func mustMarshalJob(job *DrainJob) []byte {
+	body, err := json.MarshalIndent(job, "", "  ")
+	if err != nil {
+		// DrainJob fields are all JSON-safe strings, ints and maps; a
+		// marshal failure is a programming error, not a runtime condition.
+		panic(err)
+	}
+	return append(body, '\n')
+}
+
+// ReadDrainJob loads one drain job. A missing job is os.ErrNotExist.
+// Spec: docs/specs/task-retrospective.md via Store
+func (s *Store) ReadDrainJob(sessionID string) (*DrainJob, error) {
+	body, err := os.ReadFile(filepath.Join(s.Dir, JobsDirName, spoolKey(sessionID)+".json"))
+	if err != nil {
+		return nil, err
+	}
+	var job DrainJob
+	if err := json.Unmarshal(body, &job); err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
+// ListDrainJobs returns every stored drain job ordered by creation time.
+// Spec: docs/specs/task-retrospective.md via Store
+func (s *Store) ListDrainJobs() ([]*DrainJob, error) {
+	entries, err := os.ReadDir(filepath.Join(s.Dir, JobsDirName))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var out []*DrainJob
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		job, err := s.ReadDrainJob(entry.Name()[:len(entry.Name())-len(".json")])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, job)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt < out[j].CreatedAt })
+	return out, nil
 }
 
 // writePrivate atomically writes a 0600 file.

@@ -35,10 +35,180 @@ func runRetrospective(args []string) error {
 		return runRetrospectiveEnabled(args, true)
 	case "disable":
 		return runRetrospectiveEnabled(args, false)
+	case "ingest":
+		return runRetrospectiveIngest(args)
+	case "drain":
+		return runRetrospectiveDrain(args)
 	default:
-		fmt.Fprintln(os.Stderr, "retrospective supports: analyze, dispatch, status, enable, disable")
+		fmt.Fprintln(os.Stderr, "retrospective supports: analyze, dispatch, status, enable, disable, ingest, drain")
 		return fmt.Errorf("unknown retrospective command %q", sub)
 	}
+}
+
+// RetrospectiveConfigPath resolves the optional observation/dispatch config:
+// AGF_RETROSPECTIVE_CONFIG, else the user file (not the enable-flag file),
+// else empty (defaults).
+// Spec: docs/specs/task-retrospective.md via runRetrospectiveIngest
+func RetrospectiveConfigPath() (string, error) {
+	if env := os.Getenv("AGF_RETROSPECTIVE_CONFIG"); env != "" {
+		return env, nil
+	}
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		return filepath.Join(xdg, "agent-fabric", "retrospective.json"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "agent-fabric", "retrospective.json"), nil
+}
+
+// loadObservationConfig reads the retrospective config for ingest/drain: an
+// explicit --config wins, then AGF_RETROSPECTIVE_CONFIG, then the user
+// retrospective.json, then defaults. A missing config file keeps defaults.
+// Spec: docs/specs/task-retrospective.md via runRetrospectiveIngest
+func loadObservationConfig(explicit string) (*retrospective.Config, error) {
+	path := explicit
+	if path == "" {
+		resolved, err := RetrospectiveConfigPath()
+		if err != nil {
+			return nil, err
+		}
+		path = resolved
+	}
+	if path == "" {
+		return retrospective.DefaultConfig(), nil
+	}
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return retrospective.DefaultConfig(), nil
+		}
+		return nil, err
+	}
+	cfg, err := retrospective.LoadConfig(path)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.StateDir == "" {
+		resolved, err := retrospective.DefaultStateDir()
+		if err != nil {
+			return nil, err
+		}
+		cfg.StateDir = resolved
+	}
+	return cfg, nil
+}
+
+// runRetrospectiveIngest stages one observation envelope from stdin. The
+// global enable gate precedes every write; a disabled observation exits with
+// code 2 and never creates state.
+// Spec: docs/specs/task-retrospective.md
+func runRetrospectiveIngest(args []string) error {
+	fs := flag.NewFlagSet("retrospective ingest", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var harness, configPath string
+	fs.StringVar(&harness, "harness", "", "observation harness (opencode)")
+	fs.StringVar(&configPath, "config", "", "optional retrospective config JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected arguments: %s", fs.Args()[0])
+	}
+	if harness != retrospective.HarnessOpenCode {
+		return fmt.Errorf("unsupported observation harness %q (supported: %s)", harness, retrospective.HarnessOpenCode)
+	}
+	enabled, err := retrospective.Enabled("")
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		fmt.Println(`{"staged":0,"disabled":true}`)
+		os.Exit(retrospective.IngestExitDisabled)
+	}
+	cfg, err := loadObservationConfig(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "retrospective ingest: %v\n", err)
+		os.Exit(retrospective.IngestExitError)
+	}
+	stateDir := cfg.StateDir
+	store, err := retrospective.OpenStore(stateDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "retrospective ingest: %v\n", err)
+		os.Exit(retrospective.IngestExitError)
+	}
+	envelope, err := retrospective.DecodeEnvelope(os.Stdin)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "retrospective ingest: %v\n", err)
+		os.Exit(retrospective.IngestExitError)
+	}
+	spawn := retrospective.SpawnDetachedDrain
+	if os.Getenv("AGF_RETROSPECTIVE_NO_SPAWN") == "1" {
+		spawn = func() error { return errors.New("spawn disabled by AGF_RETROSPECTIVE_NO_SPAWN") }
+	}
+	result, err := retrospective.IngestEnvelope(retrospective.IngestOptions{
+		Config:      cfg,
+		Store:       store,
+		SpawnWorker: spawn,
+		Now:         func() time.Time { return time.Now().UTC() },
+	}, envelope)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "retrospective ingest: %v\n", err)
+		os.Exit(retrospective.IngestExitError)
+	}
+	if result.Suppressed {
+		fmt.Println(`{"staged":0,"suppressed":true}`)
+		return nil
+	}
+	spawned := false
+	if result.Triggered && result.JobCreated {
+		if err := retrospective.SpawnDetachedDrain(); err == nil {
+			spawned = true
+		} else {
+			fmt.Fprintf(os.Stderr, "retrospective ingest: drain worker spawn deferred: %v\n", err)
+		}
+	}
+	fmt.Printf(`{"staged":%d,"triggered":%t,"job":%t,"spawned":%t}`+"\n", result.Staged, result.Triggered, result.JobCreated, spawned)
+	return nil
+}
+
+// runRetrospectiveDrain is the detached worker entry; it processes pending
+// jobs and exits (no daemon). Concurrent workers exit 0 without work.
+// Spec: docs/specs/task-retrospective.md
+func runRetrospectiveDrain(args []string) error {
+	fs := flag.NewFlagSet("retrospective drain", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var configPath string
+	fs.StringVar(&configPath, "config", "", "optional retrospective config JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected arguments: %s", fs.Args()[0])
+	}
+	cfg, err := loadObservationConfig(configPath)
+	if err != nil {
+		return err
+	}
+	sourceRoot, sourceErr := sourceDir(options{})
+	if sourceErr != nil {
+		sourceRoot = ""
+	}
+	summary, err := retrospective.RunDrain(context.Background(), retrospective.DrainOptions{
+		Config:     cfg,
+		ConfigPath: configPath,
+		SourceRoot: sourceRoot,
+		EnvKey:     os.Getenv("TYPESAFE_API_KEY"),
+	})
+	if err != nil {
+		return err
+	}
+	if summary == nil {
+		summary = &retrospective.DrainSummary{}
+	}
+	fmt.Printf("retrospective drain processed=%d done=%d failed=%d paused=%t busy=%t\n",
+		summary.Processed, summary.Completed, summary.Failed, summary.Paused, summary.LockBusy)
+	return nil
 }
 
 // retrospectiveAnalyzeOptions carries the analyze command flags.
@@ -215,9 +385,12 @@ func runRetrospectiveStatus(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("retrospective.enabled=%t receipts=%d\n", summary.Enabled, len(summary.Errors)+countReceipts(summary))
+	fmt.Printf("retrospective.enabled=%t receipts=%d spools=%d\n", summary.Enabled, len(summary.Errors)+countReceipts(summary), summary.Spools)
 	for status, count := range summary.Counts {
 		fmt.Printf("status %s=%d\n", status, count)
+	}
+	for status, count := range summary.Jobs {
+		fmt.Printf("job %s=%d\n", status, count)
 	}
 	for _, item := range summary.Errors {
 		fmt.Printf("queued %s\n", item)

@@ -2,7 +2,7 @@
 title: "Spec: Task Retrospective"
 type: spec
 status: active
-covers: internal/retrospective, cmd/agent-fabric (retrospective), agents/learning-corrector.md
+covers: internal/retrospective, cmd/agent-fabric (retrospective), hooks/retrospective, agents/learning-corrector.md
 last_checked: 2026-10-06
 ---
 
@@ -12,7 +12,9 @@ Opt-in, harness-neutral replay of one normalized task trace into an
 evidence-linked report, then one visible correcting root for an eligible report.
 Standard library only. No daemon, database, new UI, or MCP server. Phase 1
 writes only the requested report file. Phase 2 adds dispatch, local state, and
-verified text repair. OpenCode observation remains a later phase. Supervisor
+verified text repair. Phase 3 ships the OpenCode observation plugin, staged
+event spools, and the detached drain worker that runs the complete loop
+(observe → ingest → analyze → dispatch) under the global opt-out. Supervisor
 ledgers are not a retrospective database.
 
 Canonical plan: `.artifacts-manager/plan-task-retrospective.md` (Phase 1).
@@ -30,12 +32,16 @@ ledgers are never a retrospective database).
 - `internal/retrospective/report.go` — report assembly and atomic write.
 - `internal/retrospective/store.go` — local state, locks, retention, settings entry.
 - `internal/retrospective/dispatch.go` — session dispatch, canonical resolution, repair.
-- `cmd/agent-fabric/retrospective.go` — `analyze`, `dispatch`, `status`, `enable`, `disable`.
+- `internal/retrospective/observe.go` — OpenCode observation envelope validation, staged spool, ingest, trigger.
+- `internal/retrospective/drain.go` — persisted drain jobs, spool→trace assembly, server backfill, detached worker.
+- `hooks/retrospective/opencode.ts` — thin OpenCode observation adapter (plugin asset).
+- `cmd/agent-fabric/retrospective.go` — `analyze`, `dispatch`, `status`, `enable`, `disable`, `ingest`, `drain`.
 - `agents/learning-corrector.md` — portable public primary correcting role.
 - `assets/retrospective/learning-origin.json` — optional owned runtime asset.
 
-Every file carries `// Spec: docs/specs/task-retrospective.md`; helpers carry
-`// Spec: docs/specs/task-retrospective.md via <parent>`.
+Every Go/Terminal file carries `// Spec: docs/specs/task-retrospective.md`;
+helpers carry `// Spec: docs/specs/task-retrospective.md via <parent>`. The
+TypeScript adapter carries the equivalent header comment.
 
 ## Trace input schema v1 (`--input trace.json`)
 
@@ -547,3 +553,270 @@ modified copies and remove only unchanged owned copies.
 - Tool-bug, non-owned, instructions-ignored, dirty-target, and prompt-injection fixtures do not write.
 - Reviewer and rollback evidence are recorded. Validation failure restores only the repair.
 - Install, sync, doctor, and uninstall cover the optional asset.
+
+## Phase 3 — OpenCode observation and the complete learning loop
+
+The observation loop is: OpenCode emits native bus events → the thin
+TypeScript adapter (`hooks/retrospective/opencode.ts`) converts them to a
+versioned observation envelope → the adapter hands the envelope to the
+packaged Go CLI over stdin (`retrospective ingest --harness opencode`) →
+ingest stages bounded records in a local spool → a terminal trigger persists
+a drain job and launches one detached drain worker → the worker reconciles
+the terminal snapshot against the server session API, assembles trace schema
+v1, runs `analyze`, and dispatches eligible reports. The plugin never
+interpolates transcript data into shell arguments, never posts into the
+source session, and never blocks its response on Jev: observation is
+fire-and-forget staging plus a detached worker.
+
+### Installed version pins
+
+- Observed pairing for fixtures and runtime: OpenCode CLI `2.0.24` with
+  `@opencode-ai/plugin@1.18.35` and `@opencode-ai/sdk@1.18.35` (the npm
+  generation that matches the installed CLI; the planning note recorded
+  `1.18.32`, since superseded by the installed `2.0.24`).
+- The adapter is version-tested: it probes the server version once and stays
+  inert (logs degradation, never stages) for a version it cannot confirm. SDK
+  shape differences are normalized inside the adapter only; the Go core knows
+  only the envelope below.
+
+### Observation envelope v1 (plugin → ingest)
+
+One flush carries one JSON document over stdin:
+
+| field | required | meaning |
+|---|---|---|
+| `version` | yes | exactly `1` |
+| `harness` | yes | exactly `opencode` |
+| `session_id` | yes | the owner session of this flush |
+| `server_url` | no | observed server base URL (http loopback or configured host), used only by drain backfill |
+| `sdk_version` | no | adapter-observed SDK/app version stamp, recorded for audit |
+| `trigger` | no | true when this flush is a terminal trigger candidate |
+| `records` | yes | bounded record array (≤ 2,000 records) |
+
+Every record is one of the following kinds (single object, `kind` selects):
+
+- `session` — `{session_id, parent_id?, title?, directory?}`; identity and
+  parent linkage observed from session events.
+- `message` — `{record_id, session_id, role}`; role map (`user`/`assistant`).
+- `part` — `{record_id, session_id, message_id, part_type, text?, synthetic?,
+  reasoning?, tool?, tool_status?, call_id?, input?, output?, error?}`.
+  Reasoning parts are emitted with `reasoning: true` and no text: private
+  reasoning is never collected.
+- `removed` — `{record_id, session_id, message_id?}`; history changed under
+  observation.
+- `event` — `{event, session_id, status?, detail?}`; observed
+  `session.idle`, `session.status` (busy/idle/retry), `session.error`
+  (detail = bounded error type name, never a full stack), or
+  `session.compacted`.
+- `source` — `{session_id, path, sha256, excerpt?}`; content hash captured at
+  use time (the file bytes as the adapter hashed them when the read tool
+  returned).
+- `source_gap` — `{session_id, path, detail}`; a load the adapter saw but
+  could not hash.
+
+Ingest performs only these operations: validate (strict decode; unknown
+envelope fields or a `version != 1`, `harness != opencode`, oversized batch
+(> 8 MiB body), or malformed record fails closed with exit 1), check the
+global enable (exit 2, no writes, when disabled), check learning-origin
+suppression and the scoped disable override, stage the spool, and on a
+trigger write/persist a drain job and launch the detached worker. Exit codes:
+`0` staged, `1` ingest error, `2` disabled (not staged), `3` unsupported
+adapter version. Stdin is the only transcript channel; argv carries static
+flags only.
+
+### Learning-origin suppression (observation side)
+
+A session is excluded from capture when: its id is stored under the dispatch
+`origins/` directory; its observed title contains the learning-origin marker
+prefix (`agf-learning-origin:v1:`); or a parent chain built from observed
+session records reaches such a session. A scoped disable override applies
+when the observed session directory or an ancestor contains a
+`.retrospective-disabled` marker file. Suppression is evaluated per envelope;
+a session that becomes suppressed mid-stream has its spool file removed and
+no jobs are ever created for it.
+
+### Staged spool format
+
+`<state>/spool/<session-id>.json` (schema `1`), mode `0600` under the `0700`
+state directory, written temp-file + rename behind the shared `spool.lock`:
+
+| field | meaning |
+|---|---|
+| `session_id` | owner session |
+| `last_seq` | monotonic per-record sequence counter (first observation order) |
+| `accepted_after_seq` | accepted-success boundary: when > 0, the next task interval starts strictly after it |
+| `overflows` | count of envelopes dropped by the spool bound |
+| `sessions` | observed `{parent_id, title, directory}` per session id |
+| `messages` | role per message id |
+| `parts` | latest observed part state per part id (upsert, streamed updates replace) |
+| `events` | append-only bounded session events (last 400) |
+| `source_refs` | deduplicated `{path, sha256, excerpt?}` provenance |
+| `gaps` | bounded collection gaps (`compacted`, `partial_stream`, `missing_source`, overflow) |
+| `suppressed` | true once the session matched a suppression rule |
+
+Bounds are enforced at ingest: envelope ≤ 2,000 records, each record field
+≤ 64 KiB, spool size ≤ `spool_max_bytes` (default 2,000,000). Over the spool
+bound the remainder of that envelope is dropped with a `partial_stream` gap
+and an `overflows` increment; backfill may restore the evidence later.
+
+### Event → trace normalization mapping (drain, Go side)
+
+| observed | trace record |
+|---|---|
+| user text parts of a message | one `messages[]` record, role `user` |
+| assistant text parts of a message | one `messages[]` record; the last assistant message of the resolved session carries kind `final` |
+| reasoning parts | one `messages[]` record kind `reasoning`, no text (excluded from evidence with coverage reason) |
+| synthetic/ignored parts | not captured (not agent observables); their absence is not a gap |
+| tool part (`state.status` pending/running) | `calls[]` record status `running` |
+| tool part (`state.status` completed) | `calls[]` record status `success` |
+| tool part (`state.status` error) | `calls[]` record status `error` with `error` detail in the input fragment set |
+| tool state input (before-hook or part state) | `input` JSON string (bounded) |
+| tool state output (after-hook or part state) | `result` fragment (`f:<partID>`) |
+| tool state error | recorded as call `error` status detail, never as trace `terminal_status` |
+| `session.error` event after the last user message | trace `terminal_status` `error` (transient/transport layer), detail `MessageAbortedError` → `aborted` |
+| `session.error` event before a later user message | turn-level transport failure; not the trace terminal status |
+| `session.compacted` event | gap `kind: compacted` |
+| removed records | gap `kind: partial_stream` |
+| overflow | gap `kind: partial_stream` (detail names the bound) |
+| unhashable instruction source | gap `kind: missing_source` |
+| session record with `parent_id` (child) | `child_refs` entry + descendant trace (built from that child's staged records/backfill) |
+| every user message after the first | boundary `task_start` at its seq |
+
+Instruction-source capture: read-family tool calls (`read`) whose input
+references a known instruction basename (`AGENTS.md`, `CLAUDE.md`,
+`CONTEXT.md`, `SKILL.md`) or an instruction directory (`/docs/`, `/skills/`,
+`/.agents/`, `/docs-context/`) produce a `source_refs` entry when the
+adapter could hash the bytes at use time; otherwise a `missing_source` gap.
+Exit codes are recorded only when the tool payload makes them observable;
+nothing is inferred. No requirements are synthesized; explicit requirement
+records are always host-supplied.
+
+Boundaries and terminal status: the interval resolves per trace schema v1 —
+accepted-success boundary when `accepted_after_seq > 0`, otherwise
+session-start. Task identity when no host task id exists:
+`retro:<session-id>:<first user message seq>:<final message id>` — stable
+across restarts so an identical completed turn never produces a second
+incident for the same task half.
+
+### Drain jobs and lifecycle
+
+`<state>/jobs/<session-id>.json` (schema `1`): `{session_id, server_url?,
+status: pending|running|done|failed|skipped, attempts, incidents:{task:
+receipt status}, report_path?, receipt_status?, error?, created_at,
+updated_at}`. Skipped covers observation rows that never trigger (a child
+session's terminal event, learning-origin rows, suppressed spools).
+Ingest writes/persists a job at a terminal trigger (trigger candidate =
+`session.idle` or `session.status: idle` for the owner session) with
+`status: pending`, then launches one detached `agf retrospective drain`
+worker. The worker:
+
+- takes a non-blocking single-host `drain.lock`; a second worker exits
+  immediately (never duplicates work);
+- iterates pending jobs oldest-first under `drain_max_jobs` per pass,
+  re-scanning after the last pass to pick up jobs created while it ran
+  (bounded re-check), then exits — there is no always-on daemon;
+- per job: reconciles the terminal snapshot from the server when
+  `server_url` is known (message-history upsert for the owner and every
+  known child, marking a `partial_stream` gap when the reconcile fails —
+  transport errors are recorded as gaps, never invented as coverage);
+  assembles the trace; validates; runs `analyze` (Jev budgets per config);
+  writes the report into `<state>/reports/`; runs `dispatch` under the same
+  global-enable re-check and request budgets; records the receipt status in
+  the job and updates the spool's accepted-success boundary after a
+  conclusive disposition (repaired/submitted/conflict/exhausted/suppressed
+  or a complete report that does not trigger);
+- disabled mid-flight (global opt-out) → dispatch is skipped and the job
+  stops at `pending` (paused work stays inspectable; the next trigger or
+  restart resume continues it);
+- restart resume: a pending/running job left behind by a crashed worker is
+  resumed by the next worker (or the next trigger); `attempts` increments;
+  `done`/`failed` jobs are terminal and not re-run.
+
+### CLI
+
+```
+agf retrospective ingest --harness opencode            # envelope JSON on stdin
+agf retrospective drain                                # worker: process pending jobs
+```
+
+`ingest` exit codes and behavior are fixed above (2 = disabled, no writes;
+0 = staged, `--json`-style one-line summary on stdout). `drain` exits 0 when
+it processed/resumed jobs (each job outcome is inside its job file), exit 1
+on lock-unavailable-owner errors; a failed lock because another worker holds
+it exits 0 without work. Config resolution for ingest/drain: `--config` flag,
+else `AGF_RETROSPECTIVE_CONFIG`, else
+`$XDG_CONFIG_HOME/agent-fabric/retrospective.json`, else defaults — so the
+detached worker inherits the same Jev/dispatch configuration the user chose.
+
+### Optional trusted coordinator packet
+
+Dispatch evidence in the loop is an optional
+`<state>/coordinator/<task-id>.json` packet (file name = the safe spool-key
+form of the task id) — `{schema: 1, findings: [...]}` in the exact Phase 2
+`Finding` schema — staged by a trusted coordinator before the drain dispatch
+(an automatic loop has no self-certifying author: the packet is external
+evidence, the same way `dispatch --report` consumers supply findings today).
+The drain validates the packet under exactly the dispatch gates (hash
+consistency, canonical resolution, reviewer, excerpt uniqueness, on-disk
+hash re-check) and only then includes it in the report written for that
+task. Absence is the normal path: the visible correcting root receives the
+intake locator and performs its own verified review in its own session;
+queued receipts block the task for manual reconciliation.
+
+### Dispatch transport generation
+
+`dispatch_endpoint` config key picks the OpenCode server generation:
+
+- `prompt` (default) — the Phase 2 contract exactly: `POST /session` body
+  `{title, directory}` (no `parentID` key), prompt `POST /session/{id}/prompt`
+  with the marker echo, reconcile by session read.
+- `message` — the installed 2.0.24 generation: `POST /session` body
+  `{title}` (the project directory comes from the server's working
+  directory), prompt `POST /session/{id}/prompt_async` (HTTP 204 accepted =
+  prompt delivered and confirmed), reconcile of a lost prompt by
+  `GET /session/{id}/message` searching for the marker text in message
+  parts. 404/501 queue the report exactly as before; no hidden fallback.
+
+Both generations refuse a returned child session (`parentID` non-empty) and
+both reconcile a lost create by exact marker list match. The receipt contract
+is unchanged.
+
+### Plugin install and activation
+
+The plugin is an opt-in owned asset, never a default install:
+
+- Resource identity `retrospective-opencode-plugin` (not an agent id) in the
+  manifest; `--assets retrospective` installs both `learning-origin.json`
+  (existing) and `retrospective.ts` (the packaged `hooks/retrospective/opencode.ts`).
+- Destination under the OpenCode plugin path for the selected scope: global
+  `<home>/.config/opencode/plugins/retrospective.ts`, project
+  `<project>/.opencode/plugins/retrospective.ts`. The adapter file is
+  self-contained (no runtime imports beyond Bun/Node built-ins) so no project
+  `package.json` is required.
+- Activation paths: installed plugin file + one global `retrospective.enabled`
+  setting. The scoped disable override (`.retrospective-disabled` marker) is
+  honored by ingest. Uninstall/sync/doctor keep modified plugin files and
+  remove only unchanged owned copies, exactly like the other optional assets.
+- Existing live sessions are never activated by install or tests: fixture
+  tests only point disposable config/data directories at the plugin path.
+
+### Phase 3 tests
+
+- `hooks/retrospective` npm tests replay recorded OpenCode `2.0.24` event
+  fixtures (offline, deterministic) through the real adapter module; the CLI
+  spawn path is exercised with a fixture CLI captured by the test.
+- Go replay tests replay the same fixtures through `ingest` covering
+  streamed updates, duplicate/out-of-order terminal events, root/child
+  aggregation, abort/error-then-idle, multi-turn boundaries, history
+  compaction, restart resume, and learning-session suppression.
+- Loop e2e tests run ingest → drain → analyze (mock Jev endpoint) → dispatch
+  (mock session server) and prove: only the bounded stage-one payload is sent
+  before the success gate, stage-two pages only after success, exactly one
+  visible root, the intake prompt without transcript interpolation, and
+  failed/aborted/uncertain fixtures dispatch nothing.
+- Release/bootstrap fixture tests install the plugin + runtime assets into a
+  disposable HOME and exercise enable/disable/sync/doctor/uninstall with
+  modified-file retention and no activation of live sessions. Detached
+  worker spawns are test-injected (`SpawnWorker` in-process; the CLI honors
+  `AGF_RETROSPECTIVE_NO_SPAWN=1`), so fixture tests never launch background
+  processes.
