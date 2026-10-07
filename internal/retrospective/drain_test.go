@@ -399,7 +399,7 @@ func pageSubjects(request ChoiceRequest) int {
 	return score
 }
 
-func TestLoopDrainDisabledWritesReportAndPauses(t *testing.T) {
+func TestLoopDrainDisabledWritesNothingAndPauses(t *testing.T) {
 	f := newLoopFixture(t, successScript(t))
 	f.setEnabledFor(t, t.TempDir(), false)
 	f.stageReplay(t, filepath.Join(fixtureRoot(t), "envelopes", "success-recovery.jsonl"))
