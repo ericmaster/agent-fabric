@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,9 +17,10 @@ import (
 // recordedCall captures one mocked HTTP request exchange for assertions.
 // Spec: docs/specs/task-retrospective.md via JevClient
 type recordedCall struct {
-	Path string
-	Body []byte
-	Auth string
+	Path    string
+	Body    []byte
+	Auth    string
+	XAPIKey string
 }
 
 // mockServer is a scripted recording Jev endpoint; responses map the 1-based
@@ -52,7 +55,7 @@ func newMockServer(t *testing.T, responses map[int]mockResponse) (*mockServer, *
 func (mock *mockServer) handler() http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		body, _ := io.ReadAll(request.Body)
-		n := mock.record(&recordedCall{Path: request.URL.Path, Body: body, Auth: request.Header.Get("Authorization")})
+		n := mock.record(&recordedCall{Path: request.URL.Path, Body: body, Auth: request.Header.Get("Authorization"), XAPIKey: request.Header.Get("X-API-Key")})
 		mock.mu.Lock()
 		scripted, scriptedFound := mock.responses[n]
 		mock.mu.Unlock()
@@ -71,15 +74,15 @@ func (mock *mockServer) handler() http.Handler {
 			_, _ = writer.Write([]byte(scripted.body))
 			return
 		}
-		decoded := &ChoiceRequest{}
-		_ = json.Unmarshal(body, decoded)
-		answers := []Answer{}
+		decoded := decodeWireChoiceRequest(body)
+		answers := map[string]systemOneAnswer{}
 		for _, question := range decoded.Requests {
 			mock.mu.Lock()
 			scriptedAnswer, scripted := mock.answersByID[question.ID]
 			mock.mu.Unlock()
+			answer := scriptedAnswer
 			if !scripted {
-				scriptedAnswer = Answer{
+				answer = Answer{
 					RequestID:   question.ID,
 					Subject:     question.Subject,
 					Choice:      question.Choices[0],
@@ -87,11 +90,85 @@ func (mock *mockServer) handler() http.Handler {
 					Confidence:  f64(0.9),
 				}
 			}
-			answers = append(answers, scriptedAnswer)
+			wire := systemOneAnswer{Type: "choice", Choice: answer.Choice}
+			if answer.Confidence != nil {
+				confidence := *answer.Confidence
+				wire.Confidence = &confidence
+			}
+			if answer.Probability != nil {
+				wire.Probabilities = testDistribution(question.Choices, answer.Choice, *answer.Probability)
+			}
+			answers[question.ID] = wire
 		}
 		writer.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(writer).Encode(ChoiceResponse{Responses: answers})
+		_ = json.NewEncoder(writer).Encode(systemOneResponse{Model: "glide", Answers: answers})
 	})
+}
+
+// decodeWireChoiceRequest translates one recorded System One wire body back
+// onto the internal request shape so tests can keep asserting on questions.
+// Subject, scope, and the canonical choice order are restored from the stable
+// id/instructions/choice-set conventions.
+// Spec: docs/specs/task-retrospective.md via JevClient
+func decodeWireChoiceRequest(body []byte) *ChoiceRequest {
+	wire := &systemOneRequest{}
+	_ = json.Unmarshal(body, wire)
+	decoded := &ChoiceRequest{Model: wire.Model, State: wire.State}
+	var state struct {
+		Evidence map[string]json.RawMessage `json:"evidence"`
+	}
+	_ = json.Unmarshal(wire.State, &state)
+	for id, question := range wire.Questions {
+		choices := make([]string, 0, len(question.Criteria))
+		for choice := range question.Criteria {
+			choices = append(choices, choice)
+		}
+		sort.Strings(choices)
+		internal := Question{ID: id, Text: question.Instructions, Choices: canonicalChoices(id, question.Instructions, choices), Subject: strings.TrimPrefix(id, "q-")}
+		internal.Evidence = state.Evidence[id]
+		switch {
+		case id == "q-context-page":
+			internal.Scope = "context-only"
+		case id == outcomeQuestionID:
+			internal.Subject = "task"
+			internal.Scope = ScopeOutcome
+		case strings.Contains(question.Instructions, requirementQuestionText):
+			internal.Scope = ScopeRequirementOmission
+		default:
+			internal.Scope = ScopeCallClassification
+		}
+		internal.Text = strings.TrimPrefix(internal.Text, "Subject ID: "+internal.Subject+" (scope: "+internal.Scope+"). ")
+		decoded.Requests = append(decoded.Requests, internal)
+	}
+	sort.Slice(decoded.Requests, func(i, j int) bool { return decoded.Requests[i].ID < decoded.Requests[j].ID })
+	return decoded
+}
+
+// canonicalChoices restores the evaluator's declared choice order when the
+// decoded set matches one of the known question contracts.
+func canonicalChoices(id, instructions string, sorted []string) []string {
+	var declared []string
+	switch {
+	case id == outcomeQuestionID:
+		declared = outcomeChoices
+	case strings.Contains(instructions, requirementQuestionText):
+		declared = requirementChoices
+	default:
+		declared = callClassificationChoices
+	}
+	if len(declared) != len(sorted) {
+		return sorted
+	}
+	set := make(map[string]bool, len(sorted))
+	for _, choice := range sorted {
+		set[choice] = true
+	}
+	for _, choice := range declared {
+		if !set[choice] {
+			return sorted
+		}
+	}
+	return append([]string(nil), declared...)
 }
 
 // record appends one captured call and returns its 1-based index.
@@ -127,13 +204,13 @@ func newJev(t *testing.T, cfg *Config, sleep func(d time.Duration)) *JevClient {
 }
 
 func stageSampleRequest() *ChoiceRequest {
-	return buildRequest(JevModel, []byte(`{"stage":"one"}`), nil, []Question{{
+	return buildRequest(GlideModel, []byte(`{"stage":"one"}`), nil, []Question{{
 		ID: outcomeQuestionID, Subject: "task", Scope: ScopeOutcome,
 		Text: "any", Choices: outcomeChoices,
 	}})
 }
 
-func TestJevSendsPinnedModelAndBearerAuth(t *testing.T) {
+func TestGlideSendsPinnedModelAndAPIKey(t *testing.T) {
 	mock, cfg := newMockServer(t, nil)
 	client := newJev(t, cfg, nil)
 	if _, err := client.Choice(context.Background(), stageSampleRequest()); err != nil {
@@ -143,19 +220,35 @@ func TestJevSendsPinnedModelAndBearerAuth(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("calls = %d", len(calls))
 	}
-	if calls[0].Path != choiceEndpointPath {
+	if calls[0].Path != systemOnePath {
 		t.Fatalf("endpoint path = %q", calls[0].Path)
 	}
-	if calls[0].Auth != "Bearer host-key-fixture" {
-		t.Fatalf("auth header missing: %q", calls[0].Auth)
+	if calls[0].Auth != "" || calls[0].XAPIKey != "host-key-fixture" {
+		t.Fatal("wrong provider authentication header")
 	}
 	var sent ChoiceRequest
 	if err := json.Unmarshal(calls[0].Body, &sent); err != nil {
 		t.Fatal(err)
 	}
-	if sent.Model != "jev-1.13.0" {
+	if sent.Model != GlideModel {
 		t.Fatalf("model = %q", sent.Model)
 	}
+}
+
+// Spec: docs/specs/task-retrospective.md via mockServer
+func testDistribution(choices []string, winner string, probability float64) map[string]*float64 {
+	if len(choices) == 1 {
+		return map[string]*float64{choices[0]: f64(1)}
+	}
+	values := make(map[string]*float64, len(choices))
+	for _, choice := range choices {
+		p := (1 - probability) / float64(len(choices)-1)
+		if choice == winner {
+			p = probability
+		}
+		values[choice] = f64(p)
+	}
+	return values
 }
 
 func TestJevRetriesUnavailableAndHonorsRetryAfterThenSucceeds(t *testing.T) {

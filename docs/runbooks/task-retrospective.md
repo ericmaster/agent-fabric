@@ -59,15 +59,22 @@ agf retrospective enable
 delivery via `POST /api/session/{id}/prompt` + message-history reconcile).
 `"prompt"` is the legacy 1.18.x transport default.
 
-4. The drain worker inherits the Jev key from the host environment
-   (`TYPESAFE_API_KEY`, read at request time, never persisted) and the
+4. The drain worker inherits the Fastino key from the host environment
+   (`FASTINO_API_KEY`, read at request time, never persisted) and the
    `AGF_*` environment of the OpenCode server process that spawns it.
+   GLiDE is the default (`evaluator: "glide"`); Jev is unavailable pending
+   verification of its current contract. For live Fastino requests consider
+   `http_timeout: "300s"` (provider recommendation); retries remain bounded.
 
 The observation plugin is a thin adapter: it converts native events into an
 envelope and hands the JSON to `agf retrospective ingest` over stdin. It
 records no hidden reasoning, never posts into the source session, and never
-blocks a session on Jev. OpenCode must be restarted to load, unload, or
+blocks a session on evaluation. OpenCode must be restarted to load, unload, or
 replace the plugin file.
+
+The verified 2.0.24 user-message echo confirms prompt delivery only, not
+agent/model selection or autonomous correction completion. Visible-root
+reconnect/repair QA and live provider calibration remain unverified.
 
 ## Scoped disable (without a global off)
 

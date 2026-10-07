@@ -197,8 +197,8 @@ func (a *analysis) runStageOne(ctx context.Context) {
 		Steps:        a.stageOneStepReport(),
 	}
 	request := buildRequest(
-		JevModel,
-		a.stageIdentityState(nil),
+		EvaluatorModel(a.cfg.Evaluator),
+		[]byte(`{}`),
 		nil,
 		[]Question{a.stageOneQuestion(payload)},
 	)
@@ -974,7 +974,7 @@ func (a *analysis) buildPageRequest(index int, page *stageTwoPage) *ChoiceReques
 		grams = append(grams, item.grams...)
 	}
 	fields["records"] = grams
-	return buildRequest(JevModel, a.stageIdentityState(fields), page.overlap, page.questions)
+	return buildRequest(EvaluatorModel(a.cfg.Evaluator), a.stageIdentityState(fields), page.overlap, page.questions)
 }
 
 // overlapSubjects lists the overlap record ids of one page.
@@ -1580,7 +1580,7 @@ func (a *analysis) finishDispatch() {
 func (a *analysis) report() *Report {
 	normalized := a.normalized
 	trace := normalized.Trace
-	model := ModelInfo{Model: JevModel, RubricVersion: RubricVersion}
+	model := ModelInfo{Model: EvaluatorModel(a.cfg.Evaluator), RubricVersion: RubricVersion}
 	sourceFiles := []ReportSourceFile{}
 	for _, ref := range trace.SourceFiles {
 		sourceFiles = append(sourceFiles, ReportSourceFile{

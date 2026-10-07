@@ -199,12 +199,12 @@ func TestHiddenReasoningFinalIsNeverTransmitted(t *testing.T) {
 		if len(calls) == 0 {
 			t.Fatal("visible final did not produce a stage-one request")
 		}
-		var first ChoiceRequest
+		var first wireRequest
 		if err := json.Unmarshal(calls[0].Body, &first); err != nil {
 			t.Fatal(err)
 		}
 		payload := oneEvidence{}
-		if err := json.Unmarshal(first.Requests[0].Evidence, &payload); err != nil {
+		if err := json.Unmarshal(first.State.Evidence[outcomeQuestionID], &payload); err != nil {
 			t.Fatal(err)
 		}
 		if payload.FinalResponse == nil || payload.FinalResponse.Text != "Widget shipped." {
@@ -293,8 +293,9 @@ func TestGapDetailCanaryIsRedactedBeforePersistence(t *testing.T) {
 func TestMissingProbabilityAbstains(t *testing.T) {
 	trace := baseFixture(1)
 	mock, cfg := newMockServer(t, map[int]mockResponse{
-		1: {status: 200, body: `{"responses":[{"request_id":"q-outcome","subject":"task","choice":"succeeded","confidence":0.95}]}`},
+		1: {status: 200, body: `{"model":"glide","answers":{"q-outcome":{"type":"choice","choice":"succeeded","confidence":0.95}}}`},
 	})
+	cfg.MaxAttemptsPerRequest = 1
 	client := newJev(t, cfg, nil)
 	source, err := json.Marshal(trace)
 	if err != nil {
@@ -307,7 +308,7 @@ func TestMissingProbabilityAbstains(t *testing.T) {
 	if report.Outcome.Choice != "unknown" {
 		t.Fatalf("missing probability did not abstain: %+v", report.Outcome)
 	}
-	if len(report.Outcome.Reasons) == 0 || !strings.Contains(report.Outcome.Reasons[0], "missing") {
+	if len(report.Outcome.Reasons) == 0 || !strings.Contains(report.Outcome.Reasons[0], "malformed") {
 		t.Fatalf("abstain reason = %v", report.Outcome.Reasons)
 	}
 	if report.Evaluation.StageTwoRan || len(mock.recorded()) != 1 {
@@ -497,8 +498,8 @@ func assertPayloadOnQuestionPage(t *testing.T, pages []wireRequest, subject, pay
 	primary := 0
 	for i, page := range pages {
 		hasQuestion := false
-		for _, question := range page.Requests {
-			if question.Subject == subject {
+		for id := range page.Questions {
+			if strings.TrimPrefix(id, "q-") == subject {
 				hasQuestion = true
 			}
 		}
@@ -512,7 +513,7 @@ func assertPayloadOnQuestionPage(t *testing.T, pages []wireRequest, subject, pay
 			}
 		}
 		inOverlap := false
-		for _, record := range page.Overlap {
+		for _, record := range page.State.Overlap {
 			blob := record.Input + record.Text + fragmentText(record)
 			if !strings.Contains(blob, payload) {
 				continue

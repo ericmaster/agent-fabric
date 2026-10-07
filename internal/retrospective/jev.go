@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -35,10 +36,57 @@ var (
 	ErrMalformedResponse = errors.New("jev: malformed response")
 )
 
-// choiceEndpointPath is appended to the configured endpoint URL.
-const choiceEndpointPath = "/v1/choices"
+// systemOnePath is the shared decision-engine route appended to the endpoint.
+const systemOnePath = SystemOnePath
 
-// Question is one Jev choice request over supplied record ids. The evidence
+// GLiDE requires a non-empty question map even on fragment-only context pages.
+// This transport acknowledgement never produces a classification or trigger.
+// Spec: docs/specs/task-retrospective.md via systemOneWireRequest
+func providerQuestions(request *ChoiceRequest) []Question {
+	if len(request.Requests) > 0 {
+		return request.Requests
+	}
+	return []Question{{ID: "q-context-page", Subject: "context-page", Scope: "context-only", Text: "Acknowledge this context-only page; do not classify any task, call or requirement.", Choices: []string{"context-only"}}}
+}
+
+// systemOneQuestion is one typed choice question of the System One wire
+// contract of Fastino GLiDE. The internal question id
+// becomes the map key; the instructions carry the question text; criteria map
+// every supplied choice label onto itself (the retrospective choice labels
+// are self-describing).
+type systemOneQuestion struct {
+	Type         string            `json:"type"`
+	Instructions string            `json:"instructions"`
+	Criteria     map[string]string `json:"criteria"`
+}
+
+// systemOneRequest is the serialized wire request: one shared state plus the
+// page's named questions.
+type systemOneRequest struct {
+	Model     string                       `json:"model"`
+	State     json.RawMessage              `json:"state"`
+	Questions map[string]systemOneQuestion `json:"questions"`
+}
+
+// systemOneAnswer is one typed choice answer: the winning choice, its
+// probability inside the full distribution, and the confidence margin.
+type systemOneAnswer struct {
+	Type          string              `json:"type"`
+	Choice        string              `json:"choice"`
+	Confidence    *float64            `json:"confidence"`
+	Probabilities map[string]*float64 `json:"probabilities"`
+}
+
+// systemOneResponse is the decoded wire response document. Usage is accepted
+// (and ignored); unknown extra fields still abstain as malformed.
+type systemOneResponse struct {
+	Model      string                     `json:"model"`
+	Answers    map[string]systemOneAnswer `json:"answers"`
+	Usage      json.RawMessage            `json:"usage,omitempty"`
+	TokenUsage json.RawMessage            `json:"token_usage,omitempty"`
+}
+
+// Question is one choice request over supplied record ids. The evidence
 // payload carries the record content the question asks about (redacted).
 // Spec: docs/specs/task-retrospective.md via ChoiceRequest
 type Question struct {
@@ -50,8 +98,10 @@ type Question struct {
 	Evidence json.RawMessage `json:"evidence,omitempty"`
 }
 
-// ChoiceRequest is one serialized Jev request. The evaluator measures the
-// serialized bytes against the conservative config budgets before any send.
+// ChoiceRequest is one internal evaluation request. The wire translation to
+// the System One contract happens inside the client; the evaluator measures
+// the serialized bytes against the conservative config budgets before any
+// send, including folded evidence, overlap and criteria maps.
 // Spec: docs/specs/task-retrospective.md via JevClient
 type ChoiceRequest struct {
 	Model    string          `json:"model"`
@@ -103,12 +153,15 @@ type JevUsage struct {
 	Exhausted      bool `json:"exhausted"`
 }
 
-// JevClient is the pinned HTTP choice client.
+// JevClient retains its legacy Go name; it sends the verified GLiDE System
+// One contract. Unverified Jev selection fails closed without network.
 // Spec: docs/specs/task-retrospective.md
 type JevClient struct {
 	endpoint string
 	apiKey   string
 	cfg      *Config
+	profile  string
+	model    string
 
 	client *http.Client
 	sleep  func(time.Duration)
@@ -116,20 +169,130 @@ type JevClient struct {
 }
 
 // NewJevClient builds the client for one analysis run. The API key is the
-// host-supplied TYPESAFE_API_KEY value held only in process memory; it is
-// never logged, persisted, or included in any report.
+// host-supplied profile key (FASTINO_API_KEY or TYPESAFE_API_KEY) held only
+// in process memory; it is never logged, persisted, or included in any report.
 // Spec: docs/specs/task-retrospective.md via JevClient
 func NewJevClient(endpoint, apiKey string, cfg *Config) *JevClient {
+	if cfg == nil {
+		cfg = DefaultConfig()
+	}
 	if endpoint != "" {
-		endpoint = trimEndpoint(endpoint) + choiceEndpointPath
+		endpoint = trimEndpoint(endpoint) + systemOnePath
+	}
+	profile := EvaluatorGlide
+	if cfg != nil && cfg.Evaluator != "" {
+		profile = cfg.Evaluator
 	}
 	return &JevClient{
 		endpoint: endpoint,
 		apiKey:   apiKey,
 		cfg:      cfg,
-		client:   &http.Client{Timeout: cfg.HTTPTimeout},
+		profile:  profile,
+		model:    EvaluatorModel(profile),
+		client:   &http.Client{Timeout: cfg.HTTPTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		sleep:    time.Sleep,
 	}
+}
+
+// wireRequest translates one internal request onto the System One contract.
+// The question id becomes the map key; choices become criteria labels. The
+// System One contract has no per-question evidence or top-level overlap
+// fields, so both fold into the shared state: per-question evidence under
+// state.evidence[<id>] (stage one's exact three-field payload) and the
+// previous page's tail records under state.overlap. Encoding errors fail closed.
+// Spec: docs/specs/task-retrospective.md via JevClient
+func systemOneWireRequest(request *ChoiceRequest) (*systemOneRequest, error) {
+	if request == nil {
+		return nil, ErrContentOverBudget
+	}
+	state := request.State
+	var stateMap map[string]json.RawMessage
+	if err := json.Unmarshal(state, &stateMap); err != nil || stateMap == nil {
+		return nil, ErrContentOverBudget
+	}
+	var evidence map[string]json.RawMessage
+	for _, question := range providerQuestions(request) {
+		if len(question.Evidence) == 0 {
+			continue
+		}
+		if !json.Valid(question.Evidence) || bytes.Equal(bytes.TrimSpace(question.Evidence), []byte("null")) {
+			return nil, ErrContentOverBudget
+		}
+		if evidence == nil {
+			evidence = make(map[string]json.RawMessage)
+		}
+		evidence[question.ID] = question.Evidence
+	}
+	if len(evidence) > 0 || len(request.Overlaps) > 0 {
+		if len(evidence) > 0 {
+			encoded, err := json.Marshal(evidence)
+			if err != nil {
+				return nil, err
+			}
+			stateMap["evidence"] = encoded
+		}
+		if len(request.Overlaps) > 0 {
+			encoded, err := json.Marshal(request.Overlaps)
+			if err != nil {
+				return nil, err
+			}
+			stateMap["overlap"] = encoded
+		}
+		merged, err := json.Marshal(stateMap)
+		if err != nil {
+			return nil, err
+		}
+		state = merged
+	}
+	wire := &systemOneRequest{
+		Model:     request.Model,
+		State:     state,
+		Questions: make(map[string]systemOneQuestion, len(providerQuestions(request))),
+	}
+	for _, question := range providerQuestions(request) {
+		if question.ID == "" || question.Subject == "" || question.Text == "" || len(question.Choices) == 0 || len(question.Choices) > 255 {
+			return nil, ErrContentOverBudget
+		}
+		if _, exists := wire.Questions[question.ID]; exists {
+			return nil, ErrContentOverBudget
+		}
+		criteria := make(map[string]string, len(question.Choices))
+		for _, choice := range question.Choices {
+			if choice == "" {
+				return nil, ErrContentOverBudget
+			}
+			if _, exists := criteria[choice]; exists {
+				return nil, ErrContentOverBudget
+			}
+			criteria[choice] = choice
+		}
+		wire.Questions[question.ID] = systemOneQuestion{
+			Type:         "choice",
+			Instructions: fmt.Sprintf("Subject ID: %s (scope: %s). %s", question.Subject, question.Scope, question.Text),
+			Criteria:     criteria,
+		}
+	}
+	return wire, nil
+}
+
+// wireAnswer maps one System One answer back onto the internal contract. The
+// winning choice's probability comes from the distribution; an absent
+// probability or confidence stays nil so the evaluator abstains.
+// Spec: docs/specs/task-retrospective.md via JevClient
+func wireAnswer(request *ChoiceRequest, id string, answer systemOneAnswer) Answer {
+	internal := Answer{RequestID: id, Choice: answer.Choice, Confidence: answer.Confidence}
+	for _, question := range providerQuestions(request) {
+		if question.ID == id {
+			internal.Subject = question.Subject
+			break
+		}
+	}
+	if answer.Probabilities != nil {
+		if probability, ok := answer.Probabilities[answer.Choice]; ok {
+			internal.Probability = probability
+		}
+	}
+	return internal
 }
 
 // trimEndpoint removes a trailing slash so the request path stays canonical.
@@ -148,9 +311,26 @@ func (j *JevClient) Choice(ctx context.Context, request *ChoiceRequest) (*Choice
 	if j.cfg == nil {
 		return nil, fmt.Errorf("jev client requires a config")
 	}
-	body, err := json.Marshal(request)
+	if request == nil {
+		return nil, ErrContentOverBudget
+	}
+	if j.profile != EvaluatorGlide {
+		return nil, fmt.Errorf("%w: Jev contract is not verified", ErrPermanent)
+	}
+	copyRequest := *request
+	copyRequest.Model = j.model
+	request = &copyRequest
+	wire, err := systemOneWireRequest(request)
+	if err != nil {
+		return nil, ErrContentOverBudget
+	}
+	body, err := json.Marshal(wire)
 	if err != nil {
 		return nil, fmt.Errorf("encode jev request: %w", err)
+	}
+	measure := measureRequest(request)
+	if measure.Request > j.cfg.RequestLimitBytes || measure.State+measure.LongestQuestion > j.cfg.StateQuestionLimitBytes {
+		return nil, ErrContentOverBudget
 	}
 	var lastErr error
 	for attempt := 1; attempt <= j.cfg.MaxAttemptsPerRequest; attempt++ {
@@ -162,7 +342,7 @@ func (j *JevClient) Choice(ctx context.Context, request *ChoiceRequest) (*Choice
 		if attempt > 1 {
 			j.usage.Retries++
 		}
-		response, retryable, err := j.attempt(ctx, body)
+		response, retryable, err := j.attempt(ctx, body, request)
 		if err == nil {
 			return response, nil
 		}
@@ -182,16 +362,21 @@ func (j *JevClient) Choice(ctx context.Context, request *ChoiceRequest) (*Choice
 
 // attempt performs one HTTP attempt and maps the response/transport outcome.
 // Spec: docs/specs/task-retrospective.md via JevClient
-func (j *JevClient) attempt(ctx context.Context, body []byte) (*ChoiceResponse, bool, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, j.endpoint, bytes.NewReader(body))
+func (j *JevClient) attempt(ctx context.Context, body []byte, request *ChoiceRequest) (*ChoiceResponse, bool, error) {
+	posted, err := http.NewRequestWithContext(ctx, http.MethodPost, j.endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, false, fmt.Errorf("jev request endpoint: %w", err)
 	}
-	request.Header.Set("Content-Type", "application/json")
+	posted.Header.Set("Content-Type", "application/json")
 	if j.apiKey != "" {
-		request.Header.Set("Authorization", "Bearer "+j.apiKey)
+		if j.profile == EvaluatorGlide {
+			// Fastino GLiDE authenticates with the X-API-Key header.
+			posted.Header.Set("X-API-Key", j.apiKey)
+		} else {
+			posted.Header.Set("Authorization", "Bearer "+j.apiKey)
+		}
 	}
-	response, err := j.client.Do(request)
+	response, err := j.client.Do(posted)
 	if err != nil {
 		return nil, true, ErrUnavailable
 	}
@@ -202,21 +387,28 @@ func (j *JevClient) attempt(ctx context.Context, body []byte) (*ChoiceResponse, 
 		return nil, false, ErrSizeRejected
 	case response.StatusCode == http.StatusTooManyRequests:
 		return nil, true, j.rateLimited(response)
+	case response.StatusCode == 425:
+		// GLiDE: deployment warming — retryable.
+		return nil, true, j.retryAfter(response, ErrUnavailable)
 	case response.StatusCode >= 500:
-		return nil, true, ErrUnavailable
+		// 503 (GLiDE serving) and 529 (Jev busy) included.
+		return nil, true, j.retryAfter(response, ErrUnavailable)
 	case response.StatusCode >= 400:
 		return nil, false, fmt.Errorf("%w: http %d", ErrPermanent, response.StatusCode)
 	case response.StatusCode/100 != 2:
-		return nil, true, ErrUnavailable
+		return nil, false, ErrPermanent
 	}
-	payload, err := io.ReadAll(io.LimitReader(response.Body, 1<<22))
-	if err != nil {
+	payload, err := io.ReadAll(io.LimitReader(response.Body, (1<<22)+1))
+	if err != nil || len(payload) > 1<<22 {
 		return nil, true, ErrMalformedResponse
 	}
-	decoded := &ChoiceResponse{}
+	if !uniqueJSONKeys(payload) {
+		return nil, true, ErrMalformedResponse
+	}
+	wire := &systemOneResponse{}
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(decoded); err != nil {
+	if err := decoder.Decode(wire); err != nil {
 		// Unknown/extra response fields or wrong types abstain as malformed.
 		return nil, true, ErrMalformedResponse
 	}
@@ -224,13 +416,29 @@ func (j *JevClient) attempt(ctx context.Context, body []byte) (*ChoiceResponse, 
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return nil, true, ErrMalformedResponse
 	}
-	return decoded, false, nil
+	internal := &ChoiceResponse{}
+	if wire.Model != "glide" || wire.Answers == nil || len(wire.Answers) != len(providerQuestions(request)) {
+		return nil, true, ErrMalformedResponse
+	}
+	for _, question := range providerQuestions(request) {
+		answer, ok := wire.Answers[question.ID]
+		if !ok || !validSystemOneAnswer(question, answer) {
+			return nil, true, ErrMalformedResponse
+		}
+		internal.Responses = append(internal.Responses, wireAnswer(request, question.ID, answer))
+	}
+	return internal, false, nil
 }
 
 // rateLimited interprets Retry-After into an honored wait, carried through
 // the retryable error chain.
 // Spec: docs/specs/task-retrospective.md via JevClient
 func (j *JevClient) rateLimited(response *http.Response) error {
+	return j.retryAfter(response, ErrRateLimited)
+}
+
+// Spec: docs/specs/task-retrospective.md via attempt
+func (j *JevClient) retryAfter(response *http.Response, cause error) error {
 	header := response.Header.Get("Retry-After")
 	seconds := -1
 	if header != "" {
@@ -238,19 +446,19 @@ func (j *JevClient) rateLimited(response *http.Response) error {
 			seconds = parsed
 		} else if when, err := http.ParseTime(header); err == nil {
 			if wait := time.Until(when); wait > 0 {
-				seconds = int(wait.Seconds())
+				seconds = int(math.Ceil(wait.Seconds()))
 			} else {
 				seconds = 0
 			}
 		}
 	}
 	if seconds < 0 {
-		return ErrRateLimited
+		return cause
 	}
 	if seconds > j.cfg.RetryAfterMaxSeconds {
 		seconds = j.cfg.RetryAfterMaxSeconds
 	}
-	return &retryAfterError{err: ErrRateLimited, seconds: seconds}
+	return &retryAfterError{err: cause, seconds: seconds}
 }
 
 // retryAfterError carries an honored Retry-After delay.
@@ -296,17 +504,88 @@ func buildRequest(model string, state []byte, overlap []evidenceRecord, requests
 // measureRequest measures the serialized request bytes for the budget gates.
 // Spec: docs/specs/task-retrospective.md
 func measureRequest(request *ChoiceRequest) ReportBytes {
-	body, err := json.Marshal(request)
+	wire, err := systemOneWireRequest(request)
 	if err != nil {
-		return ReportBytes{}
+		return ReportBytes{Request: math.MaxInt / 4, State: math.MaxInt / 4}
 	}
-	state := len(request.State)
+	body, err := json.Marshal(wire)
+	if err != nil {
+		return ReportBytes{Request: math.MaxInt / 4, State: math.MaxInt / 4}
+	}
+	state := len(wire.State)
 	longest := 0
-	for _, question := range request.Requests {
-		encoded, err := json.Marshal(question)
+	for id, question := range wire.Questions {
+		encoded, err := json.Marshal(map[string]systemOneQuestion{id: question})
 		if err == nil && len(encoded) > longest {
 			longest = len(encoded)
 		}
 	}
 	return ReportBytes{Request: len(body), State: state, LongestQuestion: longest}
+}
+
+// validSystemOneAnswer validates the full distribution, not just its selected cell.
+// Spec: docs/specs/task-retrospective.md via attempt
+func validSystemOneAnswer(question Question, answer systemOneAnswer) bool {
+	if answer.Type != "choice" || !containsString(question.Choices, answer.Choice) || answer.Confidence == nil || !probabilityInRange(*answer.Confidence) || len(answer.Probabilities) != len(question.Choices) {
+		return false
+	}
+	total, highest := 0.0, 0.0
+	for _, choice := range question.Choices {
+		p, ok := answer.Probabilities[choice]
+		if !ok || p == nil || !probabilityInRange(*p) {
+			return false
+		}
+		total += *p
+		if *p > highest {
+			highest = *p
+		}
+	}
+	return math.Abs(total-1) <= 0.00001 && *answer.Probabilities[answer.Choice] >= highest
+}
+
+// uniqueJSONKeys refuses duplicate object keys before map decoding can hide them.
+// Spec: docs/specs/task-retrospective.md via attempt
+func uniqueJSONKeys(payload []byte) bool {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	var value func(int) bool
+	value = func(depth int) bool {
+		if depth > 128 {
+			return false
+		}
+		token, err := decoder.Token()
+		if err != nil {
+			return false
+		}
+		delim, composite := token.(json.Delim)
+		if !composite {
+			return true
+		}
+		if delim != '{' && delim != '[' {
+			return false
+		}
+		seen := map[string]bool{}
+		for decoder.More() {
+			if delim == '{' {
+				key, err := decoder.Token()
+				if err != nil {
+					return false
+				}
+				name, ok := key.(string)
+				if !ok || seen[name] {
+					return false
+				}
+				seen[name] = true
+			}
+			if !value(depth + 1) {
+				return false
+			}
+		}
+		_, err = decoder.Token()
+		return err == nil
+	}
+	if !value(0) {
+		return false
+	}
+	_, err := decoder.Token()
+	return err == io.EOF
 }

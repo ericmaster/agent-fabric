@@ -3,7 +3,7 @@ title: "Spec: Task Retrospective"
 type: spec
 status: active
 covers: internal/retrospective, cmd/agent-fabric (retrospective), hooks/retrospective, agents/learning-corrector.md
-last_checked: 2026-10-06
+last_checked: 2026-10-07
 ---
 
 # Task Retrospective
@@ -27,7 +27,7 @@ ledgers are never a retrospective database).
 - `internal/retrospective/trace.go` — trace schema v1, validation, normalization
   (ordering, dedup, task interval, steps, completeness).
 - `internal/retrospective/redact.go` — local redaction before HTTP and before persisted evidence.
-- `internal/retrospective/jev.go` — Jev client (HTTP, retries, size-rejection splitting interface).
+- `internal/retrospective/jev.go` — GLiDE client (legacy Go name; HTTP, retries, size-rejection splitting).
 - `internal/retrospective/evaluate.go` — stage one gate, stage two pagination, counting, triggers.
 - `internal/retrospective/report.go` — report assembly and atomic write.
 - `internal/retrospective/store.go` — local state, locks, retention, settings entry.
@@ -123,20 +123,71 @@ Local-only redactor applies, in order:
 
 Redaction counters (per pattern kind) are recorded; never the original values.
 
-## Jev evaluation
+## GLiDE evaluation
 
-- Model identifier is pinned to `jev-1.13.0` in the config contract; the config
+The default evaluator is Fastino GLiDE. Authoritative contracts (checked
+2026-10-07): [System One](https://docs.fastino.ai/inference/systemone) and
+[Choice](https://docs.fastino.ai/concepts/glide-choice), plus the
+[OpenAPI schema](https://docs.fastino.ai/openapi.json) (`ChoiceQuestion`
+criteria minProperties=1; `SystemOneRequest` questions minProperties=1).
+`evaluator: "glide"` pins `fastino/GLiDE`, endpoint `https://api.fastino.ai`,
+and host environment `FASTINO_API_KEY` sent only in `X-API-Key`.
+Jev is reserved as an explicit opt-in profile, but selecting it currently
+fails configuration validation: its current pinned-model contract has not
+been independently verified. No invented Jev protocol or fallback is sent.
+Internal legacy `JevClient`/`ChoiceRequest` names are compatibility names,
+not provider claims.
+
+GLiDE wire: `POST /v1/systemone`, JSON `{model,state,questions}`;
+`questions` is keyed by supplied IDs, values are `{type:"choice",instructions,
+criteria:{choice_id:description}}`. Instructions explicitly identify the
+subject ID and scope. Question evidence is folded into `state.evidence[id]`,
+overlap into `state.overlap`; encode failures fail closed, never drop evidence.
+Stage one state contains ONLY `evidence.q-outcome` (the prescribed three
+fields), no root/session/path/revision metadata. Stage two retains its
+redacted page records and context. Fragment-only pages with no classification
+question receive one transport-only `q-context-page` Choice with the sole
+criterion `context-only`; its acknowledgement is ignored by the normalized
+core, never counted or attributed. This satisfies GLiDE's non-empty question
+map without inventing a classification on incomplete fragments.
+Response `{model:"glide",answers}` uses
+exact matching question IDs and Choice objects `{type,choice,confidence,
+probabilities}`. Documented `usage` and `token_usage` metadata are accepted
+without attribution and are not persisted; other unknown fields abstain.
+Model/type/IDs/choice and a full probability distribution are mandatory:
+every supplied choice exactly once, no extra keys, all values present,
+non-null, finite and in [0,1], sum within 0.00001 of 1, winning choice maximal.
+Confidence must be present, finite and in [0,1]. Duplicate JSON keys and
+response nesting beyond 128 levels are rejected. Malformed responses retry
+within the same budget; exhaustion yields unknown/incomplete and no repair.
+
+Each rendered state+question is limited to 40,000 tokens, each Choice to
+255 options. We conservatively cap actual serialized wire at 24,000 UTF-8
+bytes and folded state+longest serialized keyed wire question at 16,000 bytes
+(not a token-count equivalence). Limits may only be lowered. The same
+wire encoder measures packing, stage one, and the final client pre-send
+gate; criteria and folded evidence/overlap count. No trimming is permitted.
+Retries include 425/429/503 and transport/5xx errors with bounded backoff;
+Retry-After is honored on all these statuses, capped at configured 30s.
+The existing 30s per-request timeout remains configurable; Fastino recommends
+at least 300s for live read timeouts. No redirects are followed (API keys
+cannot propagate). Responses over 4 MiB are detected, not truncated.
+The .90/.80/N>=20/rate>5% gates below are unchanged engineering defaults,
+not GLiDE calibration claims; live calibration and visible-root QA are unmet.
+
+### Provider-independent core
+
+- Model identifier is pinned to `fastino/GLiDE` in the config contract; the config
   cannot override it. `rubric_version` is the shipped deterministic rubric id.
-- `TYPESAFE_API_KEY` is read from the host environment at request time and only
-  held in process memory (`Authorization: Bearer ...`); it is never logged,
+- `FASTINO_API_KEY` is read from the host environment at request time and only
+  held in process memory (`X-API-Key`); it is never logged,
   written to reports, fixtures, or state. Missing key → evaluator unavailable.
-- Endpoint default `https://api.typesafe.ai`; overridable only through the
+- Endpoint default `https://api.fastino.ai`; overridable only through the
   config contract (tests point it at a local mock; tests never hit the real API).
-- Wire contract: `POST {endpoint}/v1/choices` with JSON
-  `{model, state, overlap?, requests:[{id, subject, scope, text, choices:[...], evidence?}]}`;
-  response `{responses:[{request_id, subject, choice, labels?, probability, confidence}]}`.
+- Normalized internal contract remains `ChoiceRequest`/`ChoiceResponse`;
+  HTTP uses the GLiDE wire translation specified above, not that internal JSON.
   Stage-two `state.records` carries the page's redacted recordgrams (the
-  record content). `overlap` repeats the previous page's tail with
+  record content). `state.overlap` repeats the previous page's tail with
   `overlapped: true` and is the only other place that content appears.
 - Both model limits are honored with conservative byte budgets (bytes are not
   claimed to be tokens): serialized request ≤ **24,000 UTF-8 bytes** and
@@ -203,8 +254,9 @@ larger than a page become stable id-linked fragments
 is the source segment (`input` or `result:<fragment id>`) that covers the
 piece's start offset, not the cut index. `state +
 longest question` limits apply to fragment questions. Requests carry `state`
-(task/boundary metadata, page number, fragment references), `overlap` (the
-previous page's tail records, flagged `overlap: true`), and `requests`.
+(task/boundary metadata, page number, fragment references), `state.overlap`
+(the previous page's tail records, flagged `overlapped: true`), and keyed
+`questions` on the wire.
 
 Pagination:
 
@@ -269,7 +321,7 @@ Pagination:
 
 - `schema_version: 1`; `generated_at` (UTC RFC 3339).
 - `status` `complete|incomplete` + `incomplete_reasons[]`;
-  `model: {model: "jev-1.13.0", rubric: "task-retrospective-rubric-1"}`.
+  `model: {model: "fastino/GLiDE", rubric_version: "task-retrospective-rubric-1"}`.
 - `trace` — source identities, boundary resolution, gap redaction (gap `detail`
   and other collector free text pass through the redactor before persistence),
   input `sha256`, `source_files`
@@ -315,7 +367,7 @@ agf retrospective analyze --input trace.json --output report.json [--config task
   trailing values fail closed before any network call or report write.
 - Config JSON uses the same fail-closed decode: unknown fields or a trailing
   value after the config object are rejected.
-- The host supplies `TYPESAFE_API_KEY` from the environment; it is never logged
+- The host supplies `FASTINO_API_KEY` from the environment; it is never logged
   or persisted. Config never contains credentials.
 
 ## Config contract (one place)
@@ -332,7 +384,8 @@ Duration fields (`http_timeout`, `backoff_base`, `backoff_max`) are
 unit-suffixed strings. A bare number is rejected; it is not interpreted as
 nanoseconds.
 No other file duplicates these defaults. Phase 2 reads this struct and adds the
-dispatch keys in the Phase 2 config section. The pinned Jev model is not a
+dispatch keys in the Phase 2 config section. `evaluator` defaults to `glide`;
+`jev` is rejected pending verified contract. The pinned evaluator model is not a
 config key; a `model` key remains unknown.
 
 ## Testing contract
@@ -375,7 +428,7 @@ Added to the same `Config` struct, not a second defaults table:
 
 | key | default | meaning |
 |---|---|---|
-| `dispatch_server` | empty | OpenCode server base URL. Empty queues; it is not the Jev `endpoint`. |
+| `dispatch_server` | empty | OpenCode server base URL. Empty queues; it is not the evaluator `endpoint`. |
 | `dispatch_server_username` | empty | HTTP Basic username for the session transport; empty falls back to `OPENCODE_SERVER_USERNAME`, then `opencode`. |
 | `dispatch_server_password` | empty | HTTP Basic password; empty falls back to the server env (`OPENCODE_PASSWORD`, then `OPENCODE_SERVER_PASSWORD`). Sent only as the Authorization header; never logged or persisted. |
 | `dispatch_ui_template` | empty | `http` or `https` URL with exactly one `{id}`, no userinfo. |
@@ -567,7 +620,7 @@ a drain job and launches one detached drain worker → the worker reconciles
 the terminal snapshot against the server session API, assembles trace schema
 v1, runs `analyze`, and dispatches eligible reports. The plugin never
 interpolates transcript data into shell arguments, never posts into the
-source session, and never blocks its response on Jev: observation is
+source session, and never blocks its response on evaluation: observation is
 fire-and-forget staging plus a detached worker.
 
 ### Installed version pins
@@ -733,7 +786,7 @@ worker. The worker:
   a cyclic observed-parent topology; marking a `partial_stream` gap when
   the reconcile fails — transport errors are recorded as gaps, never
   invented as coverage);
-  assembles the trace; validates; runs `analyze` (Jev budgets per config);
+  assembles the trace; validates; runs `analyze` (evaluator budgets per config);
   writes the report into `<state>/reports/`; runs `dispatch` under the same
   global-enable re-check and request budgets; records the receipt status in
   the job and updates the spool's accepted-success boundary after a
@@ -760,7 +813,7 @@ on lock-unavailable-owner errors; a failed lock because another worker holds
 it exits 0 without work. Config resolution for ingest/drain: `--config` flag,
 else `AGF_RETROSPECTIVE_CONFIG`, else
 `$XDG_CONFIG_HOME/agent-fabric/retrospective.json`, else defaults — so the
-detached worker inherits the same Jev/dispatch configuration the user chose.
+detached worker inherits the same evaluator/dispatch configuration the user chose.
 
 ### Optional trusted coordinator packet
 
@@ -848,7 +901,7 @@ The plugin is an opt-in owned asset, never a default install:
   rune-safe truncation (no replacement characters, whole first rune under a
   sub-limit bound), and bound-refusal memory/disk consistency (both the
   fixed-metadata-alone and the gap-note-drop sites).
-- Loop e2e tests run ingest → drain → analyze (mock Jev endpoint) → dispatch
+- Loop e2e tests run ingest → drain → analyze (mock GLiDE endpoint) → dispatch
   (mock session server) and prove: only the bounded stage-one payload is sent
   before the success gate, stage-two pages only after success, exactly one
   visible root, the intake prompt without transcript interpolation, and

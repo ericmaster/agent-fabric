@@ -209,6 +209,11 @@ Agent Fabric can observe OpenCode tasks, replay them through a bounded
 success-gated retrospective, and dispatch one visible correcting root that
 repairs verified instruction defects — after one explicit opt-in only:
 
+Evaluation defaults to Fastino GLiDE using host `FASTINO_API_KEY` (never
+persisted). Jev is unavailable pending a verified current contract. Local
+synthetic tests do not certify live model calibration or autonomous repair;
+OpenCode prompt delivery alone is not proof of correction completion.
+
 ```sh
 agf install --all --tools opencode --assets retrospective --yes
 agf retrospective enable

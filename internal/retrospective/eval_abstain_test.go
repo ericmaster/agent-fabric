@@ -126,7 +126,7 @@ func TestSyntheticReplayProducesSchemaValidReport(t *testing.T) {
 	if report.SchemaVersion != 1 || report.Outcome.Choice != "succeeded" {
 		t.Fatalf("report invalid: %+v", report)
 	}
-	if report.Model.Model != "jev-1.13.0" || report.Model.RubricVersion != RubricVersion {
+	if report.Model.Model != GlideModel || report.Model.RubricVersion != RubricVersion {
 		t.Fatalf("model metadata missing: %+v", report.Model)
 	}
 	counts := report.Evaluation.Counts

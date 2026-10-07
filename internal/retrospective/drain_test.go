@@ -138,16 +138,13 @@ type mockChoiceServer struct {
 func (m *mockChoiceServer) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body := readAllString(r)
-		var request ChoiceRequest
-		if err := json.Unmarshal([]byte(body), &request); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+		request := decodeWireChoiceRequest([]byte(body))
 		m.mu.Lock()
-		m.requests = append(m.requests, request)
+		m.requests = append(m.requests, *request)
 		m.mu.Unlock()
-		responses := []Answer{}
+		answers := map[string]systemOneAnswer{}
 		for _, question := range request.Requests {
+			wire := systemOneAnswer{Type: "choice"}
 			answer := Answer{RequestID: question.ID, Subject: question.Subject}
 			if m.script != nil {
 				if choice, labels, p, c, ok := m.script(question.Subject, question.Scope); ok {
@@ -158,9 +155,17 @@ func (m *mockChoiceServer) handler() http.Handler {
 					answer.Confidence = &confidence
 				}
 			}
-			responses = append(responses, answer)
+			wire.Choice = answer.Choice
+			if answer.Confidence != nil {
+				confidence := *answer.Confidence
+				wire.Confidence = &confidence
+			}
+			if answer.Probability != nil {
+				wire.Probabilities = testDistribution(question.Choices, answer.Choice, *answer.Probability)
+			}
+			answers[question.ID] = wire
 		}
-		_ = json.NewEncoder(w).Encode(ChoiceResponse{Responses: responses})
+		_ = json.NewEncoder(w).Encode(systemOneResponse{Model: "glide", Answers: answers})
 	})
 }
 

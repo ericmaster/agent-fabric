@@ -197,7 +197,7 @@ func runRetrospectiveDrain(args []string) error {
 		Config:     cfg,
 		ConfigPath: configPath,
 		SourceRoot: sourceRoot,
-		EnvKey:     os.Getenv("TYPESAFE_API_KEY"),
+		EnvKey:     retrospective.EvaluatorAPIKey(cfg.Evaluator),
 	})
 	if err != nil {
 		return err
@@ -260,7 +260,7 @@ func runRetrospectiveAnalyze(args []string) error {
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return fmt.Errorf("decode trace %s: trailing data", options.input)
 	}
-	client := buildRetrospectiveClient(cfg, os.Getenv("TYPESAFE_API_KEY"))
+	client := buildRetrospectiveClient(cfg, retrospective.EvaluatorAPIKey(cfg.Evaluator))
 	report, err := retrospective.Analyze(context.Background(), cfg, trace, rawInput, client)
 	if err != nil {
 		return err

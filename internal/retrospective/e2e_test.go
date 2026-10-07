@@ -104,12 +104,22 @@ func TestPagesCoverEveryRecordOnceWithOverlapDeduplicated(t *testing.T) {
 		if call == nil {
 			t.Fatalf("nil call at %d", index)
 		}
-		var decoded ChoiceRequest
+		var decoded systemOneRequest
 		if err := json.Unmarshal(call.Body, &decoded); err != nil {
 			t.Fatal(err)
 		}
-		if measure := measureRequest(&decoded); measure.State+measure.LongestQuestion > 16_000 || measure.Request > 24_000 {
-			t.Fatalf("page request limits broken: %+v", measure)
+		longest := 0
+		for id, question := range decoded.Questions {
+			encoded, err := json.Marshal(map[string]systemOneQuestion{id: question})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(encoded) > longest {
+				longest = len(encoded)
+			}
+		}
+		if len(decoded.State)+longest > 16_000 || len(call.Body) > 24_000 {
+			t.Fatalf("actual wire limits broken: body=%d state=%d question=%d", len(call.Body), len(decoded.State), longest)
 		}
 	}
 }
@@ -189,7 +199,8 @@ func TestOversizedUnicodeResultSplitsIntoIDLinkedFragments(t *testing.T) {
 	for _, call := range calls {
 		decoded := decodeWire(t, call.Body)
 		hasQuestion := false
-		for _, question := range decoded.Requests {
+		internal := decodeWireChoiceRequest(call.Body)
+		for _, question := range internal.Requests {
 			if question.Subject == hugeID && question.Scope == ScopeCallClassification {
 				hasQuestion = true
 			}
@@ -262,11 +273,15 @@ func hugeFixtureID(calls int) string {
 // Spec: docs/specs/task-retrospective.md
 type wireRequest struct {
 	State struct {
-		Page    int              `json:"page"`
-		Records []evidenceRecord `json:"records"`
+		Page     int                        `json:"page"`
+		Records  []evidenceRecord           `json:"records"`
+		Overlap  []evidenceRecord           `json:"overlap"`
+		Evidence map[string]json.RawMessage `json:"evidence"`
 	} `json:"state"`
-	Overlap  []evidenceRecord `json:"overlap"`
-	Requests []Question       `json:"requests"`
+	Questions map[string]struct {
+		Instructions string            `json:"instructions"`
+		Criteria     map[string]string `json:"criteria"`
+	} `json:"questions"`
 }
 
 func decodeWire(t *testing.T, body []byte) wireRequest {
@@ -279,12 +294,12 @@ func decodeWire(t *testing.T, body []byte) wireRequest {
 }
 
 func (w wireRequest) records() []evidenceRecord {
-	return append(append([]evidenceRecord{}, w.State.Records...), w.Overlap...)
+	return append(append([]evidenceRecord{}, w.State.Records...), w.State.Overlap...)
 }
 
 func (w wireRequest) stageTwo() bool {
-	for _, question := range w.Requests {
-		if question.Scope == ScopeCallClassification || question.Scope == ScopeRequirementOmission {
+	for id := range w.Questions {
+		if id != outcomeQuestionID {
 			return true
 		}
 	}
@@ -350,8 +365,10 @@ func TestBudgetExhaustionSavesIncompleteReport(t *testing.T) {
 // bodies nor the written report ever contain the canary material.
 // Spec: docs/specs/task-retrospective.md
 func TestSecretCanariesNeverTransmittedOrPersisted(t *testing.T) {
-	trace := bigFixture(8, 0)
+	trace := bigFixture(40, 2000)
 	trace.Messages[0].Text = "deploy with CANARY-SECRET-ALPHA-1 and CANARY-SECRET-BRAVO-2"
+	trace.Messages[1].Text = "Completed; CANARY-SECRET-FOXTROT-6"
+	trace.Calls[39].Result[0].Text += " CANARY-SECRET-GOLF-7"
 	trace.Calls[2].Input = "echo CANARY-SECRET-CHARLIE-3"
 	trace.Calls[2].Result = []Fragment{{ID: "c3-r1", Text: "output CANARY-SECRET-DELTA-4 done"}}
 	trace.SourceFiles = []SourceRef{{Path: "/proj/.env", SHA256: "env-digest", Excerpt: "TOKEN=CANARY-SECRET-ECHO-5", SecretFile: true}}
@@ -380,7 +397,7 @@ func TestSecretCanariesNeverTransmittedOrPersisted(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, material := range append(bodies, persisted) {
-		for _, canary := range []string{"CANARY-SECRET-ALPHA-1", "CANARY-SECRET-BRAVO-2", "CANARY-SECRET-CHARLIE-3", "CANARY-SECRET-DELTA-4", "CANARY-SECRET-ECHO-5", "CANARY-SECRET"} {
+		for _, canary := range []string{"CANARY-SECRET-ALPHA-1", "CANARY-SECRET-BRAVO-2", "CANARY-SECRET-CHARLIE-3", "CANARY-SECRET-DELTA-4", "CANARY-SECRET-ECHO-5", "CANARY-SECRET-FOXTROT-6", "CANARY-SECRET-GOLF-7", "CANARY-SECRET"} {
 			if strings.Contains(material, canary) {
 				t.Fatalf("canary %q leaked into transmitted or persisted content", canary)
 			}
@@ -391,6 +408,9 @@ func TestSecretCanariesNeverTransmittedOrPersisted(t *testing.T) {
 	}
 	if !report.Coverage.StageOneDelivered || report.Coverage.CoveredRecords != report.Coverage.TotalRecords {
 		t.Fatalf("coverage lost under redaction: %+v", report.Coverage)
+	}
+	if len(report.Coverage.Pages) < 2 || report.Coverage.SplitRecords == 0 || report.Coverage.OverlapDeliveries == 0 {
+		t.Fatal("redaction fixture missed pagination, splits or overlap")
 	}
 }
 

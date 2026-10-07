@@ -26,17 +26,37 @@ func newJevMockServer(t *testing.T, _ map[string]string) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		body, _ := io.ReadAll(request.Body)
-		decoded := &retrospective.ChoiceRequest{}
+		if request.Header.Get("X-API-Key") != "synthetic-key-not-a-secret" || request.Header.Get("Authorization") != "" {
+			t.Error("wrong provider credential selection")
+		}
+		decoded := &struct {
+			Model     string `json:"model"`
+			Questions map[string]struct {
+				Criteria map[string]string `json:"criteria"`
+			} `json:"questions"`
+		}{}
 		_ = json.Unmarshal(body, decoded)
-		answers := []retrospective.Answer{}
-		for _, question := range decoded.Requests {
-			answers = append(answers, retrospective.Answer{
-				RequestID: question.ID, Subject: question.Subject,
-				Choice: question.Choices[0], Probability: f64(0.9), Confidence: f64(0.9),
-			})
+		if decoded.Model != retrospective.GlideModel {
+			t.Error("wrong provider model")
+		}
+		answers := map[string]any{}
+		for id, question := range decoded.Questions {
+			choice := "productive"
+			if id == "q-outcome" {
+				choice = "succeeded"
+			}
+			probabilities := map[string]float64{}
+			for key := range question.Criteria {
+				p := 0.04 / float64(len(question.Criteria)-1)
+				if key == choice {
+					p = 0.96
+				}
+				probabilities[key] = p
+			}
+			answers[id] = map[string]any{"type": "choice", "choice": choice, "confidence": 0.95, "probabilities": probabilities}
 		}
 		writer.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(writer).Encode(retrospective.ChoiceResponse{Responses: answers})
+		_ = json.NewEncoder(writer).Encode(map[string]any{"model": "glide", "answers": answers})
 	}))
 	t.Cleanup(server.Close)
 	return server
@@ -88,7 +108,8 @@ func TestRetrospectiveAnalyzeWritesVersionedReport(t *testing.T) {
 	tracePath := e2eTrace(t, dir)
 	configPath := e2eConfig(t, dir, mock.URL)
 	outputPath := filepath.Join(dir, "report.json")
-	t.Setenv("TYPESAFE_API_KEY", "synthetic-key-not-a-secret")
+	t.Setenv("FASTINO_API_KEY", "synthetic-key-not-a-secret")
+	t.Setenv("TYPESAFE_API_KEY", "wrong-provider-synthetic-key")
 	if err := runRetrospectiveAnalyze([]string{
 		"--input", tracePath, "--output", outputPath, "--config", configPath,
 	}); err != nil {
@@ -105,7 +126,10 @@ func TestRetrospectiveAnalyzeWritesVersionedReport(t *testing.T) {
 	if report["schema_version"].(float64) != 1 {
 		t.Fatalf("schema_version = %v", report["schema_version"])
 	}
-	if report["model"].(map[string]any)["model"] != "jev-1.13.0" {
+	if report["status"] != "complete" || report["outcome"].(map[string]any)["choice"] != "succeeded" {
+		t.Fatalf("CLI did not evaluate: %v", report)
+	}
+	if report["model"].(map[string]any)["model"] != retrospective.GlideModel {
 		t.Fatalf("model metadata missing: %v", report["model"])
 	}
 	if strings.Contains(string(body), "synthetic-key-not-a-secret") {

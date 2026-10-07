@@ -10,15 +10,77 @@ import (
 	"time"
 )
 
-// JevModel is the pinned Jev model identifier for retrospective choices.
-const JevModel = "jev-1.13.0"
+// GLiDE is the verified default. Jev profile identifiers are reserved, but
+// validation rejects Jev until its current pinned-model contract is verified.
+// Model ids are not config-overridable.
+const (
+	// EvaluatorGlide is the default profile: Fastino GLiDE.
+	EvaluatorGlide = "glide"
+	// EvaluatorJev selects the TypeSafe Jev profile.
+	EvaluatorJev = "jev"
+	// GlideModel is the pinned Fastino GLiDE model identifier.
+	GlideModel = "fastino/GLiDE"
+	// JevModel is the pinned Jev model identifier for retrospective choices.
+	JevModel = "jev-1.13.0"
+	// SystemOnePath is the shared decision-engine route appended to the
+	// configured endpoint.
+	SystemOnePath = "/v1/systemone"
+)
+
+// EvaluatorModel returns the pinned model id of one profile ("" unknown).
+// Spec: docs/specs/task-retrospective.md via Config
+func EvaluatorModel(evaluator string) string {
+	switch evaluator {
+	case EvaluatorGlide:
+		return GlideModel
+	case EvaluatorJev:
+		return JevModel
+	}
+	return ""
+}
+
+// EvaluatorEndpoint returns the default endpoint of one profile ("" unknown).
+// Spec: docs/specs/task-retrospective.md via Config
+func EvaluatorEndpoint(evaluator string) string {
+	switch evaluator {
+	case EvaluatorGlide:
+		return "https://api.fastino.ai"
+	case EvaluatorJev:
+		return "https://api.typesafe.ai"
+	}
+	return ""
+}
+
+// EvaluatorAPIKeyEnv returns the host environment variable holding the
+// profile's API key (read at request time; never persisted or logged).
+// Spec: docs/specs/task-retrospective.md via Config
+func EvaluatorAPIKeyEnv(evaluator string) string {
+	switch evaluator {
+	case EvaluatorGlide:
+		return "FASTINO_API_KEY"
+	case EvaluatorJev:
+		return "TYPESAFE_API_KEY"
+	}
+	return ""
+}
+
+// EvaluatorAPIKey reads the profile's host-supplied key from the environment
+// at request time. Empty means the evaluator abstains as unavailable.
+// Spec: docs/specs/task-retrospective.md via Config
+func EvaluatorAPIKey(evaluator string) string {
+	env := EvaluatorAPIKeyEnv(evaluator)
+	if env == "" {
+		return ""
+	}
+	return os.Getenv(env)
+}
 
 // OpenCode session transport generations (dispatch_endpoint).
 const (
 	// EndpointPrompt is the <=1.18.x transport: POST /session/{id}/prompt.
 	EndpointPrompt = "prompt"
-	// EndpointMessage is the 2.x transport: POST /session/{id}/prompt_async
-	// (204 accepted) with message-list reconciliation.
+	// EndpointMessage is the verified live 2.x transport: /api prefix,
+	// Basic auth, data envelopes, synchronous flat-text prompt delivery.
 	EndpointMessage = "message"
 )
 
@@ -29,14 +91,14 @@ const RubricVersion = "task-retrospective-rubric-1"
 // Later phases (dispatch, OpenCode decoding) read the same struct; adapters
 // must not duplicate the values.
 type Config struct {
-	// Endpoint is the Jev base URL. Defaults to the TypeSafe API host; tests
+	// Endpoint is the evaluator base URL. Defaults to the Fastino API host; tests
 	// must override it with a local mock endpoint.
 	Endpoint string `json:"endpoint,omitempty"`
 	// RequestLimitBytes is the conservative serialized-request byte budget
-	// (approximation of the Jev all-input limit).
+	// (conservative GLiDE transport bound, not an exact token count).
 	RequestLimitBytes int `json:"request_limit_bytes,omitempty"`
 	// StateQuestionLimitBytes is the conservative state+longest-question
-	// byte budget (approximation of the Jev state+longest-question limit).
+	// byte budget (conservative GLiDE state+question bound).
 	StateQuestionLimitBytes int `json:"state_question_limit_bytes,omitempty"`
 	// RequestBudget is the maximum number of HTTP requests per task run,
 	// counted across both stages, retries, and size-rejection splits.
@@ -72,7 +134,7 @@ type Config struct {
 	// RedactPatterns are additional configured sensitive patterns (regular
 	// expressions) beyond the built-in rails. Defaults cannot be removed.
 	RedactPatterns []string `json:"redact_patterns,omitempty"`
-	// DispatchServer is the OpenCode server base URL. It is not the Jev endpoint.
+	// DispatchServer is the OpenCode server base URL, not the evaluator endpoint.
 	// Empty means the correcting-session capability is missing.
 	DispatchServer string `json:"dispatch_server,omitempty"`
 	// DispatchUITemplate is an http(s) URL template containing exactly one {id}.
@@ -101,6 +163,10 @@ type Config struct {
 	// contract: /api prefix, Basic auth, data envelopes, sync prompt).
 	// Empty means the default.
 	DispatchEndpoint string `json:"dispatch_endpoint,omitempty"`
+	// Evaluator selects the decision-engine provider profile: "glide"
+	// (default; Fastino GLiDE, FASTINO_API_KEY). "jev" is reserved but rejected
+	// until its current contract is verified. Models are pinned.
+	Evaluator string `json:"evaluator,omitempty"`
 	// DispatchServerUsername is the HTTP Basic username for the session
 	// transport. Empty falls back to OPENCODE_SERVER_USERNAME, then the
 	// documented server default "opencode".
@@ -116,7 +182,8 @@ type Config struct {
 // Spec: docs/specs/task-retrospective.md via Config
 func DefaultConfig() *Config {
 	return &Config{
-		Endpoint:                  "https://api.typesafe.ai",
+		Evaluator:                 EvaluatorGlide,
+		Endpoint:                  EvaluatorEndpoint(EvaluatorGlide),
 		RequestLimitBytes:         24_000,
 		StateQuestionLimitBytes:   16_000,
 		RequestBudget:             100,
@@ -147,6 +214,21 @@ func DefaultConfig() *Config {
 func (c *Config) Validate() error {
 	if c.Endpoint == "" {
 		return fmt.Errorf("retrospective config: endpoint is required")
+	}
+	if c.Evaluator == "" {
+		c.Evaluator = EvaluatorGlide
+	}
+	if EvaluatorModel(c.Evaluator) == "" {
+		return fmt.Errorf("retrospective config: evaluator must be %q or %q", EvaluatorGlide, EvaluatorJev)
+	}
+	if c.Evaluator == EvaluatorJev {
+		return fmt.Errorf("retrospective config: Jev is unavailable until its current provider contract is verified")
+	}
+	if err := validateHTTPBase(c.Endpoint); err != nil {
+		return fmt.Errorf("retrospective config: endpoint: %w", err)
+	}
+	if c.RequestLimitBytes > 24_000 || c.StateQuestionLimitBytes > 16_000 {
+		return fmt.Errorf("retrospective config: byte limits may only be lowered")
 	}
 	if c.RequestLimitBytes < c.MinFragmentBytes {
 		return fmt.Errorf("retrospective config: request_limit_bytes must be >= min_fragment_bytes (%d)", c.MinFragmentBytes)
@@ -245,6 +327,7 @@ var configJSONKeys = map[string]struct{}{
 	"reviewer": {}, "state_dir": {}, "max_repair_attempts": {},
 	"spool_max_bytes": {}, "drain_max_jobs": {}, "dispatch_endpoint": {},
 	"dispatch_server_username": {}, "dispatch_server_password": {},
+	"evaluator": {},
 }
 
 // UnmarshalJSON decodes a config document over the receiver so omitted keys
@@ -272,6 +355,15 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("%s: %w", key, err)
 		}
 		return nil
+	}
+	if err := assign("evaluator", &c.Evaluator); err != nil {
+		return err
+	}
+	// The profile default endpoint follows the selected evaluator unless the
+	// document sets an explicit endpoint.
+	_, endpointSet := raw["endpoint"]
+	if !endpointSet {
+		c.Endpoint = EvaluatorEndpoint(c.Evaluator)
 	}
 	if err := assign("endpoint", &c.Endpoint); err != nil {
 		return err
