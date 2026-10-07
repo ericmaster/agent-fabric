@@ -1,0 +1,335 @@
+// Spec: docs/specs/task-retrospective.md — recorded-event replay tests of
+// the OpenCode observation adapter. Offline, deterministic, no live
+// sessions: the CLI spawn is replaced by a fixture capture script (env
+// AGF_BIN) and the server version by AGF_PLUGIN_FAKE_HEALTH.
+import test, { describe } from "node:test";
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { Envelope } from "../opencode";
+import { RetrospectivePlugin } from "../opencode";
+// spec: docs/specs/task-retrospective.md (OpenCode observation adapter)
+
+// Compiled output lives at dist/tests; the recorded fixtures live at the
+// repository-root fixtures/retrospective/opencode (shared with the Go replay
+// and loop tests).
+const FIXTURES = path.resolve(__dirname, "../../../../fixtures/retrospective/opencode");
+const SUPPORTED_VERSION = "2.0.24";
+
+interface CaptureRow {
+  argv: string[];
+  stdin: string;
+}
+
+function installCaptureCLI(root: string, exit: number): string {
+  const script = path.join(root, "capture-cli.cjs");
+  writeFileSync(
+    script,
+    [
+      "#!/usr/bin/env node",
+      "const fs = require('node:fs');",
+      "const chunks = [];",
+      "process.stdin.on('data', (chunk) => chunks.push(chunk));",
+      "process.stdin.on('end', () => {",
+      "  fs.appendFileSync(process.env.AGF_CAPTURE_FILE, JSON.stringify({ argv: process.argv.slice(2), stdin: Buffer.concat(chunks).toString('utf8') }) + '\\n');",
+      "  process.exit(Number(process.env.AGF_CAPTURE_EXIT || '0'));",
+      "});",
+    ].join("\n"),
+  );
+  chmodSync(script, 0o700);
+  process.env.AGF_BIN = script;
+  process.env.AGF_CAPTURE_EXIT = String(exit);
+  process.env.AGF_PLUGIN_FAKE_HEALTH = JSON.stringify({ healthy: true, version: SUPPORTED_VERSION });
+  return path.join(root, "captures.jsonl");
+}
+
+function loadEvents(name: string): unknown[] {
+  return readFileSync(path.join(FIXTURES, "events", name), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+}
+
+function capturesOf(file: string): CaptureRow[] {
+  let body: string;
+  try {
+    body = readFileSync(file, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+  if (body.length === 0) {
+    return [];
+  }
+  return body.trim().split("\n").map((line) => JSON.parse(line) as CaptureRow);
+}
+
+interface PluginHarness {
+  hooks: any;
+  captureFile: string;
+  root: string;
+  restore(): void;
+}
+
+let savedEnv: string | undefined;
+
+function snapshotEnv(name: string): void {
+  savedEnv = process.env[name];
+}
+
+function restoreEnv(name: string): void {
+  if (savedEnv === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = savedEnv;
+  }
+}
+
+function fixtureCLI(exit = 0, version = SUPPORTED_VERSION): PluginHarness {
+  const root = mkdtempSync(path.join(os.tmpdir(), "agf-retro-hook-"));
+  mkdirSync(path.join(root, "proj"), { recursive: true });
+  const previous = {
+    bin: process.env.AGF_BIN,
+    capture: process.env.AGF_CAPTURE_FILE,
+    exit: process.env.AGF_CAPTURE_EXIT,
+    health: process.env.AGF_PLUGIN_FAKE_HEALTH,
+  };
+  const captureFile = installCaptureCLI(root, exit);
+  process.env.AGF_CAPTURE_FILE = captureFile;
+  process.env.AGF_PLUGIN_FAKE_HEALTH = JSON.stringify({ healthy: true, version });
+  const pending = RetrospectivePlugin({
+    serverUrl: new URL("http://127.0.0.1:4096"),
+    directory: path.join(root, "proj"),
+  } as any);
+  return {
+    // RetrospectivePlugin returns a promise; tests await it.
+    get hooks() {
+      return pending;
+    },
+    captureFile,
+    root,
+    restore() {
+      process.env.AGF_BIN = previous.bin;
+      process.env.AGF_CAPTURE_FILE = previous.capture;
+      process.env.AGF_CAPTURE_EXIT = previous.exit;
+      process.env.AGF_PLUGIN_FAKE_HEALTH = previous.health;
+    },
+  };
+}
+
+async function withPlugin(exit: number, fn: (hooks: any, harness: PluginHarness) => Promise<void>, version?: string): Promise<void> {
+  const harness = fixtureCLI(exit, version);
+  try {
+    const hooks = await harness.hooks;
+    await fn(hooks, harness);
+  } finally {
+    harness.restore();
+  }
+}
+
+async function replay(hooks: any, events: unknown[]): Promise<void> {
+  for (const event of events) {
+    await hooks.event({ event });
+  }
+}
+
+function envelopesOf(harness: PluginHarness): Envelope[] {
+  return capturesOf(harness.captureFile).map((row) => JSON.parse(row.stdin) as Envelope);
+}
+
+function argvOf(harness: PluginHarness): string[] | undefined {
+  const rows = capturesOf(harness.captureFile);
+  return rows.length > 0 ? rows[0].argv : undefined;
+}
+
+describe("retrospective opencode adapter replay", () => {
+  test("streamed text updates collapse to the cumulative final part", async () => {
+    await withPlugin(0, async (hooks, harness) => {
+      await replay(hooks, loadEvents("streamed.jsonl"));
+      const envelopes = envelopesOf(harness);
+      assert.equal(envelopes.length, 1, "threshold flushes never happen below 25 records");
+      const [envelope] = envelopes;
+      assert.equal(envelope.version, 1);
+      assert.equal(envelope.harness, "opencode");
+      assert.equal(envelope.session_id, "ses_stream");
+      assert.equal(envelope.trigger, true);
+      assert.equal(envelope.project_dir, path.join(harness.root, "proj"));
+      const parts = envelope.records.filter((record) => record.kind === "part" && record.part_type === "text");
+      assert.equal(parts.length, 5, "one part record per part id (user + 3 growing assistant + final)");
+      const last = parts.at(-1);
+      assert.equal(last?.text, "Onboarding instructions summarized.");
+    });
+  });
+
+  test("duplicate/out-of-order terminal events stay idempotent handoffs", async () => {
+    await withPlugin(0, async (hooks, harness) => {
+      await replay(hooks, loadEvents("duplicates.jsonl"));
+      const envelopes = envelopesOf(harness);
+      assert.equal(envelopes.length, 2, "one flush per terminal idle");
+      const first = envelopes[0].records;
+      assert.equal(
+        first.filter((record) => record.record_id === "prt_tool_1").length,
+        3,
+        "running + terminal + duplicate redelivery all forward (ingest upserts)",
+      );
+      const second = envelopes[1].records;
+      assert.deepEqual(second.map((record) => record.kind), ["part", "event"]);
+      assert.equal(second[0].record_id, "prt_tool_1");
+      assert.equal(second[0].tool_status, "completed");
+    });
+  });
+
+  test("root/child aggregation routes child rows to the owner root", async () => {
+    await withPlugin(0, async (hooks, harness) => {
+      await replay(hooks, loadEvents("childsession.jsonl"));
+      const envelopes = envelopesOf(harness);
+      assert.equal(envelopes.length, 2, "child trigger first, then the root");
+      assert.equal(envelopes[0].session_id, "ses_child");
+      assert.equal(envelopes[1].session_id, "ses_root");
+      const rootRows = envelopes[1].records.filter((record) => record.kind === "session");
+      const childRow = rootRows.find((record) => record.session_id === "ses_child");
+      assert.ok(childRow, "the root buffer carries the child identity row");
+      assert.equal(childRow?.parent_id, "ses_root");
+    });
+  });
+
+  test("abort/error then idle keeps the transport error as a bounded detail", async () => {
+    await withPlugin(0, async (hooks, harness) => {
+      await replay(hooks, loadEvents("abort-then-idle.jsonl"));
+      const [envelope] = envelopesOf(harness);
+      const errors = envelope.records.filter((record) => record.kind === "event" && record.event === "session.error");
+      assert.equal(errors.length, 1);
+      assert.equal(errors[0].detail, "MessageAbortedError");
+      assert.equal(errors[0].session_id, "ses_abort");
+    });
+  });
+
+  test("multi-turn task boundaries forward every turn marker", async () => {
+    await withPlugin(0, async (hooks, harness) => {
+      await replay(hooks, loadEvents("multiturn.jsonl"));
+      const [envelope] = envelopesOf(harness);
+      const users = envelope.records.filter(
+        (record) => record.kind === "message" && record.role === "user",
+      );
+      assert.equal(users.length, 3);
+    });
+  });
+
+  test("history compaction is forwarded as a session event before capture", async () => {
+    await withPlugin(0, async (hooks, harness) => {
+      await replay(hooks, loadEvents("compaction.jsonl"));
+      const [envelope] = envelopesOf(harness);
+      assert.ok(envelope.records.some((record) => record.kind === "event" && record.event === "session.compacted"));
+      assert.ok(
+        envelope.records.some(
+          (record) => record.kind === "part" && record.record_id === "prt_tool_1",
+        ),
+        "pre-compaction evidence stays staged",
+      );
+    });
+  });
+
+  test("restart replays only post-restart records (no duplicated staging)", async () => {
+    const pre = loadEvents("restart-pre.jsonl");
+    const post = loadEvents("restart-post.jsonl");
+    await withPlugin(0, async (hooks, harness) => {
+      await replay(hooks, pre);
+      assert.equal(envelopesOf(harness).length, 0, "no idle in the pre-restart window: nothing flushed");
+    });
+    // The server restart: a fresh plugin instance replays the remaining
+    // events; the ingest spool (Go side) keeps the pre-restart upserts.
+    await withPlugin(0, async (hooks, harness) => {
+      await replay(hooks, post);
+      const [second] = envelopesOf(harness);
+      assert.ok(second, "the post-restart idle flushes once");
+      assert.equal(second.records.filter((record) => record.record_id === "prt_tool_1").length, 0);
+      assert.equal(second.records.filter((record) => record.record_id === "prt_tool_2").length, 1);
+    });
+  });
+
+  test("learning-session suppression never stages a correction session", async () => {
+    await withPlugin(0, async (hooks, harness) => {
+      await replay(hooks, loadEvents("learning-suppressed.jsonl"));
+      assert.equal(envelopesOf(harness).length, 0, "no envelope for a learning-origin session or child");
+    });
+  });
+
+  test("the synthetic success fixture forwards wrong-directory calls and recovery", async () => {
+    await withPlugin(0, async (hooks, harness) => {
+      await replay(hooks, loadEvents("success-recovery.jsonl"));
+      const records = envelopesOf(harness).flatMap((envelope) => envelope.records);
+      const wrongs = records.filter((record) => (record.call_id ?? "").startsWith("call_wrong_"));
+      assert.equal(wrongs.length, 6, "three wrong reads and three wrong writes");
+      assert.ok(wrongs.every((record) => (record.input ?? "").includes("{{wrong_root}}")));
+      const rights = records.filter((record) => record.record_id === "prt_righ_r1");
+      assert.equal(rights.length, 1, "the recovery read arrives once");
+      const idle = records.filter((record) => record.kind === "event" && record.event === "session.idle");
+      assert.equal(idle.length, 1, "a single terminal trigger");
+    });
+  });
+
+  test("source provenance hashes instruction files at use time", async () => {
+    await withPlugin(0, async (hooks, harness) => {
+      const instruction = path.join(harness.root, "proj", "AGENTS.md");
+      writeFileSync(instruction, "the instruction bytes\n");
+      await hooks["tool.execute.after"](
+        { tool: "read", sessionID: "ses_src", callID: "call_src", args: { filePath: instruction } },
+        { title: "read", output: "the instruction bytes\n", metadata: {} },
+      );
+      await hooks.event({ event: { type: "session.idle", properties: { sessionID: "ses_src" } } });
+      const [envelope] = envelopesOf(harness);
+      const record = envelope.records.find((row) => row.kind === "source");
+      assert.ok(record, "a source record flushed");
+      assert.equal(record?.path, instruction);
+      assert.equal(record?.sha256, createHash("sha256").update("the instruction bytes\n").digest("hex"));
+    });
+  });
+
+  test("secret-file candidates are source gaps, never hashed or staged", async () => {
+    await withPlugin(0, async (hooks, harness) => {
+      const envFile = path.join(harness.root, "proj", ".env");
+      writeFileSync(envFile, "SUPERSECRET-CANARY=1\n");
+      await hooks["tool.execute.after"](
+        { tool: "read", sessionID: "ses_src2", callID: "call_src2", args: { filePath: envFile } },
+        { title: "read", output: "SUPERSECRET-CANARY=1\n", metadata: {} },
+      );
+      await hooks.event({ event: { type: "session.idle", properties: { sessionID: "ses_src2" } } });
+      const [envelope] = envelopesOf(harness);
+      const record = envelope.records.find((row) => row.path === envFile);
+      assert.ok(record);
+      assert.equal(record?.kind, "source_gap");
+      assert.ok(!JSON.stringify(envelope).includes("SUPERSECRET-CANARY"));
+    });
+  });
+
+  test("unsupported server versions degrade to inert (no staging)", async () => {
+    await withPlugin(0, async (hooks, harness) => {
+      await replay(hooks, loadEvents("streamed.jsonl"));
+      assert.equal(envelopesOf(harness).length, 0, "no staging for version drift");
+    }, "1.18.32");
+  });
+
+  test("a disabled ingest verdict stops staging until the next trigger", async () => {
+    await withPlugin(2, async (hooks, harness) => {
+      await replay(hooks, loadEvents("streamed.jsonl"));
+      assert.equal(envelopesOf(harness).length, 1, "the probe flush still reaches the CLI");
+      await replay(hooks, loadEvents("restart-post.jsonl"));
+      assert.equal(envelopesOf(harness).length, 1, "disabled staging is dropped");
+    });
+  });
+
+  test("the spawn never carries transcript data in argv", async () => {
+    await withPlugin(0, async (hooks, harness) => {
+      await replay(hooks, loadEvents("streamed.jsonl"));
+      const argv = argvOf(harness);
+      assert.deepEqual(argv, ["retrospective", "ingest", "--harness", "opencode"]);
+      const row = capturesOf(harness.captureFile)[0];
+      assert.ok(row.stdin.includes("ses_stream"), "the envelope travels on stdin");
+      assert.ok(!argv!.join(" ").includes("ses_stream"));
+    });
+  });
+});

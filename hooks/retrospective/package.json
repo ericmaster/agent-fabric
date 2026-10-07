@@ -1,0 +1,17 @@
+{
+  "name": "agent-fabric-retrospective-hooks",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCode observation adapter (thin plugin) for the Agent Fabric task retrospective. Business rules live in the Go CLI; this package only normalizes the installed OpenCode generation into the observation envelope.",
+  "license": "MIT",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.json && node --test \"dist/tests/**/*.test.js\""
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "1.18.35",
+    "@opencode-ai/sdk": "1.18.35",
+    "@types/node": "22.18.6",
+    "typescript": "5.9.3"
+  }
+}
