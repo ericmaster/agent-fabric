@@ -515,13 +515,14 @@ func backfillOne(ctx context.Context, client *HTTPSessionClient, store *Store, c
 	if depth >= MaxDescendantDepth {
 		return []Gap{{Kind: "partial_stream", Detail: "descendant depth budget reached at " + sessionID}}
 	}
-	// One spool lock per level, released before descending into children.
-	unlock, err := spoolLock(store, sessionID)
-	if err != nil {
-		return []Gap{{Kind: "partial_stream", Detail: "spool lock " + sessionID + ": " + boundedGapDetail(err.Error())}}
-	}
-	spool, rows, childIDs, gaps := backfillLoadStage(ctx, client, store, cfg, sessionID, rows)
-	unlock()
+	childIDs, gaps := func() ([]string, []Gap) {
+		unlock, err := spoolLock(store, sessionID)
+		if err != nil {
+			return nil, []Gap{{Kind: "partial_stream", Detail: "spool lock " + sessionID + ": " + boundedGapDetail(err.Error())}}
+		}
+		defer unlock()
+		return backfillLoadStage(ctx, client, store, cfg, sessionID, rows)
+	}()
 	if gaps != nil {
 		return gaps
 	}
@@ -529,7 +530,6 @@ func backfillOne(ctx context.Context, client *HTTPSessionClient, store *Store, c
 		return []Gap{{Kind: "partial_stream", Detail: "child reconcile cap reached before " + sessionID}}
 	}
 	*budget--
-	_ = spool
 	for _, id := range childIDs {
 		// The parent lock is released before descending: nested cycles can
 		// only meet an already-visited session (skipped) or the depth
@@ -544,20 +544,21 @@ func backfillOne(ctx context.Context, client *HTTPSessionClient, store *Store, c
 
 // backfillLoadStage loads one spool, stages its fetched history, writes it
 // back, and returns the observed child ids. The caller holds that session's
-// spool lock across this call and releases it before descending.
+// spool lock across this call (via a defer-unlocking closure) and releases
+// it before descending.
 // Spec: docs/specs/task-retrospective.md via backfillOne
-func backfillLoadStage(ctx context.Context, client *HTTPSessionClient, store *Store, cfg *Config, sessionID string, rows []SessionMessageRow) (*Spool, []SessionMessageRow, []string, []Gap) {
+func backfillLoadStage(ctx context.Context, client *HTTPSessionClient, store *Store, cfg *Config, sessionID string, rows []SessionMessageRow) ([]string, []Gap) {
 	spool, err := loadSpool(store, sessionID)
 	if err != nil {
-		return nil, nil, nil, []Gap{{Kind: "partial_stream", Detail: "spool " + sessionID + ": " + boundedGapDetail(err.Error())}}
+		return nil, []Gap{{Kind: "partial_stream", Detail: "spool " + sessionID + ": " + boundedGapDetail(err.Error())}}
 	}
 	if rows == nil {
 		fetched, err := client.Messages(ctx, sessionID)
 		if err != nil {
 			if errors.Is(err, ErrCapability) {
-				return spool, nil, nil, nil
+				return nil, nil
 			}
-			return nil, nil, nil, []Gap{{Kind: "partial_stream", Detail: "message reconcile failed: " + sessionID + ": " + boundedGapDetail(err.Error())}}
+			return nil, []Gap{{Kind: "partial_stream", Detail: "message reconcile failed: " + sessionID + ": " + boundedGapDetail(err.Error())}}
 		}
 		rows = fetched
 	}
@@ -575,14 +576,14 @@ func backfillLoadStage(ctx context.Context, client *HTTPSessionClient, store *St
 	}
 	redactor, redactorErr := NewRedactor(cfg)
 	if redactorErr != nil {
-		return nil, nil, nil, []Gap{{Kind: "partial_stream", Detail: "reconcile redactor: " + boundedGapDetail(redactorErr.Error())}}
+		return nil, []Gap{{Kind: "partial_stream", Detail: "reconcile redactor: " + boundedGapDetail(redactorErr.Error())}}
 	}
 	stageRecords(redactor, capRecords(records), spool)
 	if spool.ServerURL == "" {
 		spool.ServerURL = firstNonEmpty(client.BaseURL, spool.ServerURL)
 	}
 	if err := writeSpoolBounded(cfg, store, spool); err != nil {
-		return nil, nil, nil, []Gap{{Kind: "partial_stream", Detail: "spool write failed: " + sessionID + ": " + boundedGapDetail(err.Error())}}
+		return nil, []Gap{{Kind: "partial_stream", Detail: "spool write failed: " + sessionID + ": " + boundedGapDetail(err.Error())}}
 	}
 	var childIDs []string
 	for _, id := range sortedSessionIDs(spool) {
@@ -591,7 +592,7 @@ func backfillLoadStage(ctx context.Context, client *HTTPSessionClient, store *St
 		}
 		childIDs = append(childIDs, id)
 	}
-	return spool, rows, childIDs, nil
+	return childIDs, nil
 }
 
 // boundedGapDetail clips one gap detail.
