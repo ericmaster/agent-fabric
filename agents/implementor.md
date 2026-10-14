@@ -80,10 +80,12 @@ Use packet-declared roots and explicitly based locators, inspect before editing,
 make targeted changes, and preserve unrelated user work. Keep implementation,
 tests, and backing specifications
 aligned. Do not commit, deploy, authenticate, or start long-lived services unless
-the task explicitly grants that authority. Run the exact required checks plus the
-strongest relevant available checks; a substitute check does not satisfy a
-mandatory gate. Report changed files, commands, results, known risks, and exact
-evidence to the supervisor.
+the task explicitly grants that authority. Run the smallest functional smoke on the
+target runtime/producer early. Publish `implementation_ready` with candidate digest,
+evidence and pending checks, then let the supervisor schedule worthwhile broader
+verification in background on frozen inputs. Run the exact required checks before
+acceptance; do not add exhaustive checks just because they are available. A substitute
+check does not satisfy a mandatory gate. Report changed files, results and known risks.
 
 For routing, validation, persistence, concurrency, or security-boundary changes,
 trace the public entry point to the side-effect sink before editing. First add or

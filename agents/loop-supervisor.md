@@ -108,6 +108,14 @@ can proceed despite pending QA. Missing substantive mandatory evidence keeps acc
 incomplete, but only an actual defect or missing functional prerequisite blocks
 dependent implementation. Report the uncertainty rather than manufacturing PASS.
 
+Publish `implementation_ready` after the smallest functional smoke on the target
+runtime/producer, not after exhaustive regression. Run worthwhile broader checks
+and source review in background on frozen inputs; retain their handles and pending
+checks. The superior may continue provisional implementation in independent writable
+worktrees/runtimes using the prerequisite digest/receipt. Do not mark DONE or
+integrate/deploy until acceptance passes. Route late defects to the recorded owner
+and stop affected dependent work. This adds no mandatory check.
+
 ## Autonomous Recovery
 
 Recoverable capability friction is work, not a human gate. Apply the Supervisor
@@ -193,6 +201,12 @@ handoffs with authority, explicit unrun checks, sessions and unchanged historica
 counters/episodes/hard limits. Persist transitions only through `record-ledger`.
 Disclose unavailable helper capability and retain the inline contract; do not claim
 an executed preflight or silently create a new episode/model.
+
+Keep one current packet with the current delta and durable report locators, not
+stacked amendments or copied reports. Retain the full checkpoint in this session;
+use record receipts thereafter and `compact: true` only for status-only loads.
+Restore the full checkpoint on resume/version conflict or before decisions; compact
+receipts are not recovery or acceptance evidence. Do not reread unchanged inputs.
 
 Name the public deliverable and whether this scope changes it or only a private
 draft; surface a delivery mismatch upward once. Before elected expensive checks,

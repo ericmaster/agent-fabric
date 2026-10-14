@@ -62,7 +62,8 @@ crossed:
    intake, load it only from validated packet content or declared locators,
    optionally through its host task-system parent, and construct the DAG.
 2. Select an unblocked phase with independently verified functional predecessor
-   evidence. Pending QA alone does not prevent implementation.
+   evidence. Pending QA or exhaustive review alone does not prevent provisional
+   implementation in an independent worktree/runtime; acceptance dependencies remain.
 3. Write an isolated phase packet, validate it immediately before dispatch, and
    resume the recorded `loop-supervisor` session for that phase. Record its
    continuation ID on first dispatch and pass that resume handle on every later
@@ -207,6 +208,14 @@ An actual product defect or unavailable functional prerequisite still blocks dep
 work. Unrun substantive mandatory checks remain unverified; no skipped/deferred/running
 check is PASS. Final acceptance needs substantive DoD evidence, not a QA session.
 
+Publish `implementation_ready` after the smallest functional smoke on the target
+runtime/producer, not after exhaustive regression. Run worthwhile broader checks
+and source review in background on frozen inputs; retain their handles and pending
+checks. Continue provisional implementation only in independent writable worktrees
+and runtimes, with the prerequisite digest/receipt. Do not mark DONE or integrate/
+deploy until acceptance passes. Route late defects to the recorded owner and stop
+affected dependent work, not unrelated isolated work. This adds no mandatory check.
+
 An active child or command is IN_PROGRESS, not a failed gate. Preserve its pending
 stage and in_flight, and wait for native completion without equivalent redispatch,
 repeated audits, counter increments or progress claims for unchanged state. Automatic
@@ -278,6 +287,11 @@ packet roots; missing detail never waives these safeguards.
 After resolving the plan, invoke the hook below with `operation: load`, `tier: macro`
 and `plan_id` before selecting a phase. Restore `phase_states`, sessions, evidence
 and cumulative attempts; reconcile an in-flight child before redispatching it.
+Keep one current packet with the current delta and durable report locators, not
+stacked amendments or copied reports. Retain the full checkpoint in this session;
+use record receipts thereafter and `compact: true` only for status-only loads.
+Restore the full checkpoint on resume/version conflict or before decisions; compact
+receipts are not recovery or acceptance evidence. Do not reread unchanged inputs.
 Record `operation: record`, `expected_version` from the latest receipt, and the
 full checkpoint before each dispatch and after every child return. Include scope
 identity, execution root, revision and working-tree digest, `next_stage`, role

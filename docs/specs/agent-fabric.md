@@ -365,6 +365,18 @@ or the next user interaction; never promise only a terminal callback that the
 harness cannot deliver. Do not repeatedly poll, relaunch a live command or describe
 unchanged messages as progress.
 
+Use the smallest existing functional smoke against the target runtime/producer
+early, rather than stacking another mandatory check onto the task. Once its
+functional prerequisite is verified, publish `implementation_ready` with the
+candidate digest, evidence and pending checks; do not wait for exhaustive regression
+or source review to start other implementation. Run worthwhile broader verification
+in background on frozen inputs. The superior may advance provisionally in an
+independent writable worktree/runtime, retaining prerequisite locators and pending
+review/check handles. This does not mark the predecessor DONE, clear acceptance
+dependencies or permit integration/deployment. A later defect stops affected
+dependent work and is routed by the supervisor to the recorded owner; unrelated
+isolated work continues. No new stage, scheduler, QA dispatch or acceptance gate.
+
 Root-qualified artifact locators (for example `evidence:report.json`) resolve only
 against the explicitly declared named root. They do not require another approval
 or ambient discovery. Ambiguous roots, escaping paths and unreadable required
@@ -700,6 +712,18 @@ ID was received. Missing persistence capability must be explicit: retain an
 inline checkpoint for the current session, report that durable resume is
 unavailable, and reconstruct from declared evidence before a fresh continuation.
 An installed hook reporting a persistence error blocks further dispatch.
+
+Keep one current packet per role/phase: objective, authority, scope/DoD, revision,
+current delta and evidence locators, not copied reports or stacked amendments.
+Load the full checkpoint once on intake/resume or version conflict; retain it in
+the owning session and use record receipts thereafter. Status-only loads may set
+`compact: true`: return status/version/path and, for existing state, next_stage,
+revision and implementation_ready (false when absent), without a checkpoint.
+Compact is a boolean allowed only on load; legacy load is unchanged. Validate the
+same persisted state in both views. A compact receipt is not recovery/dispatch or
+acceptance evidence: restore the full checkpoint before those decisions. Store
+reports/history at durable locators, not inline in current evidence lists; preserve
+all counters, handles, authority and unresolved conditions in the full checkpoint.
 
 Checkpoint fields: `scope_id` (approved scope identity), `execution_root`,
 `revision`, `worktree_state` (digest/locator including relevant uncommitted and

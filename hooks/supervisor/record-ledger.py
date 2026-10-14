@@ -55,6 +55,9 @@ def operate(request, root, execution_root):
     operation = request.get("operation", "record")
     if operation not in {"load", "record"}:
         raise ValueError("operation must be load or record")
+    compact = request.get("compact", False)
+    if type(compact) is not bool or ("compact" in request and operation != "load"):
+        raise ValueError("compact must be a boolean on load only")
     tier = request.get("tier")
     identity_field = {"micro": "task_id", "macro": "plan_id"}.get(tier)
     if not identity_field or not isinstance(request.get(identity_field), str) or not request[identity_field].strip():
@@ -63,6 +66,8 @@ def operate(request, root, execution_root):
     key = hashlib.sha256(json.dumps(identity).encode()).hexdigest()
     path = root / (key + ".json")
     if operation == "load" and not root.exists():
+        if compact:
+            return {"status": "absent", "version": 0, "path": str(path)}
         return {"status": "absent", "version": 0, "checkpoint": None, "path": str(path)}
     if operation == "record":
         checkpoint = validate_checkpoint(request.get("checkpoint"), execution_root)
@@ -89,6 +94,12 @@ def operate(request, root, execution_root):
             if tier == "macro" and not isinstance(state["checkpoint"].get("phase_states"), dict):
                 raise ValueError("macro checkpoint requires phase_states")
         if operation == "load":
+            if compact:
+                result = {"status": "ok" if state["version"] else "absent", "version": state["version"], "path": str(path)}
+                if state["checkpoint"] is not None:
+                    result.update({key: state["checkpoint"][key] for key in ("next_stage", "revision")})
+                    result["implementation_ready"] = state["checkpoint"].get("implementation_ready", False)
+                return result
             return {"status": "ok" if state["version"] else "absent", "version": state["version"], "checkpoint": state["checkpoint"], "path": str(path)}
         if request["expected_version"] != state["version"]:
             raise ValueError("stale expected_version; load and reconcile before recording")

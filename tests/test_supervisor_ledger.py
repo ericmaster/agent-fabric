@@ -52,6 +52,41 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(len(state["events"]), 2)
         self.assertEqual(state["checkpoint"]["sessions"]["code-reviewer"], "reviewer-1")
 
+    # Spec: docs/specs/agent-fabric.md — compact view preserves storage and guards
+    def test_compact_load_preserves_full_state_and_version_guards(self):
+        load = {"operation": "load", "tier": "micro", "task_id": "TASK-1", "compact": True}
+        absent = self.run_hook(load)
+        self.assertEqual(absent["status"], "absent")
+        self.assertNotIn("checkpoint", absent)
+        self.assertFalse(self.root.exists())
+        self.request["checkpoint"]["evidence"].append({"locator": "full.log", "report": "x" * 50000})
+        self.request["checkpoint"]["implementation_ready"] = True
+        receipt = self.run_hook(self.request)
+        before = Path(receipt["path"]).read_bytes()
+        compact = self.run_hook(load)
+        self.assertEqual(compact, {"status": "ok", "version": 1, "path": receipt["path"],
+                                  "next_stage": "qa", "revision": "abc", "implementation_ready": True})
+        full = self.run_hook({key: value for key, value in load.items() if key != "compact"})
+        self.assertEqual(full["checkpoint"], self.request["checkpoint"])
+        self.assertEqual(Path(receipt["path"]).read_bytes(), before)
+        self.assertLess(len(json.dumps(compact)), len(json.dumps(full)) // 100)
+        with self.assertRaisesRegex(ValueError, "stale"):
+            self.run_hook(self.request)
+        corrupt = json.loads(before)
+        corrupt["checkpoint"]["next_stage"] = "invalid"
+        Path(receipt["path"]).write_text(json.dumps(corrupt))
+        with self.assertRaisesRegex(ValueError, "next_stage"):
+            self.run_hook(load)
+
+    # Spec: docs/specs/agent-fabric.md — compact view is load-only
+    def test_compact_rejects_invalid_requests(self):
+        for value in (None, 1, "true"):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "compact"):
+                self.run_hook({"operation": "load", "tier": "micro", "task_id": "TASK-1", "compact": value})
+        with self.assertRaisesRegex(ValueError, "load only"):
+            self.run_hook({**self.request, "compact": True})
+        self.assertFalse(self.root.exists())
+
     # Spec: docs/specs/agent-fabric.md — structural recovery checkpoints
     def test_structural_recovery_and_aggregate_acceptance_round_trip(self):
         for stage in ("structural_recovery", "aggregate_acceptance"):

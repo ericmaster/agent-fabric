@@ -172,6 +172,26 @@ func TestSupervisorLongChecksPreserveVisibleProgress(t *testing.T) {
 	}
 }
 
+// Spec: docs/specs/agent-fabric.md — compact context and provisional isolated work
+func TestCompactContextAndBackgroundVerification(t *testing.T) {
+	for _, role := range []string{"plan-supervisor", "loop-supervisor", "implementor"} {
+		d, err := ParseFile(filepath.Join("..", "..", "agents", role+".md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := strings.Join(strings.Fields(d.Body), " ")
+		wants := []string{"smallest functional smoke on the target runtime/producer", "implementation_ready", "background on frozen inputs"}
+		if role != "implementor" {
+			wants = append(wants, "one current packet", "`compact: true` only for status-only loads", "Restore the full checkpoint", "receipts are not recovery or acceptance evidence", "Do not mark DONE", "until acceptance passes", "affected dependent work")
+		}
+		for _, want := range wants {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s missing compact/background contract %q", role, want)
+			}
+		}
+	}
+}
+
 // Spec: docs/specs/agent-fabric.md — crash-safe continuation evidence
 func TestSupervisorResumeInputsAreDurable(t *testing.T) {
 	for _, role := range []string{"loop-supervisor", "plan-supervisor"} {
