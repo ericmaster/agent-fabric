@@ -48,7 +48,7 @@ func providerQuestions(request *ChoiceRequest) []Question {
 	if len(request.Requests) > 0 {
 		return request.Requests
 	}
-	return []Question{{ID: "q-context-page", Subject: "context-page", Scope: "context-only", Text: "Acknowledge this context-only page; do not classify any task, call or requirement.", Choices: []string{"context-only"}}}
+	return []Question{{ID: "q-context-page", Subject: "context-page", Scope: "context-only", Text: "Is this context-only page readable? Select context-only or unreadable-context; do not classify any task, call or requirement.", Choices: []string{"context-only", "unreadable-context"}}}
 }
 
 // systemOneQuestion is one typed choice question of the System One wire
@@ -252,7 +252,7 @@ func systemOneWireRequest(request *ChoiceRequest) (*systemOneRequest, error) {
 		Questions: make(map[string]systemOneQuestion, len(providerQuestions(request))),
 	}
 	for _, question := range providerQuestions(request) {
-		if question.ID == "" || question.Subject == "" || question.Text == "" || len(question.Choices) == 0 || len(question.Choices) > 255 {
+		if question.ID == "" || question.Subject == "" || question.Text == "" || len(question.Choices) < 2 || len(question.Choices) > 255 {
 			return nil, ErrInvalidRequest
 		}
 		if _, exists := wire.Questions[question.ID]; exists {

@@ -203,7 +203,7 @@ func TestGlideProfileAndUnverifiedJevFailClosed(t *testing.T) {
 }
 
 func TestGlideNoSilentEvidenceFallback(t *testing.T) {
-	for _, broken := range []string{"state", "evidence", "null-evidence", "choices"} {
+	for _, broken := range []string{"state", "evidence", "null-evidence", "choices", "single-choice"} {
 		t.Run(broken, func(t *testing.T) {
 			mock, cfg := newMockServer(t, nil)
 			request := stageSampleRequest()
@@ -216,6 +216,8 @@ func TestGlideNoSilentEvidenceFallback(t *testing.T) {
 				request.Requests[0].Evidence = json.RawMessage(`null`)
 			case "choices":
 				request.Requests[0].Choices = make([]string, 256)
+			case "single-choice":
+				request.Requests[0].Choices = []string{"succeeded"}
 			}
 			if _, err := newJev(t, cfg, nil).Choice(context.Background(), request); err == nil {
 				t.Fatal("invalid request accepted")
@@ -243,7 +245,7 @@ func TestGlideFragmentOnlyPagesUseNonActionableAcknowledgement(t *testing.T) {
 		}
 		if question, present := wire.Questions["q-context-page"]; present {
 			contexts++
-			if len(question.Criteria) != 1 || question.Criteria["context-only"] != "context-only" {
+			if len(question.Criteria) != 2 || question.Criteria["context-only"] != "context-only" || question.Criteria["unreadable-context"] != "unreadable-context" {
 				t.Fatal("context acknowledgement can classify waste")
 			}
 		}

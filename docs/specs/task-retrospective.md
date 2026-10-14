@@ -129,10 +129,10 @@ Redaction counters (per pattern kind) are recorded; never the original values.
 ## GLiDE evaluation
 
 The default evaluator is Fastino GLiDE. Authoritative contracts (checked
-2026-10-07): [System One](https://docs.fastino.ai/inference/systemone) and
+2026-10-13): [System One](https://docs.fastino.ai/inference/systemone) and
 [Choice](https://docs.fastino.ai/concepts/glide-choice), plus the
 [OpenAPI schema](https://docs.fastino.ai/openapi.json) (`ChoiceQuestion`
-criteria minProperties=1; `SystemOneRequest` questions minProperties=1).
+criteria minProperties=2, maxProperties=255; `SystemOneRequest` questions minProperties=1).
 `evaluator: "glide"` pins `fastino/GLiDE`, endpoint `https://api.fastino.ai`,
 and host environment `FASTINO_API_KEY` sent only in `X-API-Key`.
 Jev is reserved as an explicit opt-in profile, but selecting it currently
@@ -149,10 +149,11 @@ overlap into `state.overlap`; encode failures fail closed, never drop evidence.
 Stage one state contains ONLY `evidence.q-outcome` (the prescribed three
 fields), no root/session/path/revision metadata. Stage two retains its
 redacted page records and context. Fragment-only pages with no classification
-question receive one transport-only `q-context-page` Choice with the sole
-criterion `context-only`; its acknowledgement is ignored by the normalized
+question receive one transport-only `q-context-page` Choice with criteria
+`context-only` and `unreadable-context`; either acknowledgement is ignored by the normalized
 core, never counted or attributed. This satisfies GLiDE's non-empty question
-map without inventing a classification on incomplete fragments.
+map without inventing a classification on incomplete fragments. Every Choice
+must have 2–255 distinct non-empty options; invalid requests fail locally without network.
 Response `{model:"glide",answers}` uses
 exact matching question IDs and Choice objects `{type,choice,confidence,
 probabilities}`. Documented `usage` and `token_usage` metadata are accepted
