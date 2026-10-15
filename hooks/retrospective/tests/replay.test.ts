@@ -33,6 +33,7 @@ function installCaptureCLI(root: string, exit: number): string {
     [
       "#!/usr/bin/env node",
       "const fs = require('node:fs');",
+      "if (process.argv.at(-1) === '--help') { process.stderr.write('agent-fabric: flag: help requested\\n'); process.exit(1); }",
       "const chunks = [];",
       "process.stdin.on('data', (chunk) => chunks.push(chunk));",
       "process.stdin.on('end', () => {",
@@ -162,7 +163,7 @@ for (const nativeVersion of ["2.0.24", "2.0.27"]) test(`fresh native ${nativeVer
   const repository = path.resolve(FIXTURES, "../../..");
   execFileSync("go", ["build", "-o", binary, "./cmd/agent-fabric"], { cwd: repository, timeout: 60000, env: { ...process.env, GOPROXY: "off", GOSUMDB: "off" } });
   const proxy = path.join(harness.root, "ingest.cjs");
-  writeFileSync(proxy, `#!/usr/bin/env node\nconst fs=require('node:fs'),cp=require('node:child_process');let text='';process.stdin.on('data',c=>text+=c);process.stdin.on('end',()=>{const first=!fs.existsSync(${JSON.stringify(harness.captureFile)});const r=first?{status:1,stderr:'synthetic transient ingest failure\\n',stdout:''}:cp.spawnSync(${JSON.stringify(binary)},process.argv.slice(2),{input:text,encoding:'utf8',timeout:5000});fs.appendFileSync(${JSON.stringify(harness.captureFile)},JSON.stringify({argv:process.argv.slice(2),stdin:text,code:r.status,stderr:r.stderr})+'\\n');process.stdout.write(r.stdout||'');process.stderr.write(r.stderr||'');process.exit(r.status??1);});`);
+  writeFileSync(proxy, `#!/usr/bin/env node\nconst fs=require('node:fs'),cp=require('node:child_process');if(process.argv.at(-1)==='--help'){const r=cp.spawnSync(${JSON.stringify(binary)},process.argv.slice(2),{encoding:'utf8',timeout:5000});process.stdout.write(r.stdout||'');process.stderr.write(r.stderr||'');process.exit(r.status??1);}let text='';process.stdin.on('data',c=>text+=c);process.stdin.on('end',()=>{const first=!fs.existsSync(${JSON.stringify(harness.captureFile)});const r=first?{status:1,stderr:'synthetic transient ingest failure\\n',stdout:''}:cp.spawnSync(${JSON.stringify(binary)},process.argv.slice(2),{input:text,encoding:'utf8',timeout:5000});fs.appendFileSync(${JSON.stringify(harness.captureFile)},JSON.stringify({argv:process.argv.slice(2),stdin:text,code:r.status,stderr:r.stderr})+'\\n');process.stdout.write(r.stdout||'');process.stderr.write(r.stderr||'');process.exit(r.status??1);});`);
   chmodSync(proxy, 0o700); process.env.AGF_BIN = proxy;
   const id = "ses_fresh_failed_reads";
   let hook: any;

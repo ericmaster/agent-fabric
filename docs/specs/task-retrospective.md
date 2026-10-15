@@ -713,6 +713,31 @@ fire-and-forget staging plus a detached worker.
 
 ### Installed version pins
 
+Native setup requires explicit absolute `AGF_BIN` before registering capture hooks;
+there is no native CWD/HOME/PATH fallback (the v1 replay adapter retains its legacy
+resolver). The executable and immediate containing directory must be owned by the
+current uid, non-group/world-writable, with no symlink components; the file must
+be executable. Use a versioned owned release directory, not the protected-main
+symlink. Ancestor directory write policy is not a generic filesystem sandbox.
+One bounded 5s, 4KiB-output preflight runs exactly `retrospective ingest --harness
+opencode --help` with ignored stdin. Compatibility means exit 1 and exactly the
+current Go parser's `agent-fabric: flag: help requested` stderr, empty stdout:
+the old CLI rejects the ingest arguments instead. This tests command parsing,
+not a filename/version string, and never invokes ingest/evaluation/state writes.
+Missing binding spawns no child; incompatible binding only the preflight. Refusal
+returns an inert disposable instance with one private diagnostic, no capture hooks.
+Each ingest rechecks the same path's identity/mode/content hash against preflight;
+changed binding permanently declines once, without disabling valid transient retries.
+This is deployment stability checking, not isolation from a malicious same-uid writer
+racing the final check/spawn; deployment must keep release bytes immutable in use.
+Diagnostics include bounded observer pid, timestamp, explicit CLI/resolution source,
+and child pid when available. A declared observer origin is emitted only for clean
+HTTP(S) origins without userinfo/query/fragment; it is not verified producer identity.
+Preflight output/errors are never copied to diagnostics, only fixed reason codes.
+No process-global environment mutation/pin is used; reload gets fresh instance state.
+Global installation does not prove all-session coverage: only the activated and
+verified origin (initial rollout: 4097) may be claimed.
+
 Native support is an explicit allowlist: `2.0.24` and `2.0.27`, never a semver
 range. Both require session prompt/get, tool execute.after and event subscription
 capabilities before staging. Unsupported versions/missing capabilities fail closed

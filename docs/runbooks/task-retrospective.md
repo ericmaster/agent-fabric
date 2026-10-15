@@ -128,8 +128,16 @@ idle `error`, validated locally without copying provider bodies or changing role
 Set
 `AGF_OBSERVER_SERVER` to the exact configured dispatch origin for backfill;
 without it local native events still stage, but historical backfill has no URL.
-Never use `AGF_PLUGIN_FAKE_HEALTH` in a live server. `AGF_BIN` must locate the
-packaged Go CLI. Native call IDs are assistant-message scoped because provider
+Never use `AGF_PLUGIN_FAKE_HEALTH` in a live server. Native `AGF_BIN` must be an
+explicit absolute versioned packaged Go executable, not a symlink or CWD/HOME
+fallback. File and immediate parent must be current-uid-owned and not group/world
+writable. Keep release bytes immutable while active. Setup probes ingest `--help`
+once (5s/output bounded), before hooks; missing/incompatible bindings decline with
+one full private diagnostic and no ingest children. Check diagnostic observer PID,
+CLI, resolution source, timestamp and declared origin (not verified attribution).
+An unbound OpenChamber context is inert; successful activation on 4097 alone does
+not establish OpenChamber/all-session coverage. Changed release bytes decline until
+reload; transient ingest retries are unchanged. Native call IDs are assistant-message scoped because provider
 IDs repeat across turns. Source hashes come from actual terminal read hooks.
 
 ## Clean disposable native readiness reproducer

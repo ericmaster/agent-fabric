@@ -23,7 +23,7 @@ import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Plugin as NativePlugin } from "@opencode/plugin";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync, statSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, statSync, realpathSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const ENVELOPE_VERSION = 1;
@@ -147,7 +147,7 @@ function secretSourcePath(file: string): boolean {
   return /(^|[\\/])(\.env|credentials|secrets|id_rsa|id_ed25519)/i.test(file) || /\.(env|pem|p12|pfx)$/i.test(path.basename(file));
 }
 
-/** resolveCLI locates the packaged Go CLI binary (AGF_BIN or PATH/home). */
+/** Legacy replay resolver only; native setup never falls back. */
 function resolveCLI(env: NodeJS.ProcessEnv): string | undefined {
   const fromEnv = env.AGF_BIN;
   if (typeof fromEnv === "string" && fromEnv.length > 0) {
@@ -174,10 +174,54 @@ function resolveCLI(env: NodeJS.ProcessEnv): string | undefined {
 }
 
 /** RunIngest abstracts the CLI spawn for recorded replay tests. */
-type RunIngest = (envelope: Envelope, cli: string) => Promise<number | null>;
+type RunIngest = (envelope: Envelope, cli: string, metadata?: Record<string, unknown>) => Promise<number | null>;
+
+/** Native release stability fingerprint; no symlink into a mutable checkout. */
+function bindingFingerprint(cli: string): string {
+  if (!path.isAbsolute(cli) || realpathSync(cli) !== path.resolve(cli) || !process.getuid) throw new Error("unsafe binding");
+  const file = statSync(cli), parent = statSync(path.dirname(cli)), uid = process.getuid();
+  if (!file.isFile() || file.uid !== uid || parent.uid !== uid || (file.mode & 0o022) || (parent.mode & 0o022) || !(file.mode & 0o100)) throw new Error("unsafe binding");
+  return `${file.dev}:${file.ino}:${file.mode}:${parent.dev}:${parent.ino}:${parent.mode}:${createHash("sha256").update(readFileSync(cli)).digest("hex")}`;
+}
+
+/** Safe declared metadata only, never inferred producer attribution. */
+function observerMetadata(cli?: string, childPID?: number): Record<string, unknown> {
+  let declaredObserverOrigin: string | undefined;
+  try {
+    const url = new URL(process.env.AGF_OBSERVER_SERVER ?? "");
+    if (["http:", "https:"].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash && url.pathname === "/") declaredObserverOrigin = url.origin;
+  } catch { /* no clean declared origin */ }
+  return { observerPID: process.pid, timestamp: new Date().toISOString(), resolvedCLI: cli && cli.length <= 4096 ? cli : undefined, resolutionSource: "explicit_AGF_BIN", childPID, declaredObserverOrigin };
+}
+
+/** Nonmutating Go ingest parser capability probe, bounded even on hostile output. */
+async function probeBinding(cli: string): Promise<{ compatible: boolean; childPID?: number }> {
+  return new Promise((resolve) => {
+    let child: ReturnType<typeof spawn>;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false, stdout = "", stderr = "";
+    const finish = (compatible: boolean) => {
+      if (settled) return;
+      settled = true; if (timer) clearTimeout(timer);
+      resolve({ compatible, childPID: child?.pid });
+    };
+    try { child = spawn(cli, ["retrospective", "ingest", "--harness", "opencode", "--help"], { stdio: ["ignore", "pipe", "pipe"] }); }
+    catch { finish(false); return; }
+    const collect = (kind: "stdout" | "stderr", chunk: Buffer) => {
+      if (settled) return;
+      if (kind === "stdout") stdout += chunk.toString(); else stderr += chunk.toString();
+      if (stdout.length + stderr.length > 4096) { child.kill("SIGKILL"); finish(false); }
+    };
+    child.stdout?.on("data", (chunk) => collect("stdout", chunk));
+    child.stderr?.on("data", (chunk) => collect("stderr", chunk));
+    child.on("error", () => finish(false));
+    child.on("close", (code) => finish(code === 1 && stdout === "" && stderr.trim() === "agent-fabric: flag: help requested"));
+    timer = setTimeout(() => { child.kill("SIGKILL"); finish(false); }, HEALTH_TIMEOUT_MS);
+  });
+}
 
 /** spawnIngest pipes the envelope through stdin; argv stays static. */
-const spawnIngest: RunIngest = (envelope, cli) =>
+const spawnIngest: RunIngest = (envelope, cli, metadata) =>
   new Promise<number>((resolve) => {
     let settled = false;
     let stderr = "";
@@ -186,7 +230,7 @@ const spawnIngest: RunIngest = (envelope, cli) =>
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
-      if (code !== EXIT_OK && code !== EXIT_DISABLED) reportIngestFailure(code, stderr);
+      if (code !== EXIT_OK && code !== EXIT_DISABLED) reportIngestFailure(code, stderr, undefined, metadata ? { ...metadata, childPID: child?.pid } : undefined);
       resolve(code);
     };
     let child: ReturnType<typeof spawn>;
@@ -221,7 +265,7 @@ const spawnIngest: RunIngest = (envelope, cli) =>
   });
 
 /** Full private diagnostic, not a transcript/environment dump. Never on disabled. */
-function reportIngestFailure(code: number, stderr: string, detail = "Ingest failed; original batch retained for bounded idempotent retry. No stdin or environment retained."): void {
+function reportIngestFailure(code: number, stderr: string, detail = "Ingest failed; original batch retained for bounded idempotent retry. No stdin or environment retained.", metadata?: Record<string, unknown>): void {
   for (const name of ["FASTINO_API_KEY", "TYPESAFE_API_KEY", "OPENCODE_PASSWORD", "OPENCODE_SERVER_PASSWORD"]) {
     const value = process.env[name]; if (value) stderr = stderr.split(value).join("[REDACTED:credential]");
   }
@@ -232,7 +276,7 @@ function reportIngestFailure(code: number, stderr: string, detail = "Ingest fail
   try {
     const directory = path.join(state, "observer-errors"); mkdirSync(directory, { recursive: true, mode: 0o700 });
     const report = path.join(directory, `${randomUUID()}.json`);
-    writeFileSync(report, JSON.stringify({ code, stderr, detail }), { mode: 0o600 });
+    writeFileSync(report, JSON.stringify({ code, stderr, detail, ...metadata }), { mode: 0o600 });
     console.error(`AGF retrospective: observer failed (exit ${code}); full diagnostic: ${report}`);
   } catch { console.error("AGF retrospective: ingest failed; private diagnostic write failed (batch retained)"); }
 }
@@ -581,22 +625,42 @@ export default {
       reportIngestFailure(1, message, "Native setup refused before staging; use a verified runtime and required capabilities. No transcript or environment retained.");
       throw new Error(message);
     }
+    // Binding refusal is per setup instance, before any capture/subscription.
+    if (process.env.AGF_PLUGIN_FAKE_HEALTH) throw new Error("AGF retrospective: replay health stub forbidden in native setup");
+    const cli = process.env.AGF_BIN;
+    let fingerprint: string;
+    const refuse = (reason: string, childPID?: number) => reportIngestFailure(1, reason, "Native binding refused; no further capture/ingest. Set explicit owned compatible AGF_BIN and reload. No probe output, transcript or environment retained.", observerMetadata(fingerprint ? cli : undefined, childPID));
+    try { if (!cli) throw new Error("missing binding"); fingerprint = bindingFingerprint(cli); }
+    catch { refuse("missing_or_unsafe_explicit_binding"); return async () => {}; }
+    const probe = await probeBinding(cli);
+    if (!probe.compatible) { refuse("incompatible_or_failed_ingest_help_probe", probe.childPID); return async () => {}; }
+    try { if (bindingFingerprint(cli) !== fingerprint) throw new Error("changed binding"); }
+    catch { refuse("explicit_binding_changed", probe.childPID); return async () => {}; }
+    let bindingRefused = false;
+    const run: RunIngest = async (envelope) => {
+      if (bindingRefused) return EXIT_DISABLED;
+      try { if (bindingFingerprint(cli) !== fingerprint) throw new Error("changed binding"); }
+      catch { bindingRefused = true; refuse("explicit_binding_changed"); return EXIT_DISABLED; }
+      return spawnIngest(envelope, cli, observerMetadata(cli));
+    };
     const adapter = new Adapter({
       serverUrl: process.env.AGF_OBSERVER_SERVER,
       projectDir: ctx.location.directory,
       sdkVersion: version,
       health: async () => ({ version }),
+      cli,
+      run,
     });
     // Do not permit replay-only environment stubs to grant live authority.
-    if (process.env.AGF_PLUGIN_FAKE_HEALTH) throw new Error("AGF retrospective: replay health stub forbidden in native setup");
     await adapter.ensureActive();
+    let disposed = false;
     const users = new Map<string, string>();
     const stepOwners = new Map<string, string>();
 	// Location plugins may be loaded after session.created on the fresh first
 	// task. Prompt hooks run before generation: obtain current identity from the
 	// in-process native domain, and capture the actual admitted user message.
 	const intake = await ctx.session.hook("prompt", async (event) => {
-	  if (!adapter.isStaging()) return;
+	  if (disposed || bindingRefused || !adapter.isStaging()) return;
 	  if (users.has(event.sessionID) || users.size < MAX_BUFFERED_EVENTS) users.set(event.sessionID, event.messageID);
 	  try {
 	    const session = await ctx.session.get({ sessionID: event.sessionID }, { signal: AbortSignal.timeout(2000) });
@@ -609,6 +673,7 @@ export default {
 	  boundedField(part, "text", event.prompt.text); adapter.observe(event.sessionID, part);
 	});
 	const provenance = await ctx.tool.hook("execute.after", async (event) => {
+	  if (disposed || bindingRefused) return;
 	  if (event.tool !== "read" || event.status !== "completed") return;
 	  const file = observedPath(event.input, ctx.location.directory);
 	  if (!file) return;
@@ -622,6 +687,7 @@ export default {
     const tools = new Map<string, { name?: string; input?: string }>();
     const consume = (async () => {
       for await (const event of ctx.event.subscribe({ signal: abort.signal })) {
+        if (bindingRefused) continue;
         const records = nativeRecords(event, tools, users, stepOwners);
         for (const record of records) {
           const id = record.session_id;
@@ -633,7 +699,7 @@ export default {
         }
       }
     })().catch(() => { if (!abort.signal.aborted) console.error("AGF retrospective: native event subscription failed; collection incomplete"); });
-    return async () => { abort.abort(); await intake.dispose(); await provenance.dispose(); await consume; };
+    return async () => { abort.abort(); await intake.dispose(); await provenance.dispose(); await consume; disposed = true; };
   },
 };
 
