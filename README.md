@@ -205,9 +205,13 @@ compliance or add runtime transport.
 
 ## Task Retrospective (opt-in)
 
-Agent Fabric can observe OpenCode tasks, replay them through a bounded
-success-gated retrospective, and dispatch one visible correcting root that
-repairs verified instruction defects — after one explicit opt-in only:
+Agent Fabric's opt-in retrospective observes OpenCode tasks and supports
+guarded instruction repair in separate visible roots. The approved replacement
+contract detects deterministic friction first and uses bounded GLiDE evidence
+interpretation only for candidates, not modeled task success or every call.
+**Implementation pending:** current code still uses the superseded success-gated
+evaluator; the [canonical plan](.artifacts-manager/plan-task-retrospective.md)
+defines the remaining three phases. These docs do not claim the replacement is live.
 
 Evaluation defaults to Fastino GLiDE using host `FASTINO_API_KEY` (never
 persisted). Jev is unavailable pending a verified current contract. Local
@@ -227,8 +231,8 @@ agf retrospective enable
 The observation loop is `hooks/retrospective/opencode.ts` (a thin
 self-contained OpenCode plugin that forwards versioned event envelopes to the
 packaged CLI over stdin) plus `agf retrospective ingest` (spooled staging) and
-`agf retrospective drain` (a daemon-less detached worker). Success gating,
-evaluation, dispatch, suppression of its own learning sessions, and every
+`agf retrospective drain` (a daemon-less detached worker). Detection/interpretation,
+dispatch, suppression of its own learning sessions, and every
 business rule live in the Go CLI; the OpenCode server is contacted only for
 the visible correcting root and terminal reconciliation. A
 `.retrospective-disabled` marker file in a project tree scopes it off.

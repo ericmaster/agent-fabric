@@ -3,17 +3,26 @@ title: "Runbook: Task Retrospective (OpenCode observation loop)"
 type: runbook
 status: active
 covers: cmd/agent-fabric (retrospective ingest/drain), hooks/retrospective, internal/retrospective (spool/jobs/drains)
-last_checked: 2026-10-07
+last_checked: 2026-10-15
 ---
 
 # Task Retrospective — setup, disable, status, recovery
 
-The loop observes OpenCode sessions, stages bounded event records locally,
-and — after a confident success verdict — dispatches one visible correcting
-root on the configured OpenCode server. Contract:
+The loop observes OpenCode sessions and stages bounded event records locally.
+The approved replacement records deterministic friction even on failed/aborted
+tasks; only candidate evidence goes to compact GLiDE interpretation. No candidate
+means no model request. A signal is not proof of avoidability or permission to
+repair. Justified/uncertain/unavailable results stay visible; complete causal
+evidence and independent review/QA still gate writes. Contract:
 [`docs/specs/task-retrospective.md`](../specs/task-retrospective.md)
-(Phase 3 section). Everything is one explicit global opt-in; nothing runs by
+(observation section). Everything is one explicit global opt-in; nothing runs by
 default.
+
+**Implementation pending:** code at `9a26ba7` still uses the superseded model
+success gate/per-call evaluation. The [canonical plan](../../.artifacts-manager/plan-task-retrospective.md)
+defines the three remaining phases. Setup below describes existing commands,
+not an already shipped signal pipeline. New v2 reports/config migration become
+available only with Phase 2; do not put planned signal keys into current config.
 
 ## Setup
 
@@ -134,8 +143,13 @@ events, remove all reasoning events, and redact the synthetic canary. Its source
 command is the reproducer above. The npm native default-loader replay also
 adds a clearly synthetic repeated-call-ID negative control. This fixture is not
 proof of a live GLiDE calibration or a complete autonomous stale-runbook loop.
-Browser/reconnect, live GLiDE calibration and full native learning-loop QA remain
-separate mandatory unmet verification until actually executed.
+Controlled detection and repair acceptance are separate from a natural live
+learning loop. Freeze positive/negative detector fixtures; controlled repair may
+inject a labelled interpreted issue only inside a test harness. Prove task
+failure, exact-diff independent review, repair, repeat-task success and negative
+regressions/conflict/rollback. Native role/model/completion and browser/reconnect
+checks remain required. A bounded genuine live GLiDE sample is optional, not
+calibration; full natural live e2e stays UNMET if semantic evaluation was bypassed.
 
 ## Scoped disable (without a global off)
 
@@ -165,7 +179,9 @@ rows until the source hash changes.
   selections are not user/assistant messages. Inspect the retained job/report
   and redacted history. Valid snapshot normalization preserves actual tool
   attempts and the completed final; malformed/unknown content leaves a gap
-  with no evaluation/repair or accepted-boundary advance. Do not invent a role,
+  with no automatic repair or processed-boundary advance. The replacement
+  retains safe local signals; missing intent/material gaps skip semantic
+  actionability. Do not invent a role,
   final answer or historical source hash, or force a job eligible. Existing
   same-ID empty control projections can reconcile from trusted valid history;
   unexpected payloads remain incomplete. A supervisor owns any live retry.
@@ -177,7 +193,8 @@ rows until the source hash changes.
   the original batch, serialize later flushes and allow one terminal retry.
   Server stderr names the full private `<state>/observer-errors/<id>.json`
   diagnostic (no transcript/environment dump). Missing-startup terminal work
-  retains a job and incomplete report and cannot evaluate/repair. Do not invent
+  retains a job and incomplete report; replacement local signals do not permit
+  semantic actionability or repair without intent/complete evidence. Do not invent
   source hashes, user turns or manual jobs to make the report eligible.
 
 - **Process died during a native repair.** A durable write-ahead pending finding

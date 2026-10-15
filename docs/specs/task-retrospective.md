@@ -3,21 +3,27 @@ title: "Spec: Task Retrospective"
 type: spec
 status: active
 covers: internal/retrospective, cmd/agent-fabric (retrospective), hooks/retrospective, agents/learning-corrector.md
-last_checked: 2026-10-07
+last_checked: 2026-10-15
 ---
 
 # Task Retrospective
 
 Opt-in, harness-neutral replay of one normalized task trace into an
 evidence-linked report, then one visible correcting root for an eligible report.
-Standard library only. No daemon, database, new UI, or MCP server. Phase 1
-writes only the requested report file. Phase 2 adds dispatch, local state, and
-verified text repair. Phase 3 ships the OpenCode observation plugin, staged
-event spools, and the detached drain worker that runs the complete loop
-(observe → ingest → analyze → dispatch) under the global opt-out. Supervisor
-ledgers are not a retrospective database.
+Standard library only. No new dependency, framework, daemon, database, UI or MCP
+server. The replacement loop is observe → ingest → deterministic signals/report
+→ bounded semantic interpretation (only with candidates) → guarded dispatch.
+Supervisor ledgers are not a retrospective database.
 
-Canonical plan: `.artifacts-manager/plan-task-retrospective.md` (Phase 1).
+**Delivery status:** this is the approved signal-first replacement contract;
+baseline `9a26ba7` still implements the superseded model-heavy evaluator. The
+canonical plan defines three remaining implementation/acceptance phases. This
+documentation change does not claim those phases are implemented or tested.
+The model success gate, every-call classification, omission detection and
+N>=20/>5% waste-rate routing are removed from the target contract, not retained
+as an alternate engine. Requirement omission is deferred outside the minimal loop.
+
+Canonical plan: `.artifacts-manager/plan-task-retrospective.md`.
 Supervisor persistence is separate: `docs/specs/agent-fabric.md` (supervisor
 ledgers are never a retrospective database).
 
@@ -28,7 +34,7 @@ ledgers are never a retrospective database).
   (ordering, dedup, task interval, steps, completeness).
 - `internal/retrospective/redact.go` — local redaction before HTTP and before persisted evidence.
 - `internal/retrospective/jev.go` — GLiDE client (legacy Go name; HTTP, retries, size-rejection splitting).
-- `internal/retrospective/evaluate.go` — stage one gate, stage two pagination, counting, triggers.
+- `internal/retrospective/evaluate.go` — deterministic signal routing and compact interpretation (replacement).
 - `internal/retrospective/report.go` — report assembly and atomic write.
 - `internal/retrospective/store.go` — local state, locks, retention, settings entry.
 - `internal/retrospective/dispatch.go` — session dispatch, canonical resolution, repair.
@@ -59,7 +65,7 @@ Top level:
 | `boundaries` | no | explicit boundaries; `accepted_success` entries carry `after_seq` (interval = records with `seq > after_seq`); `task_start` entries mark earlier task starts |
 | `messages` | no | `[ {id, seq, role: user\|assistant, kind: message\|action\|final\|reasoning\|unsupported, text, hidden?, env?} ]` |
 | `calls` | no | `[ {id, seq, tool, status: success\|error\|failed\|aborted\|cancelled\|running ("" = running), exit_code?, input?, input_omitted?, result?, env?, prereq_fingerprint?, source_refs?} ]` |
-| `requirements` | no | explicit requirements `[ {id, text} ]`; absence means no omission questions |
+| `requirements` | no | explicit requirements `[ {id, text} ]`; intent context only, no omission analysis |
 | `child_refs` | no | linked descendant session ids that must resolve |
 | `descendants` | no | full child traces (same schema, `session_id != root_session_id`); depth ≤ 16 |
 | `gaps` | no | collection gaps `[ {kind, detail} ]` |
@@ -75,7 +81,7 @@ Validation (fail closed before any network or report write, exit 1):
 - Ordering is stable by `(seq, id)`; all records share one root-level sequence space.
 - Statuses outside the enumerated set are validation errors.
 - `prereq_fingerprint` is an arbitrary opaque digest recorded by the collector;
-  retrospective compares digests for the redundant-attempt exception and never
+  retrospective compares digests for exact-repetition evidence and never
   invents one when absent.
 
 Task interval resolution:
@@ -88,8 +94,8 @@ Task interval resolution:
 4. More than one `task_start` boundary anchored inside the resolved interval is
    an ambiguous multi-task interval.
 
-Completeness — each material condition makes the interval incomplete (never a
-successful complete trace): ambiguous multi-task interval; unresolved running
+Completeness — each material condition makes the interval incomplete (never
+repair-eligible): ambiguous multi-task interval; unresolved running
 tool; missing linked child trace (`child_refs` without a matching descendant);
 compacted-away evidence (gap `kind: "compacted"`); missing final assistant
 response in the interval.
@@ -98,8 +104,8 @@ Step definition: a step is a terminal tool attempt with paired input/result
 (`input` present, `input_omitted` false, and `len(result) > 0`) or a non-final
 visible assistant action message. User messages, the final assistant response,
 hidden reasoning, unsupported or binary messages, and unpaired or
-`input_omitted` terminal calls are not steps. `last_ten_steps` = the last ten
-of the stable ordered deduped steps.
+`input_omitted` terminal calls are not steps. The legacy tail-step definition
+remains readable for old reports, not a model success payload or routing gate.
 
 ## Redaction (before HTTP and before any persisted derived evidence)
 
@@ -126,241 +132,185 @@ Local-only redactor applies, in order:
 
 Redaction counters (per pattern kind) are recorded; never the original values.
 
-## GLiDE evaluation
+## Deterministic detection (provider-independent)
 
-The default evaluator is Fastino GLiDE. Authoritative contracts (checked
-2026-10-13): [System One](https://docs.fastino.ai/inference/systemone) and
-[Choice](https://docs.fastino.ai/concepts/glide-choice), plus the
-[OpenAPI schema](https://docs.fastino.ai/openapi.json) (`ChoiceQuestion`
-criteria minProperties=2, maxProperties=255; `SystemOneRequest` questions minProperties=1).
-`evaluator: "glide"` pins `fastino/GLiDE`, endpoint `https://api.fastino.ai`,
-and host environment `FASTINO_API_KEY` sent only in `X-API-Key`.
-Jev is reserved as an explicit opt-in profile, but selecting it currently
-fails configuration validation: its current pinned-model contract has not
-been independently verified. No invented Jev protocol or fallback is sent.
-Internal legacy `JevClient`/`ChoiceRequest` names are compatibility names,
-not provider claims.
+Normalize the resolved interval and descendants by stable `(seq,id)` order;
+deduplicate call IDs before counting. Terminal calls exclude running/empty
+status; compound commands remain one call. Rules use observed fields only.
+Each signal stores `rule_id`, `rule_version: 1`, stable `signal_id` (SHA-256 of
+rule/version and the first qualifying window's ordered evidence call IDs,
+frozen at first emission), exact call IDs, observed values,
+window positions, effective thresholds and coverage/abstention reasons. Detection
+has no model probability or claim of avoidability. Equal observations must
+produce identical signals with or without a provider. Apply exact comparisons
+locally before redaction; persist/transmit only redacted evidence. Do not persist
+unsalted input/content digests that may expose secrets; helper equality involving
+secret-bearing content abstains. Detector identity uses call IDs, not secret bytes.
 
-GLiDE wire: `POST /v1/systemone`, JSON `{model,state,questions}`;
-`questions` is keyed by supplied IDs, values are `{type:"choice",instructions,
-criteria:{choice_id:description}}`. Instructions explicitly identify the
-subject ID and scope. Question evidence is folded into `state.evidence[id]`,
-overlap into `state.overlap`; encode failures fail closed, never drop evidence.
-Stage one state contains ONLY `evidence.q-outcome` (the prescribed three
-fields), no root/session/path/revision metadata. Stage two retains its
-redacted page records and context. Fragment-only pages with no classification
-question receive one transport-only `q-context-page` Choice with criteria
-`context-only` and `unreadable-context`; either acknowledgement is ignored by the normalized
-core, never counted or attributed. This satisfies GLiDE's non-empty question
-map without inventing a classification on incomplete fragments. Every Choice
-must have 2–255 distinct non-empty options; invalid requests fail locally without network.
-Response `{model:"glide",answers}` uses
-exact matching question IDs and Choice objects `{type,choice,confidence,
-probabilities}`. Documented `usage` and `token_usage` metadata are accepted
-without attribution and are not persisted; other unknown fields abstain.
-Model/type/IDs/choice and a full probability distribution are mandatory:
-every supplied choice exactly once, no extra keys, all values present,
-non-null, finite and in [0,1], sum within 0.00001 of 1, winning choice maximal.
-Confidence must be present, finite and in [0,1]. Duplicate JSON keys and
-response nesting beyond 128 levels are rejected. Malformed responses retry
-within the same budget; exhaustion yields unknown/incomplete and no repair.
+### Fixed rules and default windows
 
-Each rendered state+question is limited to 40,000 tokens, each Choice to
-255 options. We conservatively cap actual serialized wire at 24,000 UTF-8
-bytes and folded state+longest serialized keyed wire question at 16,000 bytes
-(not a token-count equivalence). Limits may only be lowered. The same
-wire encoder measures packing, stage one, and the final client pre-send
-gate; criteria and folded evidence/overlap count. No trimming is permitted.
-Retries include 425/429/503 and transport/5xx errors with bounded backoff;
-Retry-After is honored on all these statuses, capped at configured 30s.
-Encoding/validation failures return their actual error (not size rejection),
-fail closed without send, and never request halving/repacking. Only measured
-overruns or provider size rejection are size errors. GLiDE 3xx is a deliberate
-permanent failure: no redirect follow, retry or credential replay.
-The existing 30s per-request timeout remains configurable; Fastino recommends
-at least 300s for live read timeouts. No redirects are followed (API keys
-cannot propagate). Responses over 4 MiB are detected, not truncated.
-The .90/.80/N>=20/rate>5% gates below are unchanged engineering defaults,
-not GLiDE calibration claims; live calibration and visible-root QA are unmet.
+Windows count deduplicated terminal calls, not time or tokens. All rules operate
+only inside one resolved task interval. Thresholds are positive integer config
+values, recorded on every report; no generic rule DSL or heuristic NLP engine.
 
-### Provider-independent core
+| rule_id | Exact default condition | Meaning, not conclusion |
+|---|---|---|
+| `terminal-failure` | Each terminal call with status `error`, `failed` or `aborted`, OR observed `exit_code != 0`; union counted once per call | Observed tool/command failure; cancellation counted separately, never inferred to be a nonzero exit |
+| `exact-repeat` | At least 3 calls in a rolling window of 20 terminal calls with byte-identical nonempty tool and input, `input_omitted=false`, and the same nonempty observed `prereq_fingerprint` | Repetition under collector-attested equal prerequisites, NOT redundancy/avoidability |
+| `helper-recreate` | At least 3 successful explicit `write` calls in 20 terminal calls, same resolved ephemeral path AND exact observed content SHA-256 | Exact repeated helper creation only, not semantic similarity |
+| `search-burst` | At least 5 explicit `grep`/`glob` calls in 10 terminal calls | Search sequence needing context; legitimate research may justify it |
+| `broad-search` | At least 3 explicit `grep`/`glob` calls in 10 terminal calls whose explicit path equals the declared execution root | Observed broad scope, not excessive returned files or automatically a problem |
+| `late-context` | In first 10 terminal calls, at least 5 recognized search calls precede the first successful observed instruction read (or none observed by call 10); emit only once at call 10 | Early acquisition sequence indicator, NOT proof that context was absent or needed |
 
-- Model identifier is pinned to `fastino/GLiDE` in the config contract; the config
-  cannot override it. `rubric_version` is the shipped deterministic rubric id.
-- `FASTINO_API_KEY` is read from the host environment at request time and only
-  held in process memory (`X-API-Key`); it is never logged,
-  written to reports, fixtures, or state. Missing key → evaluator unavailable.
-- Endpoint default `https://api.fastino.ai`; overridable only through the
-  config contract (tests point it at a local mock; tests never hit the real API).
-- Normalized internal contract remains `ChoiceRequest`/`ChoiceResponse`;
-  HTTP uses the GLiDE wire translation specified above, not that internal JSON.
-  Stage-two `state.records` carries the page's redacted recordgrams (the
-  record content). `state.overlap` repeats the previous page's tail with
-  `overlapped: true` and is the only other place that content appears.
-- Both model limits are honored with conservative byte budgets (bytes are not
-  claimed to be tokens): serialized request ≤ **24,000 UTF-8 bytes** and
-  `state + longest question` ≤ **16,000 bytes**. Measurements include question
-  envelopes and recordgrams and happen before any send; a too-large request is
-  split, never trimmed.
-- Transport failure (HTTP 5xx/network/timeout), HTTP 429 (with Retry-After or
-  capped backoff), HTTP 413 (size rejection), and unparseable responses are
-  retryable/size-handled per the client contract below; stubborn 4xx failures
-  (401/403/404) are permanent failures that stop the run with an incomplete report.
+For repetition/helper rules emit one signal per matching key per task, at its
+first qualifying window; later matches append call IDs and count to that signal.
+For search rules emit one per rule per task at the first qualifying window,
+retaining the window's exact call IDs. Failure signals are one per call. Report
+total matching windows/counts separately; overlapping windows never inflate
+unique-call totals. At fewer than 10 calls `late-context` abstains, not a negative.
 
-### Stage one — bounded success gate
+Schema support is deliberately narrow and versioned with the rules:
+- Generic terminal status/nonzero exit uses trace v1 fields, even for unknown
+  tools. Exact repetition uses trace v1 opaque tool/input/fingerprint fields;
+  absent or changed fingerprints cannot assert unchanged prerequisites.
+- Search recognizes tool names exactly `grep` and `glob`, with input a JSON
+  object containing string `pattern` and optional string `path`; optional grep
+  `include` is context only. Count recognized calls even without path; omitted
+  path cannot count as broad. Reject malformed/type-incompatible shapes for
+  these metrics and record abstention. No shell grep/find/ripgrep parsing,
+  returned-result breadth, inferred current directory or unknown-tool aliases.
+- Context acquisition recognizes successful `read` calls with JSON string
+  `filePath` or `path` and a call-linked at-use `source_refs` path/hash for an
+  instruction source as defined below. Conflicting path keys abstain. A source
+  known elsewhere but not linked to this call cannot establish its sequence.
+- Helper creation recognizes successful tool `write` with JSON string
+  `filePath` and `content`, absolute cleaned path under `/tmp/` or `/var/tmp/`
+  (including `/tmp/opencode/`), suffix `.py`, `.sh`, `.js` or `.ts`. Hash the
+  exact observed content locally and retain path/hash with the signal only when
+  safe under redaction. Path alone or hash alone is insufficient;
+  absent content, relative paths, shell heredocs, patches and arbitrary helper
+  aliases abstain. Same content at different paths does not match. This is an
+  intentionally limited proxy; no claims about usefulness, similarity or all
+  ephemeral helpers. No capture extension is necessary to synthesize evidence.
 
-One request. Evidence contains exactly the three prescribed fields, redacted:
+Expected red tests, no-match searches, polling and legitimate research remain
+visible observations/negative interpretation controls, not blanket detector
+exclusions. Missing schemas/provenance yield explicit per-rule abstentions;
+no fabricated duration, token, cost or result-size estimates.
 
-1. `user_messages` — all interval user messages (id + text).
-2. `final_assistant_response` — the last visible assistant message inside the
-   resolved interval (id + text). Out-of-interval finals, and hidden, binary,
-   reasoning, or unsupported records, are not eligible and are never
-   transmitted as this task's final.
-3. `last_ten_steps` — the last ten steps (id, kind, session/tool/status/
-   exit_code/input/result fragments for tool attempts; id/text for assistant actions).
+## Bounded GLiDE interpretation and routing
 
-No other records or context. If any of the three fields, or the single outcome
-question value, exceeds the 16,000-byte limit or the request exceeds 24,000
-bytes, the outcome is `unknown` locally (`oversized_bounded_evidence`) — no
-truncation, no extra context, no stage two, and the report records complete
-delivery (the choice not to send was local, not a delivery failure).
+Every signal is visible independently of interpretation. Zero signals means
+`interpretation.status=skipped_no_candidates`, zero provider requests. Otherwise
+interpret candidate groups, not each call and not task success. GLiDE chooses
+`actionable|justified|uncertain`; auxiliary choices identify
+`missing-context|instruction|tool|other|uncertain` causes. Context/tool bottlenecks
+are semantic judgments, never deterministic labels. Choices refer only to
+supplied signal/evidence IDs. For each signal, a support Choice selects one exact
+supplied evidence call ID or `insufficient-evidence`; actionability/cause
+questions bind to the same ordered evidence set. Require a valid observed support
+ID for actionable routing, not a fabricated prose reference. The support Choice
+is a locator, not independent causal proof. Corrector investigation supplies
+any further causal explanation with citations; GLiDE's Choice API is not an
+invented free-prose citation interface. Instruction defects, ignored instructions,
+environment recovery and implementation bugs remain distinct downstream.
 
-Outcome choices are exactly `succeeded|incomplete|failed|cancelled|unknown`.
-Responsive values arrive as a single choice over the supplied ids with
-`probability` and `confidence`. An unknown choice id, missing/out-of-range
-probability or confidence, extra/unknown response fields, or an unparseable
-response abstains: the outcome records the abstain reason and no stage two is
-requested. Stage two is requested only when every gate holds:
+Each candidate packet contains its redacted evidence, all task user intent
+messages/explicit requirements, observed terminal outcome, final response if
+present, source provenance references, plus the 2 preceding and 2 following
+terminal calls around each signal evidence call (deduplicated, ordered). Include
+visible assistant action messages between those calls. Report exact included
+and omitted record IDs/counts and gap reasons. Records outside this documented
+neighborhood are explicitly `out_of_context_scope`, not a collection gap or
+claim of full model coverage. Omission of any required neighborhood, intent,
+signal or source evidence is incomplete, not an innocuous scope exclusion.
+No whole-task per-call questions,
+omission questions, model success request or paginated full-trace classification.
+Missing intent, material collection gaps, unsafe redaction or an indivisible
+oversized packet retains local signals but skips semantic actionability;
+safe partial evidence may be displayed locally as advisory, never a repair basis.
 
-- outcome choice `succeeded` with `probability >= 0.90` and `confidence >= 0.80`;
-- the interval resolved with complete bounded input (no material completeness reason);
-- no terminal abort/error (`terminal_status` is `ok`/absent);
-- the evaluator and budget are available.
+Persist at most 100 signals in first-evidence `(seq,id,rule_id)` order, each with
+at most 20 evidence call IDs; retain full scalar totals and omitted counts. Local
+report context uses the same bounded selection. Any signal/evidence omission
+sets `evidence_complete=false` and forbids automatic correction for that report.
+Interpret at most 10 retained signals per task (same order); each gets one
+self-contained packet, never fragments that imply unseen context. Skipped
+signals stay visible with reasons. Aggregate byte limits can reduce delivery,
+not silently trim. No unrelated full trace is sent to fill a request.
 
-A locally incomplete interval (missing child trace, running tool, compacted
-evidence, ambiguous boundary, missing final response) or a terminal
-abort/error is reported `incomplete` with local reasons and never sends any
-request for stage one or stage two. A locally-abstained trial (`unknown`
-outcome) also sends no stage-two request. Stage-two runs only for confident
-`succeeded` outcomes.
+Conservative actionable routing requires selected `actionable` probability>=.90
+and confidence>=.80, valid cited IDs, complete delivered packet and safe
+redaction. These are uncalibrated semantic-actionability defaults, not detector
+confidence, proof of cause, task success or write authority. Justified, uncertain,
+low-confidence and unavailable interpretations remain in the report. Remove
+N>=20/>5% waste-rate routing entirely; one observed candidate can be interpreted.
+No avoidable-call denominator or modeled waste statistic remains.
 
-## Stage two — paginated classification (only after the success gate)
+Task terminal outcome is a separate observable field: copy `terminal_status`
+and whether supplied; absent/default `ok` means no recorded error, NOT proven
+success. Host error/abort never becomes success through interpretation/repair.
+Failed/aborted tasks with complete relevant evidence may produce actionable
+advisories; automatic writes additionally require the explicit safeguards below.
+Missing final/child/boundary evidence still blocks writes, not local diagnostics.
 
-Questions (each over the exact supplied record ids/requirement ids):
+### Provider and transport safeguards
 
-- Per terminal tool call: choose one of
-  `productive|necessary-exploration|expected-failure|avoidable-error|wrong-direction|redundant|uncertain`.
-- Per explicit requirement: choose one of
-  `omitted-high-impact|omitted|present|uncertain`.
+Fastino GLiDE is pinned to `fastino/GLiDE`, `POST /v1/systemone` at default
+`https://api.fastino.ai`; host `FASTINO_API_KEY` is sent only as `X-API-Key`,
+never logged or persisted. Missing key means unavailable, not missing signals.
+Jev remains rejected pending verified contract; legacy Go names do not imply
+another engine. Authoritative API: [System One](https://docs.fastino.ai/inference/systemone),
+[Choice](https://docs.fastino.ai/concepts/glide-choice),
+[OpenAPI](https://docs.fastino.ai/openapi.json) (checked 2026-10-13).
 
-Records are the interval's observable records: user messages, visible assistant
-action/final messages, terminal tool calls, explicit requirements — including
-linked descendants, deduplicated by id once. Hidden reasoning, unsupported, and
-binary records are excluded with coverage reasons (never transmitted). Records
-larger than a page become stable id-linked fragments
-(`part`/`total` on the piece, same record id). Each piece's `piece_source`
-is the source segment (`input` or `result:<fragment id>`) that covers the
-piece's start offset, not the cut index. `state +
-longest question` limits apply to fragment questions. Requests carry `state`
-(task/boundary metadata, page number, fragment references), `state.overlap`
-(the previous page's tail records, flagged `overlapped: true`), and keyed
-`questions` on the wire.
+Wire `{model,state,questions}` uses ID-keyed Choice questions with instructions
+and 2–255 named criteria; evidence is folded into `state.evidence[id]`. Require
+exact question/choice IDs, `model:"glide"`, Choice type, finite confidence and
+complete probability distribution in [0,1], sum within .00001 of 1, chosen
+probability maximal. Reject duplicate JSON keys, depth>128, unknown response
+fields except documented ignored usage/token_usage, forged IDs and malformed
+choices. Invalid/missing evidence abstains, never invents citations/verdicts.
 
-Pagination:
+Preserve actual wire limits: 24,000 UTF-8 bytes/request and 16,000 bytes folded
+state+longest keyed question, measured by the actual wire encoder before send;
+these are conservative byte bounds, NOT token estimates (provider state+question
+limit 40,000 tokens). Limits may only be lowered. Oversize/413 becomes visible
+uninterpreted evidence, not omission disguised as complete interpretation.
+Default request budget is 30 HTTP attempts per task (10 packets x 3 attempts),
+timeout 30s, max attempts 3, backoff 300ms doubling to 4s, Retry-After capped at
+30s; all count against budget. Retry transport/5xx/425/429/503 and malformed
+responses within budget; 401/403/404 permanent; all redirects refused, including
+credential replay. Encoding failures stop locally. Responses>4MiB are rejected,
+not truncated. Provider faults/budget exhaustion persist signals with exact
+unavailable/uncertain reasons and no automatic repair. No forced live decision.
 
-- Packed deterministically by `(seq, id)` with the two byte limits. Fit checks
-  measure the serialized request the way dispatch will send it, including
-  question envelopes and recordgrams.
-- On a local over-budget measurement or HTTP 413 the page is re-packed with a
-  halved page budget until it fits or a single record cannot (then that record
-  is unknown `oversized_indivisible` and the rest of the run continues).
-  Splitting never omits or trims records. A successful page restores the
-  configured budgets for the next page.
-- Every record is covered exactly once in coverage accounting; overlap
-  repeats are marked and counted once (dedup counter). Overlap re-presents
-  the previous page's tail item, id-linked pieces included (marked
-  part/total + overlapped).
-- Overlap is omitted for a page when it would prevent a record that fits
-  alone from being delivered without trimming.
-- A record's classification question is sent once, on the page where its last
-  fragment appears (after its fragments are reconciled), so cross-page
-  recoveries are classified only when the related fragments are visible together.
-  Uncertain classifications are never counted.
-- HTTP budgets per run: 100 requests (configurable), 30s timeout,
-  3 attempts per request with Retry-After or backoff
-  (`backoff base 300ms` doubling up to `4s`); `Retry-After` caps at 30s and is
-  honored; the INJECTED retry delay is honored in tests.
-- Budget exhaustion, repeated 429/unavailable, or a malformed response stops
-  the run and saves a report with `status: "incomplete"`, the exact reasons,
-  and no correction. Requests are counted across both stages and retries.
-- If every stage-two dispatch was size-rejected and no page was delivered,
-  the report is `status: "incomplete"` with reason `persistent size rejection`.
-  Per-record unknowns stay recorded; the incomplete reason distinguishes a
-  persistent server size fault from a record that was locally oversized.
+## Report schema v2 and compatibility
 
-## Counting, rate, and trigger
+Write reports atomically, mode 0600, for every structurally valid trace even if
+failed/aborted/incomplete or provider unavailable. Retain:
+- `schema_version: 2`, UTC generated time, detector/rubric versions and effective
+  config; trace identities, interval/source revision/input digest, source hashes,
+  descendant coverage, dedup counters and redacted gaps.
+- `terminal_outcome` with observed value/presence and independent completeness.
+- `signals[]` as above, counts per rule/unique calls/raw failures/cancellations,
+  rule abstentions and exact omitted signal/evidence/context counts.
+- `interpretation` status, per-signal typed decisions, evidence IDs, probabilities,
+  confidence, model/rubric/HTTP metadata and reasons for every skipped candidate.
+- `coverage` separating collected/detected/retained/sent evidence, dispositions,
+  source/record digests and `evidence_complete`; redaction counters and safety.
+- `routing` candidate/actionable flags, thresholds, explicit advisory vs repair
+  eligibility/reasons; no `stage_one`, `stage_two` or waste-rate gate.
+- `dispatch` eligibility never alone authorizes writes; downstream verified
+  findings and independent native review/QA remain mandatory.
 
-- `counts.terminal_calls` N = unique terminal calls (compound commands count
-  once per call id; duplicate events and overlap repeats do not inflate).
-- Per call at most one confident classification; records with no response or
-  an invalid response are `uncertain` (with reason) and excluded from the
-  avoidable numerator but kept in the denominator, so the rate stays a bound
-  (the report records `bounded: true`).
-- Confident avoided waste (`avoidable-error`, `wrong-direction`, `redundant`)
-  needs `probability >= 0.90` and `confidence >= 0.80`; dedup multiple waste
-  labels per call id (union counted once).
-- `counts.raw_errors` counts terminal calls whose status is `error`, `failed`,
-  or `aborted`, and terminal calls with a recorded nonzero exit code, split
-  into `recovered_or_expected` / `avoidable` / `unclassified` so recovered and
-  expected red-test/no-match outcomes stay distinct from waste. The superset
-  (aborted status and nonzero exit, not only `error|failed`) is intentional.
-- Required-step omissions from requirement verdicts `omitted` /
-  `omitted-high-impact` (confident) are reported separately, never folded into
-  the call denominator.
-- Rate = confidently avoidable unique calls / all terminal calls; zero calls
-  means no rate trigger. Trigger is eligible when `N >= 20` and `rate > 0.05`
-  (exactly 5% does not trigger), or when three verified redundant attempts share
-  unchanged prerequisite fingerprints (all supplied digests equal), or when one
-  requirement is confidently `omitted-high-impact`. Exceptions hold with
-  fewer than 20 calls.
-- `thresholds` in the report expose the exact used values.
-
-## Report schema v1 (`--output report.json`)
-
-- `schema_version: 1`; `generated_at` (UTC RFC 3339).
-- `status` `complete|incomplete` + `incomplete_reasons[]`;
-  `model: {model: "fastino/GLiDE", rubric_version: "task-retrospective-rubric-1"}`.
-- `trace` — source identities, boundary resolution, gap redaction (gap `detail`
-  and other collector free text pass through the redactor before persistence),
-  input `sha256`, `source_files`
-  (path + sha256; secret-file bodies never persisted), `child_refs`,
-  coverage of descendant sessions included in the interval, digest of records included,
-  and namespace dedup counters.
-- `stage_one` — payload field/step counts, whether the payload was sent,
-  the outcome choice (+ probability/confidence when modeled), and the exact
-  gate verdicts behind stage-two dispatch.
-- `evaluation` — per-call classifications `{subject, page, choice, labels?,
-  probability, confidence, counted, reason?}`, requirement verdicts,
-  the counter block (avoided/uncertain/raw errors/requirements...), the
-  computed rate (bounds + trigger), and the trigger decision with thresholds.
-- `coverage` — per-request page coverage (`pages`, `record_dispositions`),
-  and per-record dispositions (`covered`, `skipped: <reason>`), boundary/child
-  digests, record dedup counters.
-- `redaction` — pattern list, counts (substitutions, partial/env/secret counts),
-  and the `correction_safe` verdict (false when materially incomplete).
-- `usage` — HTTP requests used, retries, splits (content fragmentations plus
-  size-rejection re-packs), `budget` size, exhausted flag.
-  `evaluation.stage_two_ran` is true only when at least one stage-two page
-  was delivered.
-- `dispatch` — `eligible` (an eligible trigger + complete coverage + safe
-  redaction), reasons when not eligible. Stage two eligibility additionally
-  requires every page delivered. Materially incomplete redaction (an excluded
-  binary record, or a secret-file ref with an empty/unreadable body) sets
-  `eligible` false with an explicit reason.
-
-Report files are written atomically (temp file + rename in the output directory)
-with mode 0600. A report is ALWAYS written for a structurally valid trace even
-when the outcome is unknown or evaluation is incomplete.
+Trace/envelope schema v1 remains supported; no invented input fields. Legacy v1
+reports remain inspectable, labelled legacy, but cannot dispatch new repairs;
+re-analyze original evidence into v2, never translate old success/trigger bits
+into write authority. Existing journals/receipts keep their original identity;
+resume validates recorded hashes/provenance and does not replay old evaluation
+or duplicate native roots. Remove obsolete success/rate/tail config keys with
+explicit migration errors rather than silently retaining two evaluators.
 
 ## CLI
 
@@ -380,26 +330,37 @@ agf retrospective analyze --input trace.json --output report.json [--config task
 
 ## Config contract (one place)
 
-`internal/retrospective/config.go` owns all defaults and thresholds:
-`model`, `rubric_version`, `endpoint`, `http_timeout` (`"30s"`),
-`maximum_attempts` (3), `request_budget` (100), `page size budget_bytes`
-(24,000 request / 16,000 state+longest), `minimum fragment bytes` (1,024),
-`backoff base/max` (`"300ms"` / `"4s"`), `retry-after max` (30s), `minimum success
-probability` (0.90), `minimum confidence` (0.80), `minimum calls for rate`
-(20), `rate threshold` (0.05 exclusive), `redundant attempts required` (3),
-`steps tail size` (10), and additive `redact_patterns`.
+`internal/retrospective/config.go` remains the single implementation owner of
+defaults. The deterministic-rule section above owns their normative values;
+do not duplicate them in adapters. Replacement keys: `repeat_min_calls`,
+`repeat_window_calls`, `helper_min_calls`, `helper_window_calls`,
+`search_min_calls`, `search_window_calls`, `broad_search_min_calls`,
+`early_context_window_calls`, `early_context_search_min_calls`, `signal_cap`,
+`signal_evidence_cap`, `interpretation_signal_cap`, `context_neighbor_calls`.
+Broad-search shares `search_window_calls`; early-context window is also its
+minimum terminal-call sample size. Counts must be positive integers, minimum
+counts <= their windows; caps/context neighbors may only be lowered from the
+documented defaults. Rule IDs/versions and supported tool schemas are shipped
+constants, not user-defined executable rules.
+
+Keep existing endpoint/evaluator, request byte limits, timeout, maximum attempts,
+backoff/Retry-After and additive `redact_patterns` keys. Set `request_budget` to
+the bounded interpretation budget above. Replace success/rate controls with
+`minimum_actionability_probability` and `minimum_actionability_confidence`.
+Thresholds may be raised, not lowered, for autonomous routing. Pin the shipped
+rubric `task-retrospective-signals-1`; the provider model remains fixed.
 Duration fields (`http_timeout`, `backoff_base`, `backoff_max`) are
 unit-suffixed strings. A bare number is rejected; it is not interpreted as
 nanoseconds.
-No other file duplicates these defaults. Phase 2 reads this struct and adds the
-dispatch keys in the Phase 2 config section. `evaluator` defaults to `glide`;
+Dispatch reads this same struct and the dispatch keys below.
+`evaluator` defaults to `glide`;
 `jev` is rejected pending verified contract. The pinned evaluator model is not a
 config key; a `model` key remains unknown.
 
 ## Testing contract
 
 - Unit tests in `internal/retrospective` and `cmd/agent-fabric` cover the
-  classification/rates/stage-two paging/redaction contracts with recorded mock
+  deterministic signals/compact interpretation/redaction contracts with recorded mock
   HTTP (`httptest` servers) and synthetic traces only.
 - Fixtures are synthetic and disposable; they may only contain synthetic
   secrets (`CANARY-*` strings). Tests prove canaries never reach HTTP bodies,
@@ -410,6 +371,21 @@ config key; a `model` key remains unknown.
 - Phase 2 session tests use `httptest` only. They never dial a real OpenCode server.
 
 ## Phase 2 — dispatch and verified text repair
+
+The headings below identify existing dispatch/observation subsystems, not the
+remaining implementation phases; the canonical plan owns phase ordering.
+Detection metrics are not repair safety decisions. A report with incomplete
+collection, omitted evidence/context, unsafe redaction, uncertain/unavailable
+interpretation or unsupported causal claims cannot authorize writes. Keep
+signals/advisories inspectable regardless of dispatch eligibility.
+
+An unsuccessful source task does not alone prohibit diagnosis or repair, nor
+waive a single write guard: require complete causal evidence of the exact
+instruction version and demonstrated failed behavior plus supported recovery,
+explicit `repair_safe` with reasons, and a reproducible bounded validation task
+that can show the proposed correction works. If recovery/validation cannot be
+established, advisory only. Source outcome stays error/aborted even after a
+successful separate repair task. No deterministic hit alone can set `repair_safe`.
 
 Turn one eligible report into one visible correcting root that either applies a
 verified text repair or records a review-only suggestion. Disabled is the
@@ -590,8 +566,9 @@ agf retrospective enable
 agf retrospective disable
 ```
 
-`dispatch` validates report schema, `evaluation.trigger.eligible`,
-`dispatch.eligible`, complete coverage (`undelivered_records == 0`),
+`dispatch` validates v2 report schema, conservative semantic actionable routing,
+`dispatch.eligible`, explicit `repair_safe` before any write, complete coverage
+(including zero omitted/undelivered required evidence),
 `redaction.materially_incomplete == false`, task id, execution root, and source
 hashes before any session call. Exit 0 when a receipt is written, including
 queued and pending. Exit 1 when disabled, the report is ineligible or malformed,
@@ -673,7 +650,8 @@ locator under `<state>/observer-errors`, without stdin/environment dumps;
 disabled verdicts stop staging and create no failure report. No daemon or blind
 provider replay is added. A terminal stream with real parts but missing its
 opening user turn retains a drain job and explicit incomplete report with a
-locator, with no evaluator/correction request. A bare idle remains degenerate.
+  locator and any safely derivable local signals, without automatic correction.
+  Missing intent prevents semantic interpretation. A bare idle remains degenerate.
 
 Startup completeness is derived from current evidence, not a persisted detail
 string. `startup_gaps` stores bounded historical `{message_id,seq}` markers for
@@ -773,7 +751,7 @@ state directory, written temp-file + rename behind the shared `spool.lock`:
 |---|---|
 | `session_id` | owner session |
 | `last_seq` | monotonic per-record sequence counter (first observation order) |
-| `accepted_after_seq` | accepted-success boundary: when > 0, the next task interval starts strictly after it |
+| `accepted_after_seq` | legacy name for processed-interval cursor; does not certify task success; next interval starts strictly after it |
 | `overflows` | count of envelopes dropped by the spool bound |
 | `sessions` | observed `{parent_id, title, directory}` per session id |
 | `messages` | role per message id |
@@ -827,7 +805,7 @@ nothing is inferred. No requirements are synthesized; explicit requirement
 records are always host-supplied.
 
 Boundaries and terminal status: the interval resolves per trace schema v1 —
-accepted-success boundary when `accepted_after_seq > 0`, otherwise
+legacy positional `accepted_success` boundary when `accepted_after_seq > 0`, otherwise
 session-start. Task identity when no host task id exists:
 `retro:<session-id>:<first user message seq>:<final message id>` — stable
 across restarts so an identical completed turn never produces a second
@@ -864,9 +842,12 @@ worker. The worker:
   assembles the trace; validates; runs `analyze` (evaluator budgets per config);
   writes the report into `<state>/reports/`; runs `dispatch` under the same
   global-enable re-check and request budgets; records the receipt status in
-  the job and updates the spool's accepted-success boundary after a
-  conclusive disposition (repaired/submitted/conflict/exhausted/suppressed
-  or a complete report that does not trigger);
+  the job and advances the processed-interval cursor only after a durable
+  conclusive report/receipt for a fully resolved, complete interval. Error/abort
+  outcomes can be processed without certifying success. Incomplete/ambiguous
+  intervals never advance. A provider-unavailable report is a retained conclusive
+  advisory, not success or permission to retry forever; explicit later re-analysis
+  is a separate bounded action preserving task/incident identity;
 - disabled mid-flight (global opt-out) → dispatch is skipped and the job
   stops at `pending` (paused work stays inspectable; the next trigger or
   restart resume continues it);
@@ -917,10 +898,13 @@ The correcting role investigates report `task_evidence` and source provenance
 and returns a typed proposal (at most one Markdown text change) or a completed
 advisory. No coordinator finding packet is necessary to execute this workflow.
 All native sessions deny direct edits/bash/network; Go alone owns application.
-Report `task_evidence` contains the full redacted non-excluded interval and
-requirements; it is not hidden reasoning, an extra provider request, or an
-outcome/threshold change. Existing reports without it can yield advisories,
-but cannot authorize model-proposed replacements.
+Report `task_evidence` contains bounded redacted signal evidence, task intent,
+relevant ordered context and source provenance, with exact coverage/omission
+counts. It is not hidden reasoning or a second full-trace provider request.
+Missing/omitted causal context can yield advisories but cannot authorize
+model-proposed replacements. Independent corrector/reviewer inspection may
+verify permitted source evidence, never infer missing historical bytes or
+silently promote a truncated report to repair-safe.
 
 Independent review must complete in the actual reviewer role/model and return
 an approved verdict bound to the exact candidate SHA. A model proposal alone,
@@ -1014,9 +998,11 @@ Unknown row/content tags, incompatible fields, missing identity/time/content,
 unmodeled attachments/results, truncated tool output or malformed state fail
 backfill closed with an inspectable gap/report. Native visible fields beyond
 the 64KiB record bound fail with a gap before common spool clipping. Core roles remain strictly
-user/assistant. Local completeness refusal sets report status incomplete as
-well as its gated outcome, so drain never advances accepted boundaries for a
-gap, aborted task or missing final. No evaluator or correction is requested.
+user/assistant. Local completeness refusal sets report status incomplete
+independently of observed terminal outcome, so drain never advances processed
+boundaries for a gap or missing final. Safe local signals remain visible.
+Missing intent or material gaps skip semantic actionability and all automatic
+correction; abort alone is not a diagnostic gate.
 
 Pagination must exhaust with valid data/cursor fields. Repeated cursors, 200-page
 exhaustion, >2,000 raw rows or normalized records, or >8MiB aggregate wire fail
@@ -1030,8 +1016,8 @@ native message rows also remove old same-ID empty assistant projections and
 an exact duplicate user projection only when its original text part is already
 present and matches the immutable wire text. Genuine parts/attempts stay. At-use
 source refs are never refreshed from current disk content. Legacy history wire,
-role validation, origin/auth/redirect/directory gates and numerical thresholds
-remain unchanged.
+role validation and origin/auth/redirect/directory gates remain unchanged.
+Signal/semantic routing replaces the old numerical waste/success thresholds.
 
 **Credential destination boundary.** Only the configured dispatch-server
 origin (scheme, lowercase hostname, effective port) authorizes Basic auth.
@@ -1106,13 +1092,33 @@ The plugin is an opt-in owned asset, never a default install:
   sub-limit bound), and bound-refusal memory/disk consistency (both the
   fixed-metadata-alone and the gap-note-drop sites).
 - Loop e2e tests run ingest → drain → analyze (mock GLiDE endpoint) → dispatch
-  (mock session server) and prove: only the bounded stage-one payload is sent
-  before the success gate, stage-two pages only after success, exactly one
-  visible root, the intake prompt without transcript interpolation, and
-  failed/aborted/uncertain fixtures dispatch nothing.
+  (mock session server) and prove: no candidates means no model request;
+  candidates send only bounded cited evidence/intent/sequence; justified,
+  uncertain, unavailable and incomplete-evidence cases never authorize writes;
+  failed/aborted cases retain diagnostics without changing source outcome.
+  Guarded actionable cases create exactly one visible correcting root, with
+  intake data never interpolated into shell commands. Preserve every existing
+  public-path provenance/auth/native-role/WAL/hash/conflict/rollback negative.
 - Release/bootstrap fixture tests install the plugin + runtime assets into a
   disposable HOME and exercise enable/disable/sync/doctor/uninstall with
   modified-file retention and no activation of live sessions. Detached
   worker spawns are test-injected (`SpawnWorker` in-process; the CLI honors
   `AGF_RETROSPECTIVE_NO_SPAWN=1`), so fixture tests never launch background
   processes.
+
+### Detection vs repair acceptance
+
+Freeze labelled positive/negative detector fixtures and expected rule/call IDs
+before acceptance; include red tests, polling and legitimate broad research as
+interpretation controls. Do not repeatedly resample live tasks to force a hit.
+Controlled repair acceptance may inject a labelled interpreted-issue fixture
+ONLY through a private test-harness seam, never a production flag/env bypass or
+fake GLiDE verdict. Prove before-task failure → independent review of exact
+proposed diff/digest → guarded repair → identical task success, plus negative
+regressions, conflict, rollback, WAL interruption and dedup/origin suppression.
+Native corrector/reviewer/QA role/model/completion and visible-root reconnect
+evidence remain required; prompt delivery is not completed repair. Publish frozen
+candidate/evidence for fresh independent review each phase; supervisor schedules
+final QA. A bounded genuine live GLiDE sample is optional, never calibration.
+Full natural live end-to-end acceptance remains UNMET when semantic evaluation
+was bypassed in the test harness. Report genuine no-hit/uncertain outcomes as-is.
