@@ -18,11 +18,16 @@ evidence and independent review/QA still gate writes. Contract:
 (observation section). Everything is one explicit global opt-in; nothing runs by
 default.
 
-**Implementation pending:** code at `9a26ba7` still uses the superseded model
-success gate/per-call evaluation. The [canonical plan](../../.artifacts-manager/plan-task-retrospective.md)
+**Default pipeline replacement pending:** Phase 1 provides only offline
+`agf retrospective analyze --signals-only --input trace.json --output signals.json`.
+It never calls a provider or dispatches; signals do not authorize repair. Default
+analyze/ingest/drain still use the superseded model success gate/per-call
+evaluation. The [canonical plan](../../.artifacts-manager/plan-task-retrospective.md)
 defines the three remaining phases. Setup below describes existing commands,
 not an already shipped signal pipeline. New v2 reports/config migration become
-available only with Phase 2; do not put planned signal keys into current config.
+available to the default pipeline only with Phase 2; do not put planned signal
+keys into current config. The preview accepts existing additive redaction patterns
+only; detector thresholds are currently configurable through the Go API.
 
 ## Setup
 

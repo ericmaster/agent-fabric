@@ -1,0 +1,58 @@
+[
+  {
+    "name":"red-tests-and-aborted-task-are-observations-not-avoidable",
+    "trace":{"schema_version":1,"identities":{"root_session_id":"root","session_id":"root","execution_root":"/project"},"terminal_status":"aborted","calls":[
+      {"id":"red","seq":1,"tool":"bash","status":"success","exit_code":1,"input":"go test"},
+      {"id":"failed","seq":2,"tool":"unknown","status":"failed","input":"opaque"},
+      {"id":"cancel","seq":3,"tool":"bash","status":"cancelled","input":"cancelled polling"},
+      {"id":"running","seq":4,"tool":"bash","status":"running","input":"still pending"}
+    ]},
+    "expected":{"terminal-failure":[["red"],["failed"]]},"terminal_calls":3,"raw_failures":2
+  },
+  {
+    "name":"polling-and-exact-helper-recreation-with-changed-and-unknown-controls",
+    "trace":{"schema_version":1,"identities":{"root_session_id":"root","session_id":"root","execution_root":"/project"},"calls":[
+      {"id":"p3","seq":3,"tool":"poll","status":"success","input":"status","prereq_fingerprint":"observed-state-A"},
+      {"id":"p1","seq":1,"tool":"poll","status":"success","input":"status","prereq_fingerprint":"observed-state-A"},
+      {"id":"p2","seq":2,"tool":"poll","status":"success","input":"status","prereq_fingerprint":"observed-state-A"},
+      {"id":"changed","seq":4,"tool":"poll","status":"success","input":"status","prereq_fingerprint":"observed-state-B"},
+      {"id":"absent","seq":5,"tool":"poll","status":"success","input":"status"},
+      {"id":"h1","seq":6,"tool":"write","status":"success","input":"{\"filePath\":\"/tmp/opencode/helper.py\",\"content\":\"print(1)\"}"},
+      {"id":"h2","seq":7,"tool":"write","status":"success","input":"{\"filePath\":\"/tmp/opencode/helper.py\",\"content\":\"print(1)\"}"},
+      {"id":"h3","seq":8,"tool":"write","status":"success","input":"{\"filePath\":\"/tmp/opencode/helper.py\",\"content\":\"print(1)\"}"},
+      {"id":"different-content","seq":9,"tool":"write","status":"success","input":"{\"filePath\":\"/tmp/opencode/helper.py\",\"content\":\"print(2)\"}"},
+      {"id":"unknown-write","seq":10,"tool":"write","status":"success","input":"{\"filePath\":\"/tmp/opencode/helper.py\"}"},
+      {"id":"p2","seq":2,"tool":"poll","status":"success","input":"status","prereq_fingerprint":"observed-state-A"}
+    ]},
+    "expected":{"exact-repeat":[["p1","p2","p3"]],"helper-recreate":[["h1","h2","h3"]]},"terminal_calls":10,"raw_failures":0
+  },
+  {
+    "name":"legitimate-broad-research-still-visible-with-late-context-indicator",
+    "trace":{"schema_version":1,"identities":{"root_session_id":"root","session_id":"root","execution_root":"/project"},"calls":[
+      {"id":"s1","seq":1,"tool":"grep","status":"success","input":"{\"pattern\":\"one\",\"path\":\"/project\"}"},
+      {"id":"s2","seq":2,"tool":"glob","status":"success","input":"{\"pattern\":\"**/*.go\",\"path\":\"/project\"}"},
+      {"id":"s3","seq":3,"tool":"grep","status":"success","input":"{\"pattern\":\"two\",\"path\":\"/project\"}"},
+      {"id":"s4","seq":4,"tool":"grep","status":"success","input":"{\"pattern\":\"three\",\"path\":\"/project/docs\"}"},
+      {"id":"s5","seq":5,"tool":"glob","status":"success","input":"{\"pattern\":\"docs/*\"}"},
+      {"id":"r1","seq":6,"tool":"read","status":"success","input":"{\"filePath\":\"/project/AGENTS.md\"}","source_refs":[{"path":"/project/AGENTS.md","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]},
+      {"id":"r2","seq":7,"tool":"read","status":"success","input":"{\"filePath\":\"/project/info\"}"},
+      {"id":"r3","seq":8,"tool":"read","status":"success","input":"{\"filePath\":\"/project/info\"}"},
+      {"id":"r4","seq":9,"tool":"read","status":"success","input":"{\"filePath\":\"/project/info\"}"},
+      {"id":"r5","seq":10,"tool":"read","status":"success","input":"{\"filePath\":\"/project/info\"}"}
+    ]},
+    "expected":{"broad-search":[["s1","s2","s3"]],"search-burst":[["s1","s2","s3","s4","s5"]],"late-context":[["s1","s2","s3","s4","s5"]]},"terminal_calls":10,"raw_failures":0
+  },
+  {
+    "name":"unknown-schemas-and-absent-prerequisites-never-invent-metrics",
+    "trace":{"schema_version":1,"identities":{"root_session_id":"root","session_id":"root","execution_root":"/project"},"calls":[
+      {"id":"u1","seq":1,"tool":"grep","status":"success","input":"not JSON"},
+      {"id":"u2","seq":2,"tool":"glob","status":"success","input":"{\"pattern\":42,\"path\":\"/project\"}"},
+      {"id":"u3","seq":3,"tool":"bash","status":"success","input":"grep something /project"},
+      {"id":"u4","seq":4,"tool":"bash","status":"success","input":"grep something /project"},
+      {"id":"u5","seq":5,"tool":"bash","status":"success","input":"grep something /project"},
+      {"id":"u6","seq":6,"tool":"write","status":"success","input":"{\"filePath\":\"helper.py\",\"content\":\"print(1)\"}"},
+      {"id":"u7","seq":7,"tool":"write","status":"success","input":"{\"filePath\":\"/tmp/h.py\",\"content\":\"x\",\"content\":\"y\"}"}
+    ]},
+    "expected":{},"terminal_calls":7,"raw_failures":0
+  }
+]

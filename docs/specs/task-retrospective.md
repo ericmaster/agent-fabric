@@ -15,10 +15,13 @@ server. The replacement loop is observe → ingest → deterministic signals/rep
 → bounded semantic interpretation (only with candidates) → guarded dispatch.
 Supervisor ledgers are not a retrospective database.
 
-**Delivery status:** this is the approved signal-first replacement contract;
-baseline `9a26ba7` still implements the superseded model-heavy evaluator. The
-canonical plan defines three remaining implementation/acceptance phases. This
-documentation change does not claim those phases are implemented or tested.
+**Delivery status:** Phase 1 adds an explicit offline `analyze --signals-only`
+preview backed by `signals.go`, `SignalConfig` and frozen signal fixtures.
+Default analyze/ingest/drain/dispatch and production Config still implement the
+baseline model-heavy evaluator unchanged. Phase 2 performs the SINGLE replacement
+and report/config migration; Phase 3 acceptance remains pending. The offline
+preview cannot interpret, dispatch or authorize repair and is not a permanent
+second evaluator. Planned keys below are not accepted by production Config.
 The model success gate, every-call classification, omission detection and
 N>=20/>5% waste-rate routing are removed from the target contract, not retained
 as an alternate engine. Requirement omission is deferred outside the minimal loop.
@@ -133,6 +136,32 @@ Local-only redactor applies, in order:
 Redaction counters (per pattern kind) are recorded; never the original values.
 
 ## Deterministic detection (provider-independent)
+
+Phase 1 entry point: `DetectSignals` → bounded `SignalReport` →
+`WriteSignalReport`; public replay: `agf retrospective analyze --signals-only
+--input trace.json --output signals.json`. This flag is a temporary offline
+Phase 1 access path, to be retired into the single pipeline in Phase 2.
+`SignalConfig` exposes detector thresholds to Go callers; CLI uses documented
+defaults plus existing additive redaction patterns from `--config`. Production
+configuration deliberately rejects new signal keys until Phase 2. Preview v2
+reports are labelled `mode: signals_only_phase1`, have zero provider requests,
+`repair_safe:false` and `dispatch.eligible:false` unconditionally. Existing
+strict report loading rejects this preview; it cannot become repair authority.
+Interpretation status is `pending_phase2` with signals, otherwise
+`skipped_no_candidates`. The full v2 semantic/migration contract remains planned.
+Phase 1 retains whole redacted context records under an aggregate 24,000-byte
+compact JSON evidence-array bound (`evidence_limit_bytes`, only lowerable), with exact
+omitted counts. Metadata/signal caps are separate; no byte/token equivalence.
+Abstentions are scalar per-rule/reason counters; raw failures and cancellations
+stay independent of semantic controls. No provider status/key is consulted.
+Evidence for exact repetition records its observed prerequisite fingerprint;
+failure status/exit/input and helper path/content hash remain evidence, not
+avoidability labels. Private reasoning is deliberately excluded and counted,
+not reclassified as a missing observable record. Binary/unsupported/secret-file
+bodies are excluded with incomplete coverage; secret-file hashes are not copied
+into the preview. Observed secret environment values are scrubbed wherever they
+occur, not only in the environment map. The frozen fixture is
+`fixtures/retrospective/signals/frozen.json`; tests do not resample live output.
 
 Normalize the resolved interval and descendants by stable `(seq,id)` order;
 deduplicate call IDs before counting. Terminal calls exclude running/empty
