@@ -82,7 +82,86 @@ func TestNative2027RecordedSessionAndHistory(t *testing.T) {
 	}
 }
 
-// Literal 2.0.27 schema addition through the public HTTP history adapter.
+// 2.0.30 public responses are from a no-provider import of a synthetic transcript;
+// role/model controls were produced by actual switch endpoints, not generation.
+// Spec: docs/specs/task-retrospective.md via HTTPSessionClient.Messages
+func TestNative2030RecordedSessionHistoryAndControls(t *testing.T) {
+	load := func(name string) []byte {
+		t.Helper()
+		b, err := os.ReadFile("../../fixtures/retrospective/opencode/" + name + "-2.0.30.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	session, history, controls := load("native-session"), load("native-history"), load("native-controls")
+	for _, mode := range []string{"valid", "controls-only", "unknown-field", "malformed-model", "malformed-agent"} {
+		t.Run(mode, func(t *testing.T) {
+			var page struct {
+				Data []map[string]any `json:"data"`
+			}
+			if err := json.Unmarshal(controls, &page); err != nil {
+				t.Fatal(err)
+			}
+			switch mode {
+			case "unknown-field":
+				page.Data[0]["future"] = true
+			case "malformed-model":
+				page.Data[0]["previous"] = map[string]any{"id": "worker"}
+			case "malformed-agent":
+				page.Data[1]["previous"] = 7
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/session/ses_compat_import_2030" {
+					w.Write(session)
+					return
+				}
+				if r.URL.Path != "/api/session/ses_compat_import_2030/message" {
+					t.Error(r.URL.Path)
+					http.NotFound(w, r)
+					return
+				}
+				switch r.URL.Query().Get("cursor") {
+				case "":
+					if mode != "controls-only" {
+						w.Write(history)
+						return
+					}
+				case "controls-end":
+					w.Write([]byte(`{"data":[],"cursor":{"next":null}}`))
+					return
+				}
+				json.NewEncoder(w).Encode(map[string]any{"data": page.Data, "cursor": map[string]any{"next": "controls-end"}})
+			}))
+			defer server.Close()
+			client := &HTTPSessionClient{BaseURL: server.URL, Generation: EndpointMessage}
+			root, err := client.Read(context.Background(), "ses_compat_import_2030")
+			if err != nil || root.Directory != "/tmp/opencode/agf1-2030-3tecoigc/project" || root.ParentID != "" {
+				t.Fatalf("session: %+v %v", root, err)
+			}
+			rows, err := client.Messages(context.Background(), root.ID)
+			if mode != "valid" {
+				if err == nil || rows != nil {
+					t.Fatal("incomplete/malformed controls accepted")
+				}
+				return
+			}
+			if err != nil || len(rows) != 7 {
+				t.Fatalf("history: %d %v", len(rows), err)
+			}
+			if rows[0].Info.Role != "user" || rows[3].Control != "idle" {
+				t.Fatal("history role coercion")
+			}
+			for _, row := range rows[4:] {
+				if row.Info.Role != "" || row.Control == "" || len(row.Parts) != 0 {
+					t.Fatal("selection became task evidence")
+				}
+			}
+		})
+	}
+}
+
+// Literal 2.0.27 schema addition retained for 2.0.30's identical history schema.
 // Spec: docs/specs/task-retrospective.md via HTTPSessionClient.Messages
 func TestNative2027IdleErrorLiteralWire(t *testing.T) {
 	for _, errorJSON := range []string{`{"type":"ProviderError","message":"CANARY-private","status":503,"response":{"body":"CANARY-private"}}`, `{"type":"ProviderError","message":""}`, `null`, `{"message":"missing type"}`, `{"type":"x","message":"x","status":99}`, `{"type":"x","message":"x","extra":true}`} {

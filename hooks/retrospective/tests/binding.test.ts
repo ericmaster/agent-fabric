@@ -7,7 +7,7 @@ import path from "node:path";
 import os from "node:os";
 import nativePlugin from "../opencode";
 
-test("native unbound setup never resolves CWD/HOME or registers repeated capture hooks", async (t) => {
+for (const version of ["2.0.27", "2.0.30"]) test(`native ${version} unbound setup never resolves CWD/HOME or registers repeated capture hooks`, async (t) => {
   const root = mkdtempSync(path.join(os.tmpdir(), "agf-binding-"));
   const previous = { ...process.env }, cwd = process.cwd();
   let children = 0, hooks = 0;
@@ -18,7 +18,7 @@ test("native unbound setup never resolves CWD/HOME or registers repeated capture
     for (const dir of [root, path.join(root, ".local/bin"), path.join(root, ".opencode/bin")]) {
       mkdirSync(dir, { recursive: true }); writeFileSync(path.join(dir, "agent-fabric"), "#!/bin/sh\nexit 1\n", { mode: 0o700 });
     }
-    const cleanup = await nativePlugin.setup({ app: { version: "2.0.27" }, location: { directory: root },
+    const cleanup = await nativePlugin.setup({ app: { version }, location: { directory: root },
       session: { async get() {}, async hook() { hooks++; return { async dispose() {} }; } }, tool: { async hook() { hooks++; return { async dispose() {} }; } },
       event: { async *subscribe() { for (let n = 0; n < 432; n++) yield { type: "session.execution.succeeded", data: { sessionID: "synthetic" } }; } },
     } as any);
@@ -48,7 +48,7 @@ test("native binding rejects relative, symlink, writable file/parent and non-own
   } finally { mock.mock.restore(); process.env = previous; }
 });
 
-test("native capability probe is bounded, private, once-only and cannot grant capture on failure", async (t) => {
+for (const version of ["2.0.27", "2.0.30"]) test(`native ${version} capability probe is bounded, private, once-only and cannot grant capture on failure`, async (t) => {
   const previous = { ...process.env };
   const root = mkdtempSync(path.join(os.tmpdir(), "agf-binding-"));
   const bin = path.join(root, "agf"); writeFileSync(bin, "synthetic", { mode: 0o700 });
@@ -76,7 +76,7 @@ test("native capability probe is bounded, private, once-only and cannot grant ca
         return child;
       });
       try {
-        const setup = nativePlugin.setup({ app: { version: "2.0.27" }, location: { directory: root },
+        const setup = nativePlugin.setup({ app: { version }, location: { directory: root },
           session: { async get() {}, async hook() { assert.fail("capture registered"); } }, tool: { async hook() { assert.fail("capture registered"); } }, event: { async *subscribe() { assert.fail("subscribed"); } },
         } as any);
         await new Promise(setImmediate); t.mock.timers.tick(5000);

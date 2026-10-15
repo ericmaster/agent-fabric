@@ -738,7 +738,7 @@ No process-global environment mutation/pin is used; reload gets fresh instance s
 Global installation does not prove all-session coverage: only the activated and
 verified origin (initial rollout: 4097) may be claimed.
 
-Native support is an explicit allowlist: `2.0.24` and `2.0.27`, never a semver
+Native support is an explicit allowlist: `2.0.24`, `2.0.27` and `2.0.30`, never a semver
 range. Both require session prompt/get, tool execute.after and event subscription
 capabilities before staging. Unsupported versions/missing capabilities fail closed
 with an actionable error and full runbook locator. The typing dependency remains
@@ -762,7 +762,22 @@ The original native contract baseline is OpenCode tag `v2.0.24`, commit
 `packages/schema/src/session-event.ts`, and
 `packages/protocol/src/groups/session.ts` in
 https://github.com/anomalyco/opencode/tree/v2.0.24 . Compare only the explicit
-2.0.27 tag above, not master/dev, for the additional supported version.
+2.0.27 tag above and 2.0.30 below, not master/dev, for additional supported versions.
+Tag `v2.0.30` is commit `f16ef9ad8878279ea2be3cfab7baeed97aef61aa`.
+Its plugin README/loader, session-event/session-message schemas and session API
+are byte-identical to 2.0.27. The CLI adds Claude skill-root disable handling,
+not a consumed wire change. Keep the 2.0.24 typing pin. A version update requires
+fresh exact-tag comparison, installed-byte pins, disposable default-loader and
+public session/history/event checks without providers, malformed/control and
+legacy regressions; neither package metadata nor health alone grants support.
+Installed version is not a running deleted inode's API version. Live activation
+must separately verify its actual producer. Compatibility evidence and limits:
+`.artifacts-manager/agf1-current-runtime-compat-handoff.md`.
+The 2.0.30 literal public history fixture is an actual HTTP projection of an
+imported synthetic transcript (not new model/tool execution). Its role/model
+controls and queued prompt events come from actual disposable public endpoints;
+replay flush triggers are labelled synthetic. Raw public responses and the real
+default-loader-to-Go-ingest spool are retained separately from protocol mocks.
 The v2 loader requires a default `{id,setup}` definition, not the v1 named
 function returning hooks. `@opencode/plugin@2.0.24` is the native typing pin;
 v1 SDK pins remain replay compatibility only, not live compatibility claims.
@@ -824,7 +839,7 @@ exclusions cover basename suffixes `.env`, `.pem`, `.p12`, `.pfx` and `.env`,
 credentials/secrets/id_rsa/id_ed25519 path segments (case insensitive), matching
 the legacy adapter; excluded files are neither read nor hashed by capture.
 
-- Native runtime versions are OpenCode CLI `2.0.24` and `2.0.27`, using the
+- Native runtime versions are OpenCode CLI `2.0.24`, `2.0.27` and `2.0.30`, using the
   unchanged `@opencode/plugin@2.0.24` typing pin.
   `@opencode-ai/plugin@1.18.35` and `@opencode-ai/sdk@1.18.35` are historical
   replay typings, not evidence of live loader compatibility.

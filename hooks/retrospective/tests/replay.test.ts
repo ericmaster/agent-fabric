@@ -148,7 +148,7 @@ test("native duplicate old step cannot borrow a later opening or queued inbox id
   } finally { harness.restore(); }
 });
 
-for (const nativeVersion of ["2.0.24", "2.0.27"]) test(`fresh native ${nativeVersion} opening failed reads survive real ingest validation and terminal batching`, async () => {
+for (const nativeVersion of ["2.0.24", "2.0.27", "2.0.30"]) test(`fresh native ${nativeVersion} opening failed reads survive real ingest validation and terminal batching`, async () => {
   const harness = fixtureCLI();
   const previous = { state: process.env.AGF_RETROSPECTIVE_STATE, config: process.env.AGF_CONFIG, noSpawn: process.env.AGF_RETROSPECTIVE_NO_SPAWN };
   delete process.env.AGF_PLUGIN_FAKE_HEALTH;
@@ -218,10 +218,10 @@ test("native setup rejects unsupported versions and missing capabilities before 
   const harness = fixtureCLI(); delete process.env.AGF_PLUGIN_FAKE_HEALTH;
   const previous = process.env.AGF_RETROSPECTIVE_STATE;
   process.env.AGF_RETROSPECTIVE_STATE = path.join(harness.root, "state");
-  const context = { app: { version: "2.0.27" }, location: { directory: harness.root },
+  const context = { app: { version: "2.0.30" }, location: { directory: harness.root },
     session: { async get() {}, async hook() {} }, tool: { async hook() {} }, event: { async *subscribe() {} } };
   try {
-    for (const version of ["2.0.25", "2.0.26", "2.0.28", "2.1.0", "3.0.0", "2.0.27-dev", "garbage"]) {
+    for (const version of ["2.0.25", "2.0.26", "2.0.28", "2.0.31", "2.1.0", "3.0.0", "2.0.30-dev", "garbage"]) {
       await assert.rejects(nativePlugin.setup({ ...context, app: { version } } as any), /unsupported.*docs\/runbooks\/task-retrospective\.md/);
     }
     for (const domain of ["session", "tool", "event"]) {
@@ -229,9 +229,31 @@ test("native setup rejects unsupported versions and missing capabilities before 
     }
     assert.equal(capturesOf(harness.captureFile).length, 0);
     const reports = readdirSync(path.join(harness.root, "state", "observer-errors"));
-    assert.equal(reports.length, 10);
+    assert.equal(reports.length, 11);
     assert.ok(reports.every(file => JSON.parse(readFileSync(path.join(harness.root, "state", "observer-errors", file), "utf8")).detail.includes("before staging")));
   } finally { harness.restore(); if (previous === undefined) delete process.env.AGF_RETROSPECTIVE_STATE; else process.env.AGF_RETROSPECTIVE_STATE = previous; }
+});
+
+test("native 2.0.30 public queued event fixture retains intake without inventing execution", async () => {
+  const harness = fixtureCLI(); delete process.env.AGF_PLUGIN_FAKE_HEALTH;
+  const events = loadEvents("native-2.0.30.jsonl") as any[];
+  const id = events[0].data.sessionID;
+  try {
+    const cleanup = await nativePlugin.setup({ app: { version: "2.0.30" }, location: { directory: harness.root },
+      session: { async get() {}, async hook() { return { async dispose() {} }; } },
+      tool: { async hook() { return { async dispose() {} }; } },
+      event: { async *subscribe() {
+        for (const event of events) yield event;
+        // Synthetic flush trigger only: recorded queued input ran no model/tool.
+        yield { type: "session.execution.succeeded", data: { sessionID: id } };
+      } },
+    } as any);
+    await cleanup();
+    const envelope = JSON.parse(capturesOf(harness.captureFile).at(-1)!.stdin) as Envelope;
+    assert.equal(envelope.sdk_version, "2.0.30");
+    assert.ok(envelope.records.some(row => row.text === "Disposable queued input 0"));
+    assert.ok(!envelope.records.some(row => row.role === "assistant" || row.part_type === "tool" || row.kind === "source"));
+  } finally { harness.restore(); }
 });
 
 for (const nativeVersion of ["2.0.24", "2.0.27"]) test(`actual ${nativeVersion} default loader consumes recorded native stream and message-scoped call IDs`, async () => {

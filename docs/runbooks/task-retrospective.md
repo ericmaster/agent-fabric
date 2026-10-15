@@ -107,7 +107,7 @@ records no hidden reasoning, never posts into the source session, and never
 blocks a session on evaluation. OpenCode must be restarted to load, unload, or
 replace the plugin file.
 
-2.0.24/2.0.27 prompt extra agent/model keys are ignored: prompt sends text only.
+2.0.24/2.0.27/2.0.30 prompt extra agent/model keys are ignored: prompt sends text only.
 Selection instead uses native session.create fields `agent`, `model` (Model.Ref)
 and `location`. The canonical learning-corrector investigates a typed proposal;
 separate visible parentless reviewer and qa-runner roots execute before acceptance.
@@ -119,7 +119,7 @@ A completed no-edit advisory is `suggested`, not `repaired`.
 The native default plugin definition uses installed-generation
 `@opencode/plugin@2.0.24`, `ctx.event.subscribe` and `ctx.app.version`.
 Its v1 named hook export is replay compatibility only. The runtime allowlist is
-exactly OpenCode `2.0.24` and `2.0.27`; required prompt/get, execute.after and event
+exactly OpenCode `2.0.24`, `2.0.27` and `2.0.30`; required prompt/get, execute.after and event
 subscription capabilities are checked before staging. Other versions (including
 future patches) fail closed and log a full private diagnostic under
 `<state>/observer-errors`. Do not widen the allowlist from `/api/info` alone.
@@ -141,6 +141,22 @@ reload; transient ingest retries are unchanged. Native call IDs are assistant-me
 IDs repeat across turns. Source hashes come from actual terminal read hooks.
 
 ## Clean disposable native readiness reproducer
+
+Compatibility matrix: 2.0.24 and 2.0.27 retain recorded execution fixtures;
+2.0.30 additionally has actual installed default-loader/setup/hook registration,
+public session creation/role/model controls, imported synthetic history, SSE
+queued prompts (`resume:false`) and real Go ingest evidence. **No provider or
+actual generation/tool execution occurred in the 2.0.30 check.** Its history
+fixture is the literal public response after importing a labelled synthetic
+transcript, not a new successful task. Event fixture projects only `type/data`
+from its actual public SSE; the replay terminal trigger is explicitly synthetic.
+Report: [current runtime compatibility](../../.artifacts-manager/agf1-current-runtime-compat-handoff.md).
+For the next installed upgrade: use Context7 for orientation, compare exact-tag
+loader/Promise hooks/session/event/history schemas, pin installed bytes before
+and after, rerun disposable default loader/public schema and CLI-help probes,
+control/malformed and legacy tests, then independently review an explicit version
+addition. Never allow arbitrary patches or infer a running API version from a
+replacement package. Preserve user model overrides; no automatic downgrade.
 
 Use only a disposable root and synthetic evidence, never the host HOME or user
 4097/4098 service. Build the CLI to scratch, provision disposable HOME/XDG
