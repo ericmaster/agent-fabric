@@ -99,7 +99,7 @@ records no hidden reasoning, never posts into the source session, and never
 blocks a session on evaluation. OpenCode must be restarted to load, unload, or
 replace the plugin file.
 
-2.0.24 prompt extra agent/model keys are ignored: prompt sends text only.
+2.0.24/2.0.27 prompt extra agent/model keys are ignored: prompt sends text only.
 Selection instead uses native session.create fields `agent`, `model` (Model.Ref)
 and `location`. The canonical learning-corrector investigates a typed proposal;
 separate visible parentless reviewer and qa-runner roots execute before acceptance.
@@ -110,7 +110,14 @@ A completed no-edit advisory is `suggested`, not `repaired`.
 
 The native default plugin definition uses installed-generation
 `@opencode/plugin@2.0.24`, `ctx.event.subscribe` and `ctx.app.version`.
-Its v1 named hook export is replay compatibility only. Set
+Its v1 named hook export is replay compatibility only. The runtime allowlist is
+exactly OpenCode `2.0.24` and `2.0.27`; required prompt/get, execute.after and event
+subscription capabilities are checked before staging. Other versions (including
+future patches) fail closed and log a full private diagnostic under
+`<state>/observer-errors`. Do not widen the allowlist from `/api/info` alone.
+Exact-tag comparison found only one consumed history addition: optional structured
+idle `error`, validated locally without copying provider bodies or changing roles.
+Set
 `AGF_OBSERVER_SERVER` to the exact configured dispatch origin for backfill;
 without it local native events still stage, but historical backfill has no URL.
 Never use `AGF_PLUGIN_FAKE_HEALTH` in a live server. `AGF_BIN` must locate the
@@ -127,16 +134,22 @@ an allowlisted environment (`env -i`): PATH, HOME, PWD, XDG paths, synthetic
 OPENCODE_PASSWORD, AGF_SOURCE, AGF_BIN, AGF_CONFIG,
 AGF_RETROSPECTIVE_STATE/CONFIG, AGF_OBSERVER_SERVER. Do not inherit host
 OPENCODE config overrides/provider credentials. For observation-only readiness,
-`AGF_RETROSPECTIVE_NO_SPAWN=1` avoids evaluator network while still staging jobs.
+omit all evaluator credentials and use a no-candidate task. Do not rely on
+`AGF_RETROSPECTIVE_NO_SPAWN=1` alone: the current CLI has a separate terminal-job
+launch path; a bounded worker may still finish the deterministic local report.
+Retain its actual job/report and confirm skipped interpretation, not a live
+provider result. Correcting this separate spawn control is outside version support.
+Use `XDG_CONFIG_HOME=$HOME/.config`: the installer writes there via HOME. Keep
+the disposable project outside any existing repository/config ancestor.
 Install via `agf install --all --tools opencode --assets retrospective --yes`,
-enable with `agf retrospective enable`, create `instructions.md` with a synthetic
+enable with `agf retrospective enable`, create `docs/instructions.md` with a synthetic
 redaction canary, and run bounded native CLI:
 
 ```sh
 timeout -k 10s 240s opencode run --server http://127.0.0.1:<free-port> \
   --model opencode/fledge-alpha-free --agent build --auto \
   --title 'AGF native observer readiness' \
-  'Read instructions.md and reply exactly QA_OBSERVER_DONE. Do not edit files.'
+  'Use the read tool to read docs/instructions.md and reply exactly QA_OBSERVER_DONE. Do not edit files.'
 ```
 
 The model above is a disposable readiness profile, not a canonical-agent pin
@@ -148,6 +161,19 @@ learning-corrector history, independent reviewer/QA histories and final verdicts
 Keep synthetic report probes distinct from native end-to-end learning acceptance.
 Bound every child and HTTP call; stop only an owned server after checking UID,
 PID and cwd. Retain public final text only, never hidden reasoning.
+
+2.0.27 implementation readiness observed actual default plugin loading, prompt
+identity/user intake, terminal read, at-use instruction hash and a terminal job
+with public `opencode/nemotron-3.5-super-vl-free` in a clean disposable runtime.
+That model was selected from the isolated public model snapshot, not installed
+as a canonical/default model. No GLiDE call, native independent repair or UI
+acceptance is claimed. Exact commands, setup corrections, cleanup and evidence:
+[`agf1-native-2027-handoff.md`](../../.artifacts-manager/agf1-native-2027-handoff.md).
+The 2.0.27 event fixture is a subset of that actual SSE stream (reasoning omitted);
+session/history fixtures are literal public HTTP responses (reasoning text empty).
+Failed-idle-error regressions are explicitly schema-derived synthetic controls.
+The Go provenance filter retains instruction basenames/trees, not arbitrary
+`instructions.md` at project root; use `docs/instructions.md` for the hash check.
 
 `fixtures/retrospective/opencode/events/native-2.0.24.jsonl` is projected from
 the actual isolated native SSE stream: keep only `type` and `data` of observable

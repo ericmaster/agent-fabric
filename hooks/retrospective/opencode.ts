@@ -11,7 +11,7 @@
 // envelope goes through stdin; argv carries static flags only), never posts
 // into the user's source session, and never blocks a response on Jev.
 //
-// Version pinning: fixture-tested against OpenCode 2.0.24
+// Version pinning: fixture-tested against OpenCode 2.0.24 and 2.0.27
 // (@opencode/plugin@2.0.24 default setup/events API). The v1 named hook export
 // and @opencode-ai/plugin@1.18.35 types are replay-only compatibility. Native
 // setup uses ctx.app.version and rejects an unconfirmed generation.
@@ -31,7 +31,7 @@ const FLUSH_THRESHOLD_RECORDS = 25;
 const MAX_BUFFERED_EVENTS = 2000;
 const SPAWN_TIMEOUT_MS = 30_000;
 const HEALTH_TIMEOUT_MS = 5_000;
-const SUPPORTED_MAJOR_VERSIONS = [2];
+const SUPPORTED_NATIVE_VERSIONS = ["2.0.24", "2.0.27"];
 const LEARNING_ORIGIN_PREFIX = "agf-learning-origin:v1:";
 
 /** Ingest exit codes; the adapter reacts without parsing any output. */
@@ -221,7 +221,7 @@ const spawnIngest: RunIngest = (envelope, cli) =>
   });
 
 /** Full private diagnostic, not a transcript/environment dump. Never on disabled. */
-function reportIngestFailure(code: number, stderr: string): void {
+function reportIngestFailure(code: number, stderr: string, detail = "Ingest failed; original batch retained for bounded idempotent retry. No stdin or environment retained."): void {
   for (const name of ["FASTINO_API_KEY", "TYPESAFE_API_KEY", "OPENCODE_PASSWORD", "OPENCODE_SERVER_PASSWORD"]) {
     const value = process.env[name]; if (value) stderr = stderr.split(value).join("[REDACTED:credential]");
   }
@@ -232,8 +232,8 @@ function reportIngestFailure(code: number, stderr: string): void {
   try {
     const directory = path.join(state, "observer-errors"); mkdirSync(directory, { recursive: true, mode: 0o700 });
     const report = path.join(directory, `${randomUUID()}.json`);
-    writeFileSync(report, JSON.stringify({ code, stderr, detail: "Ingest failed; original batch retained for bounded idempotent retry. No stdin or environment retained." }), { mode: 0o600 });
-    console.error(`AGF retrospective: ingest failed (exit ${code}); full diagnostic: ${report}`);
+    writeFileSync(report, JSON.stringify({ code, stderr, detail }), { mode: 0o600 });
+    console.error(`AGF retrospective: observer failed (exit ${code}); full diagnostic: ${report}`);
   } catch { console.error("AGF retrospective: ingest failed; private diagnostic write failed (batch retained)"); }
 }
 
@@ -322,8 +322,7 @@ class Adapter {
       const stub = process.env.AGF_PLUGIN_FAKE_HEALTH;
       const health = stub ? (JSON.parse(stub) as { version?: string }) : await this.health();
       const version = health?.version ?? "";
-      const major = Number.parseInt(version.split(".")[0] ?? "", 10);
-      if (Number.isInteger(major) && SUPPORTED_MAJOR_VERSIONS.includes(major) && this.cli) {
+       if (SUPPORTED_NATIVE_VERSIONS.includes(version) && this.cli) {
         this.mode = "active";
         this.observedSDK = this.observedSDK ?? version;
       }
@@ -570,12 +569,18 @@ export const RetrospectivePlugin: (input: PluginInput) => Promise<Hooks> = async
   };
 };
 
-/** v2.0.24 native definition. Named v1 export above is replay-only. */
+/** Explicitly verified v2 native definition. Named v1 export above is replay-only. */
 export default {
   id: "agf-retrospective",
   async setup(ctx: NativePlugin.Context) {
     const version = ctx.app.version;
-    if (version !== "2.0.24") throw new Error("AGF retrospective: unsupported native plugin generation");
+    const supported = SUPPORTED_NATIVE_VERSIONS.includes(version);
+    const capabilities = typeof ctx.session?.hook === "function" && typeof ctx.session?.get === "function" && typeof ctx.tool?.hook === "function" && typeof ctx.event?.subscribe === "function";
+    if (!supported || !capabilities) {
+      const message = `AGF retrospective: ${supported ? "missing native capabilities" : "unsupported native plugin generation"}; require OpenCode 2.0.24 or 2.0.27 with session prompt/get, tool execute.after and event subscribe. See docs/runbooks/task-retrospective.md (Installed version pins in backing spec).`;
+      reportIngestFailure(1, message, "Native setup refused before staging; use a verified runtime and required capabilities. No transcript or environment retained.");
+      throw new Error(message);
+    }
     const adapter = new Adapter({
       serverUrl: process.env.AGF_OBSERVER_SERVER,
       projectDir: ctx.location.directory,

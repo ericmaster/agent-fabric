@@ -702,13 +702,31 @@ fire-and-forget staging plus a detached worker.
 
 ### Installed version pins
 
-Live readiness SSOT is OpenCode tag `v2.0.24`, commit
+Native support is an explicit allowlist: `2.0.24` and `2.0.27`, never a semver
+range. Both require session prompt/get, tool execute.after and event subscription
+capabilities before staging. Unsupported versions/missing capabilities fail closed
+with an actionable error and full runbook locator. The typing dependency remains
+`@opencode/plugin@2.0.24`; no dependency upgrade is required for the unchanged hooks.
+Tag `v2.0.27` is commit `1f4d07a4a519185955ae8ab2ea3607805509e386`.
+Exact-tag plugin Promise/effect session/tool/event contracts and session/event
+schemas retain the consumed 2.0.24 wire shapes. The 2.0.27 history idle control adds
+optional `error`; the history adapter accepts that field without promoting it to
+a message, exposing its body, or deriving task success. Outcome still exclusively
+maps failed/interrupted controls; strict unknown/type-incompatible fields remain
+rejected. Session create role/model/permissions/location, prompt text, history
+content and all independent execution/write guards remain unchanged.
+Context7 CLI documentation is useful orientation but unversioned (`dev`); exact
+tag sources, literal fixtures and isolated runtime evidence own version claims.
+Evidence and live-versus-mock limitations:
+`.artifacts-manager/agf1-native-2027-handoff.md`.
+
+The original native contract baseline is OpenCode tag `v2.0.24`, commit
 `e7a34f09bfd9134dfade5a8ddb843f7030bc9a69`:
 `packages/plugin/src/README.md`, `packages/core/src/plugin/module.ts`,
 `packages/schema/src/session-event.ts`, and
 `packages/protocol/src/groups/session.ts` in
-https://github.com/anomalyco/opencode/tree/v2.0.24 . Context7 is unavailable
-in this harness; these exact-version primary sources replace assumptions.
+https://github.com/anomalyco/opencode/tree/v2.0.24 . Compare only the explicit
+2.0.27 tag above, not master/dev, for the additional supported version.
 The v2 loader requires a default `{id,setup}` definition, not the v1 named
 function returning hooks. `@opencode/plugin@2.0.24` is the native typing pin;
 v1 SDK pins remain replay compatibility only, not live compatibility claims.
@@ -770,7 +788,8 @@ exclusions cover basename suffixes `.env`, `.pem`, `.p12`, `.pfx` and `.env`,
 credentials/secrets/id_rsa/id_ed25519 path segments (case insensitive), matching
 the legacy adapter; excluded files are neither read nor hashed by capture.
 
-- Native runtime pairing is OpenCode CLI `2.0.24` with `@opencode/plugin@2.0.24`.
+- Native runtime versions are OpenCode CLI `2.0.24` and `2.0.27`, using the
+  unchanged `@opencode/plugin@2.0.24` typing pin.
   `@opencode-ai/plugin@1.18.35` and `@opencode-ai/sdk@1.18.35` are historical
   replay typings, not evidence of live loader compatibility.
 - The adapter is version-tested: native setup verifies the loader app version;

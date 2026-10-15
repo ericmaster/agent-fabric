@@ -26,6 +26,93 @@ func nativeHistoryFixture(t *testing.T) []json.RawMessage {
 	return rows
 }
 
+// Actual isolated 2.0.27 session/history (only private reasoning text removed).
+// Spec: docs/specs/task-retrospective.md via HTTPSessionClient.Messages
+func TestNative2027RecordedSessionAndHistory(t *testing.T) {
+	history, err := os.ReadFile("../../fixtures/retrospective/opencode/native-history-2.0.27.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := os.ReadFile("../../fixtures/retrospective/opencode/native-session-2.0.27.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := "ses_ebfbbab22ffesmWLNKHirpohXz"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/session/" + id:
+			w.Write(session)
+		case "/api/session/" + id + "/message":
+			if r.URL.Query().Get("cursor") != "" {
+				w.Write([]byte(`{"data":[],"cursor":{"next":null}}`))
+			} else {
+				w.Write(history)
+			}
+		default:
+			t.Errorf("unexpected route %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client := &HTTPSessionClient{BaseURL: server.URL, Generation: EndpointMessage}
+	root, err := client.Read(context.Background(), id)
+	if err != nil || root.ID != id || root.ParentID != "" || root.Directory != "/tmp/opencode/agf1-native-2027-runtime3/proj" {
+		t.Fatalf("native session changed: %+v %v", root, err)
+	}
+	rows, err := client.Messages(context.Background(), id)
+	if err != nil || len(rows) != 4 {
+		t.Fatalf("native history changed: %+v %v", rows, err)
+	}
+	if rows[0].Info.Role != "user" || rows[3].Info.Role != "" || rows[3].Control != "idle" {
+		t.Fatal("history role/control coercion")
+	}
+	tools, final := 0, false
+	for _, row := range rows {
+		for _, part := range row.Parts {
+			if part.Tool == "read" && part.CallID != "" {
+				tools++
+			}
+			if part.Text == "QA_OBSERVER_DONE" && !part.NonFinal {
+				final = true
+			}
+		}
+	}
+	if tools != 1 || !final {
+		t.Fatal("lost native tool/final evidence")
+	}
+}
+
+// Literal 2.0.27 schema addition through the public HTTP history adapter.
+// Spec: docs/specs/task-retrospective.md via HTTPSessionClient.Messages
+func TestNative2027IdleErrorLiteralWire(t *testing.T) {
+	for _, errorJSON := range []string{`{"type":"ProviderError","message":"CANARY-private","status":503,"response":{"body":"CANARY-private"}}`, `{"type":"ProviderError","message":""}`, `null`, `{"message":"missing type"}`, `{"type":"x","message":"x","status":99}`, `{"type":"x","message":"x","extra":true}`} {
+		t.Run(errorJSON, func(t *testing.T) {
+			wire := `{"data":[{"id":"msg_final","type":"assistant","agent":"build","model":{"providerID":"fixture","id":"worker"},"time":{"created":1,"completed":2},"finish":"stop","content":[{"type":"text","text":"DONE"}]},{"id":"msg_idle","type":"idle","time":{"created":3},"outcome":"failed","error":` + errorJSON + `}],"cursor":{"next":null}}`
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(wire)) }))
+			defer server.Close()
+			client := &HTTPSessionClient{BaseURL: server.URL, Generation: EndpointMessage}
+			rows, err := client.Messages(context.Background(), "ses_2027")
+			valid := strings.HasPrefix(errorJSON, `{"type":"ProviderError"`)
+			if !valid {
+				if err == nil || rows != nil {
+					t.Fatal("malformed idle error accepted")
+				}
+				return
+			}
+			if err != nil || len(rows) != 2 {
+				t.Fatalf("2.0.27 history refused: %v", err)
+			}
+			if rows[1].Control != "idle" || rows[1].Info.Role != "" || len(rows[1].Events) != 2 || rows[1].Events[0].Event != "session.error" {
+				t.Fatalf("control coerced/lost: %+v", rows[1])
+			}
+			body, _ := json.Marshal(rows)
+			if strings.Contains(string(body), "CANARY-private") {
+				t.Fatal("private idle error body exposed")
+			}
+		})
+	}
+}
+
 // Public ingest -> drain -> authenticated paginated native backfill -> mock Choice.
 func TestNativeHistoryControlsDrainLiteralWire(t *testing.T) {
 	f := newLoopFixture(t, unknownScript(t))

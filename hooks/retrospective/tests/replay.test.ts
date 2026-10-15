@@ -106,7 +106,7 @@ test("native read provenance excludes secret suffixes/segments and hashes only n
   try {
     for (const file of [...secrets, "normal.txt"]) { mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); writeFileSync(path.join(root, file), file === "normal.txt" ? "ordinary text" : "CANARY-NEVER-HASH-SECRET"); }
     const cleanup = await nativePlugin.setup({ app: { version: "2.0.24" }, location: { directory: root },
-      session: { async hook() { return { async dispose() {} }; } },
+      session: { async get() { throw new Error("unused identity lookup"); }, async hook() { return { async dispose() {} }; } },
       tool: { async hook(_name: string, callback: any) { after = callback; return { async dispose() {} }; } },
       event: { async *subscribe() {
         for (const file of [...secrets, "normal.txt"]) await after({ tool: "read", status: "completed", sessionID: "ses_secret", input: { path: file } });
@@ -147,7 +147,7 @@ test("native duplicate old step cannot borrow a later opening or queued inbox id
   } finally { harness.restore(); }
 });
 
-test("fresh native opening failed reads survive real ingest validation and terminal batching", async () => {
+for (const nativeVersion of ["2.0.24", "2.0.27"]) test(`fresh native ${nativeVersion} opening failed reads survive real ingest validation and terminal batching`, async () => {
   const harness = fixtureCLI();
   const previous = { state: process.env.AGF_RETROSPECTIVE_STATE, config: process.env.AGF_CONFIG, noSpawn: process.env.AGF_RETROSPECTIVE_NO_SPAWN };
   delete process.env.AGF_PLUGIN_FAKE_HEALTH;
@@ -170,7 +170,7 @@ test("fresh native opening failed reads survive real ingest validation and termi
   const hash = createHash("sha256").update("owning instruction at read time\n").digest("hex");
   const source = path.join(root, "AGENTS.md"); writeFileSync(source, "owning instruction at read time\n");
   try {
-    const cleanup = await nativePlugin.setup({ app: { version: "2.0.24" }, location: { directory: root },
+    const cleanup = await nativePlugin.setup({ app: { version: nativeVersion }, location: { directory: root },
       session: { async get() { return { id, title: "fresh task", location: { directory: root } }; }, async hook(_name: string, callback: any) { intake = callback; return { async dispose() {} }; } },
       tool: { async hook(_name: string, callback: any) { hook = callback; return { async dispose() {} }; } },
       event: { async *subscribe() {
@@ -213,10 +213,30 @@ test("fresh native opening failed reads survive real ingest validation and termi
   }
 });
 
-test("actual v2 default loader consumes recorded native stream and message-scoped call IDs", async () => {
+test("native setup rejects unsupported versions and missing capabilities before staging", async () => {
+  const harness = fixtureCLI(); delete process.env.AGF_PLUGIN_FAKE_HEALTH;
+  const previous = process.env.AGF_RETROSPECTIVE_STATE;
+  process.env.AGF_RETROSPECTIVE_STATE = path.join(harness.root, "state");
+  const context = { app: { version: "2.0.27" }, location: { directory: harness.root },
+    session: { async get() {}, async hook() {} }, tool: { async hook() {} }, event: { async *subscribe() {} } };
+  try {
+    for (const version of ["2.0.25", "2.0.26", "2.0.28", "2.1.0", "3.0.0", "2.0.27-dev", "garbage"]) {
+      await assert.rejects(nativePlugin.setup({ ...context, app: { version } } as any), /unsupported.*docs\/runbooks\/task-retrospective\.md/);
+    }
+    for (const domain of ["session", "tool", "event"]) {
+      await assert.rejects(nativePlugin.setup({ ...context, [domain]: {} } as any), /capabilities.*docs\/runbooks\/task-retrospective\.md/);
+    }
+    assert.equal(capturesOf(harness.captureFile).length, 0);
+    const reports = readdirSync(path.join(harness.root, "state", "observer-errors"));
+    assert.equal(reports.length, 10);
+    assert.ok(reports.every(file => JSON.parse(readFileSync(path.join(harness.root, "state", "observer-errors", file), "utf8")).detail.includes("before staging")));
+  } finally { harness.restore(); if (previous === undefined) delete process.env.AGF_RETROSPECTIVE_STATE; else process.env.AGF_RETROSPECTIVE_STATE = previous; }
+});
+
+for (const nativeVersion of ["2.0.24", "2.0.27"]) test(`actual ${nativeVersion} default loader consumes recorded native stream and message-scoped call IDs`, async () => {
   const harness = fixtureCLI();
   delete process.env.AGF_PLUGIN_FAKE_HEALTH;
-  const events = loadEvents("native-2.0.24.jsonl") as any[];
+  const events = loadEvents(`native-${nativeVersion}.jsonl`) as any[];
   // Duplicate tool ID in another assistant message is a distinct attempt.
   const repeated = events.slice(3, 6).map((event) => ({ ...event, data: { ...event.data, assistantMessageID: "msg_second_attempt" } }));
   events.splice(6, 0, ...repeated);
@@ -224,8 +244,8 @@ test("actual v2 default loader consumes recorded native stream and message-scope
   let disposed = false;
   try {
     const cleanup = await nativePlugin.setup({
-      app: { version: "2.0.24" }, location: { directory: path.join(harness.root, "proj") },
-      session: { async hook() { return { async dispose() {} }; } },
+      app: { version: nativeVersion }, location: { directory: path.join(harness.root, "proj") },
+      session: { async get() { throw new Error("unused identity lookup"); }, async hook() { return { async dispose() {} }; } },
       event: { async *subscribe() { for (const event of events) yield event; } },
       tool: { async hook() { return { async dispose() { disposed = true; } }; } },
     } as any);
@@ -233,7 +253,7 @@ test("actual v2 default loader consumes recorded native stream and message-scope
     const captures = capturesOf(harness.captureFile);
     assert.ok(captures.length > 0, "native terminal did not ingest");
     const envelope = JSON.parse(captures.at(-1)!.stdin) as Envelope;
-    assert.equal(envelope.sdk_version, "2.0.24");
+    assert.equal(envelope.sdk_version, nativeVersion);
     assert.equal(envelope.trigger, true);
     assert.ok(envelope.records.some((record) => record.text === "QA_OBSERVER_DONE"));
     const completed = envelope.records.filter((record) => record.tool_status === "completed");

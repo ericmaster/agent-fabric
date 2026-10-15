@@ -1,4 +1,4 @@
-// Spec: docs/specs/task-retrospective.md — OpenCode 2.0.24 history adapter.
+// Spec: docs/specs/task-retrospective.md — OpenCode 2.0.24/2.0.27 history adapter.
 package retrospective
 
 import (
@@ -123,7 +123,7 @@ func (c *HTTPSessionClient) nativeHistory(ctx context.Context, id string) ([]Ses
 			case "assistant":
 				allowed += "agent model content snapshot finish rawFinish providerState cost tokens error retry "
 			case "idle":
-				allowed += "outcome "
+				allowed += "outcome error "
 			case "agent-switched":
 				allowed += "agent previous "
 			case "model-switched":
@@ -269,6 +269,30 @@ func normalizeNativeHistory(wire nativeHistoryRow, id string) (SessionMessageRow
 		row.Control = wire.Type
 		switch wire.Type {
 		case "idle":
+			// 2.0.27 adds optional SessionError.Error. Validate shape, but never
+			// expose provider bodies or let error text override the typed outcome.
+			if len(wire.Error) > 0 {
+				var fields map[string]json.RawMessage
+				if json.Unmarshal(wire.Error, &fields) != nil {
+					return row, bad
+				}
+				for _, value := range fields {
+					if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+						return row, bad
+					}
+				}
+				var structured struct {
+					Type     *string `json:"type"`
+					Message  *string `json:"message"`
+					Status   *int    `json:"status,omitempty"`
+					Response *struct {
+						Body *string `json:"body"`
+					} `json:"response,omitempty"`
+				}
+				if decodeNativeHistory(wire.Error, &structured) != nil || structured.Type == nil || structured.Message == nil || (structured.Status != nil && (*structured.Status < 100 || *structured.Status > 599)) || (structured.Response != nil && structured.Response.Body == nil) {
+					return row, bad
+				}
+			}
 			switch wire.Outcome {
 			case "succeeded":
 			case "failed":
