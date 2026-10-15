@@ -34,6 +34,9 @@ var (
 	// ErrMalformedResponse is returned when a 200 response is not parseable
 	// into the choice contract across all attempts.
 	ErrMalformedResponse = errors.New("jev: malformed response")
+	// ErrUnknownResponseModel preserves malformed-response retry/status semantics
+	// without exposing the untrusted model value or response body.
+	ErrUnknownResponseModel = fmt.Errorf("%w: unrecognized response model", ErrMalformedResponse)
 	// ErrInvalidRequest is an encoding/validation failure, never a size rejection.
 	ErrInvalidRequest = errors.New("evaluator: invalid request")
 )
@@ -406,7 +409,11 @@ func (j *JevClient) attempt(ctx context.Context, body []byte, request *ChoiceReq
 		return nil, true, ErrMalformedResponse
 	}
 	internal := &ChoiceResponse{}
-	if wire.Model != "glide" || wire.Answers == nil || len(wire.Answers) != len(providerQuestions(request)) {
+	// Exact observed compatibility only; the marker is not authentication.
+	if wire.Model != "glide" && wire.Model != "glide_v2" {
+		return nil, true, ErrUnknownResponseModel
+	}
+	if wire.Answers == nil || len(wire.Answers) != len(providerQuestions(request)) {
 		return nil, true, ErrMalformedResponse
 	}
 	for _, question := range providerQuestions(request) {

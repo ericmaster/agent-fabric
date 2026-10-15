@@ -304,11 +304,22 @@ another engine. Authoritative API: [System One](https://docs.fastino.ai/inferenc
 
 Wire `{model,state,questions}` uses ID-keyed Choice questions with instructions
 and 2–255 named criteria; evidence is folded into `state.evidence[id]`. Require
-exact question/choice IDs, `model:"glide"`, Choice type, finite confidence and
+exact question/choice IDs, response model exactly `glide` or `glide_v2`, Choice type, finite confidence and
 complete probability distribution in [0,1], sum within .00001 of 1, chosen
 probability maximal. Reject duplicate JSON keys, depth>128, unknown response
 fields except documented ignored usage/token_usage, forged IDs and malformed
 choices. Invalid/missing evidence abstains, never invents citations/verdicts.
+
+The exact `glide_v2` compatibility value is observed live evidence, not an
+officially listed alias: the 2026-10-15 authenticated pinned request returned it
+(sanitized evidence: `.artifacts-manager/agf1-glide-model-discriminator-evidence/`).
+OpenAPI declares an engine-name string (example `glide`); the guide still says
+to expect `glide`. No arbitrary string, prefix match or future version is accepted.
+Missing/null/wrong-type/unrecognized models fail closed; unrecognized string
+models surface `unknown_provider_model` without echoing the value/body.
+The model marker is routing compatibility, not proof of response authenticity.
+Report `model.model` remains the pinned requested model `fastino/GLiDE`, not the
+observed response engine; no engine observation field is added by this fix.
 
 Preserve actual wire limits: 24,000 UTF-8 bytes/request and 16,000 bytes folded
 state+longest keyed question, measured by the actual wire encoder before send;

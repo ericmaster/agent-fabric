@@ -93,6 +93,14 @@ queries, fragments or non-root paths in a server URL.
    verification of its current contract. For live Fastino requests consider
    `http_timeout: "300s"` (provider recommendation); retries remain bounded.
 
+   The request remains pinned to `fastino/GLiDE`. Responses accept exactly
+   `glide` and observed-live `glide_v2`; the latter is not an officially listed
+   alias (OpenAPI says string/example `glide`, the guide still expects `glide`).
+   Report model metadata names the requested model, not the response engine.
+   Unknown versions fail closed with `unknown_provider_model`; do not widen the
+   allowlist from spelling similarity or treat a model marker as authentication.
+   Captured evidence: `.artifacts-manager/agf1-glide-model-discriminator.md`.
+
 The observation plugin is a thin adapter: it converts native events into an
 envelope and hands the JSON to `agf retrospective ingest` over stdin. It
 records no hidden reasoning, never posts into the source session, and never

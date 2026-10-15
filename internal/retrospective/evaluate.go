@@ -306,7 +306,7 @@ func signalProviderReason(err error) string {
 	for _, entry := range []struct {
 		err    error
 		reason string
-	}{{ErrSizeRejected, "provider_size_rejected"}, {ErrContentOverBudget, "oversized_packet"}, {ErrBudgetExhausted, "request_budget_exhausted"}, {ErrMalformedResponse, "malformed_provider_response"}, {ErrInvalidRequest, "invalid_packet"}, {ErrRateLimited, "provider_rate_limited"}, {ErrPermanent, "provider_rejected"}, {ErrUnavailable, "provider_unavailable"}, {context.DeadlineExceeded, "provider_timeout"}, {context.Canceled, "interpretation_cancelled"}} {
+	}{{ErrSizeRejected, "provider_size_rejected"}, {ErrContentOverBudget, "oversized_packet"}, {ErrBudgetExhausted, "request_budget_exhausted"}, {ErrUnknownResponseModel, "unknown_provider_model"}, {ErrMalformedResponse, "malformed_provider_response"}, {ErrInvalidRequest, "invalid_packet"}, {ErrRateLimited, "provider_rate_limited"}, {ErrPermanent, "provider_rejected"}, {ErrUnavailable, "provider_unavailable"}, {context.DeadlineExceeded, "provider_timeout"}, {context.Canceled, "interpretation_cancelled"}} {
 		if errors.Is(err, entry.err) {
 			return entry.reason
 		}
