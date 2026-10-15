@@ -18,8 +18,12 @@ evidence and independent review/QA still gate writes. Contract:
 (observation section). Everything is one explicit global opt-in; nothing runs by
 default.
 
-**Phase 2 candidate:** default analyze/drain use the single signal-first pipeline.
-Independent review and Phase 3 acceptance are pending; nothing is installed or
+**Controlled acceptance:** default analyze/drain use the single signal-first pipeline.
+Phase 3 fixtures test file-task failure/repair/success with protocol-mocked native
+roles (`go test ./internal/retrospective -run TestControlledNativeCatalogRepair -v`)
+and frozen public CLI observations (`go test ./cmd/agent-fabric -run TestFrozenSignalsPublicCLI -v`).
+Mocked role replies are NOT live independent reviewer/QA evidence. Independent
+review and supervisor live/UI acceptance are pending; nothing is installed or
 activated by this change. The [canonical plan](../../.artifacts-manager/plan-task-retrospective.md)
 owns remaining acceptance. Replay with `agf retrospective analyze --input
 trace.json --output report.json`; no candidate means no provider request, and

@@ -15,12 +15,14 @@ server. The replacement loop is observe → ingest → deterministic signals/rep
 → bounded semantic interpretation (only with candidates) → guarded dispatch.
 Supervisor ledgers are not a retrospective database.
 
-**Delivery status:** the Phase 2 candidate implements the single signal-first
+**Delivery status:** the implemented pipeline uses the single signal-first
 analyzer for CLI/drain and production config. The old outcome/per-call/omission
 engine is removed. Phase 1's `--signals-only` flag is retired with an explicit
 migration error; `DetectSignals` remains the common provider-independent module,
-not another evaluator. Independent Phase 2 review and Phase 3 acceptance remain
-pending; this contract does not claim live acceptance or deployment.
+not another evaluator. Controlled Phase 3 fixtures exercise actual file-task
+before/after checks with protocol-mocked native roles. Their independent review,
+supervisor QA and live/UI acceptance remain pending; this contract does not claim
+live acceptance or deployment.
 The model success gate, every-call classification, omission detection and
 N>=20/>5% waste-rate routing are removed from the target contract, not retained
 as an alternate engine. Requirement omission is deferred outside the minimal loop.
@@ -418,6 +420,36 @@ Also retired: `min_fragment_bytes` (there is no full-trace fragmentation).
 omit it to run the single pipeline. Legacy report files themselves are unchanged.
 
 ## Testing contract
+
+### Controlled Phase 3 evidence (not live acceptance)
+
+The frozen positive/negative observations must also traverse public CLI analyze,
+preserving exact rules/call IDs, counts, abstentions, coverage and advisory routing.
+Do not add missing intent to frozen inputs to force semantic eligibility.
+Controlled native repair tests may inject predetermined interpretations ONLY
+through the existing test ChoiceClient. Start with Analyze's original failed
+task report (`repair_safe:false`, no injected findings); use public Dispatch and
+the existing native protocol mock for corrector/reviewer/QA, not direct apply.
+
+A disposable catalog lookup task reads an owning Markdown instruction, then
+loads its declared JSON catalog and checks a known SKU/price. Its stale path
+must fail on the original instruction, while a direct read proves the canonical
+catalog exists. The exact same task succeeds only after the Go-owned minimal
+repair; unknown SKU/wrong price controls still fail. A read-only protocol-mocked
+reviewer checks the exact candidate/source/digest and a separately identified
+protocol-mocked QA checks actual postimage and task results. Their typed results
+are synthetic protocol evidence, NOT actual independent model execution.
+Do not grant native roles forbidden tools: this fixture requires only file reads,
+JSON interpretation and equality checks; the Go test harness executes the checks.
+Retain before/after output, source hashes, proposal/digest and role/root receipts.
+Reject review/digest failures, preserve dirty source, and roll back only a matching
+postimage on QA rejection. Reuse existing protected-target/provenance/cause,
+incomplete-evidence, WAL/restart, origin/dedup and concurrent-edit regressions.
+
+Phase 3 fixture/test readiness never closes live native/UI acceptance. Actual
+fresh independent code review and supervisor-scheduled QA remain mandatory;
+live corrector/reviewer/QA roots, reconnect desktop/mobile evidence, and natural
+GLiDE end-to-end learning are UNMET until separately demonstrated.
 
 - Unit tests in `internal/retrospective` and `cmd/agent-fabric` cover the
   deterministic signals/compact interpretation/redaction contracts with recorded mock

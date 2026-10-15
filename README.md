@@ -209,8 +209,9 @@ Agent Fabric's opt-in retrospective observes OpenCode tasks and supports
 guarded instruction repair in separate visible roots. The approved replacement
 contract detects deterministic friction first and uses bounded GLiDE evidence
 interpretation only for candidates, not modeled task success or every call.
-The Phase 2 candidate replaces the old success/per-call evaluator in analyze/drain;
-independent review and Phase 3 acceptance remain pending. The
+Analyze/drain replace the old success/per-call evaluator. Controlled Phase 3 tests
+exercise a real file-task before/after repair with explicitly mocked native roles;
+independent review and supervisor live/UI acceptance remain pending. The
 [canonical plan](.artifacts-manager/plan-task-retrospective.md) owns acceptance.
 Nothing is activated by this change. `--signals-only` and old success/rate config
 keys are retired with explicit errors; v1 reports cannot start new repairs.

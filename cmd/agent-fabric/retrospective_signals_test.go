@@ -6,8 +6,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/ericmaster/agent-fabric/internal/retrospective"
 )
 
 // signalsNoNetwork makes any accidental provider request fail the public-path test.
@@ -18,6 +21,69 @@ type signalsNoNetwork struct{ t *testing.T }
 func (s signalsNoNetwork) RoundTrip(*http.Request) (*http.Response, error) {
 	s.t.Fatal("signals-only attempted network")
 	return nil, nil
+}
+
+// TestFrozenSignalsPublicCLI replays the frozen positive AND negative inputs
+// unchanged through the public runtime path. Missing context is never patched
+// merely to make a fixture semantically eligible.
+// Spec: docs/specs/task-retrospective.md via runRetrospectiveAnalyze
+func TestFrozenSignalsPublicCLI(t *testing.T) {
+	body, err := os.ReadFile("../../fixtures/retrospective/signals/frozen.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixtures []struct {
+		Name          string                `json:"name"`
+		Trace         json.RawMessage       `json:"trace"`
+		Expected      map[string][][]string `json:"expected"`
+		TerminalCalls int                   `json:"terminal_calls"`
+		RawFailures   int                   `json:"raw_failures"`
+	}
+	if err = json.Unmarshal(body, &fixtures); err != nil {
+		t.Fatal(err)
+	}
+	previous := http.DefaultTransport
+	http.DefaultTransport = signalsNoNetwork{t}
+	t.Cleanup(func() { http.DefaultTransport = previous })
+	t.Setenv("FASTINO_API_KEY", "synthetic-unused-key")
+	for _, f := range fixtures {
+		t.Run(f.Name, func(t *testing.T) {
+			dir := t.TempDir()
+			input, output := filepath.Join(dir, "trace.json"), filepath.Join(dir, "report.json")
+			if err := os.WriteFile(input, f.Trace, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := runRetrospective([]string{"analyze", "--input", input, "--output", output}); err != nil {
+				t.Fatal(err)
+			}
+			r, _, err := retrospective.LoadReport(output)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual := map[string][][]string{}
+			for _, s := range r.Signals {
+				actual[s.RuleID] = append(actual[s.RuleID], s.CallIDs)
+			}
+			if !reflect.DeepEqual(actual, f.Expected) || r.Counts.TerminalCalls != f.TerminalCalls || r.Counts.RawFailures != f.RawFailures {
+				t.Fatal("public runtime changed frozen observations", actual)
+			}
+			var trace retrospective.Trace
+			if err := json.Unmarshal(f.Trace, &trace); err != nil {
+				t.Fatal(err)
+			}
+			detected, err := retrospective.DetectSignals(&trace, f.Trace, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(r.Coverage, detected.Coverage) || !reflect.DeepEqual(r.Abstentions, detected.Abstentions) || !reflect.DeepEqual(r.Counts, detected.Counts) {
+				t.Fatal("CLI lost detector accounting")
+			}
+			if r.Dispatch.Eligible || r.RepairSafe || r.Usage.Requests != 0 || r.Coverage.EvidenceComplete || r.Routing.Candidates != (len(f.Expected) > 0) {
+				t.Fatal("frozen missing context acquired authority")
+			}
+			t.Logf("fixture=%s rules=%v terminal=%d failures=%d abstentions=%v coverage=%v requests=%d repair_safe=%t", f.Name, actual, r.Counts.TerminalCalls, r.Counts.RawFailures, r.Abstentions, r.Coverage.Reasons, r.Usage.Requests, r.RepairSafe)
+		})
+	}
 }
 
 // TestSignalsOnlyPublicReplay is the counterfactual regression: the original
