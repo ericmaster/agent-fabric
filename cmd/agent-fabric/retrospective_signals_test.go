@@ -38,7 +38,7 @@ func TestSignalsOnlyPublicReplay(t *testing.T) {
 				if err := os.WriteFile(input, []byte(body), 0600); err != nil {
 					t.Fatal(err)
 				}
-				if err := runRetrospective([]string{"analyze", "--signals-only", "--input", input, "--output", output}); err != nil {
+				if err := runRetrospective([]string{"analyze", "--input", input, "--output", output}); err != nil {
 					t.Fatal(err)
 				}
 				data, err := os.ReadFile(output)
@@ -82,5 +82,53 @@ func TestSignalsOnlyPublicReplay(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestSignalsCLIConfigMigration exercises real flag/config ordering and output
+// non-mutation, not just the internal config decoder.
+// Spec: docs/specs/task-retrospective.md via runRetrospectiveAnalyze
+func TestSignalsCLIConfigMigration(t *testing.T) {
+	dir := t.TempDir()
+	input := e2eTrace(t, dir)
+	output := filepath.Join(dir, "report.json")
+	config := filepath.Join(dir, "config.json")
+	for _, body := range []string{`{"tail_steps":10}`, `{"rate_threshold":0.05}`, `{"min_success_probability":0.9}`, `{"signal_cap":101}`, `{"search_min_calls":11}`, `{"minimum_actionability_confidence":0.7}`, `{"model":"not-configurable"}`} {
+		if err := os.WriteFile(config, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := runRetrospective([]string{"analyze", "--input", input, "--output", output, "--config", config}); err == nil {
+			t.Fatal("bad migration config accepted", body)
+		}
+		if _, err := os.Stat(output); !os.IsNotExist(err) {
+			t.Fatal("invalid config wrote output")
+		}
+	}
+	if err := runRetrospective([]string{"analyze", "--signals-only", "--input", input, "--output", output}); err == nil || !strings.Contains(err.Error(), "retired") {
+		t.Fatal("old flag silently accepted", err)
+	}
+	if err := runRetrospective([]string{"analyze", "--signals-only=false", "--input", input, "--output", output}); err == nil || !strings.Contains(err.Error(), "retired") {
+		t.Fatal("explicit false retired flag silently accepted", err)
+	}
+	if err := os.WriteFile(config, []byte(`{"repeat_min_calls":4,"interpretation_signal_cap":2,"minimum_actionability_probability":0.95}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runRetrospective([]string{"analyze", "--input", input, "--output", output, "--config", config}); err != nil {
+		t.Fatal("valid flat signal config rejected", err)
+	}
+	body, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r struct {
+		Thresholds struct {
+			Repeat int `json:"repeat_min_calls"`
+		} `json:"thresholds"`
+		Interpretation struct {
+			Status string `json:"status"`
+		} `json:"interpretation"`
+	}
+	if json.Unmarshal(body, &r) != nil || r.Thresholds.Repeat != 4 || r.Interpretation.Status != "skipped_no_candidates" {
+		t.Fatal("new CLI keys/default routing drift")
 	}
 }

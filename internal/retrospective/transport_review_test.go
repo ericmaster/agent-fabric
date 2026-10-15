@@ -171,7 +171,7 @@ func TestGlideEncodeFailureIsNotSizeRejection(t *testing.T) {
 	request := stageSampleRequest()
 	request.Requests[0].Evidence = json.RawMessage(`{`)
 	_, err := client.Choice(context.Background(), request)
-	if !errors.Is(err, ErrInvalidRequest) || isRepackableSizeError(err) || len(mock.recorded()) != 0 || client.Usage().Requests != 0 {
+	if !errors.Is(err, ErrInvalidRequest) || errors.Is(err, ErrSizeRejected) || errors.Is(err, ErrContentOverBudget) || len(mock.recorded()) != 0 || client.Usage().Requests != 0 {
 		t.Fatalf("encode failure mislabeled/retried: %v", err)
 	}
 }

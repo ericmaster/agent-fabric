@@ -297,7 +297,7 @@ func finishNativeLearning(ctx context.Context, opts DispatchOptions, store *Stor
 				proven = true
 			}
 		}
-		if !proven || len(report.TaskEvidence) == 0 {
+		if !proven || len(report.Evidence) == 0 {
 			return pending(errors.New("native candidate lacks collected causal/source-version evidence; no write"))
 		}
 	}
@@ -359,6 +359,12 @@ func finishNativeLearning(ctx context.Context, opts DispatchOptions, store *Stor
 	if len(receipt.Findings) == 0 && len(candidate.Findings) > 0 {
 		copyReport := *report
 		copyReport.Findings = candidate.Findings
+		copyReport.RepairSafe = actionableEvidence(report) && review.Approved && review.CandidateSHA == digest
+		for _, finding := range candidate.Findings {
+			if finding.FailedBehavior == "" || finding.Recovery == "" || finding.MerelyRead {
+				copyReport.RepairSafe = false
+			}
+		}
 		copyOpts := opts
 		originalValidator := opts.ValidateRepair
 		copyOpts.prepareRepair = func(result *FindingResult, preimage []byte, attempts int) error {

@@ -148,20 +148,22 @@ func eligibleReport(root, task string, findings []Finding) *Report {
 	for _, finding := range findings {
 		sources = append(sources, ReportSourceFile{Path: finding.SourcePath, SHA256: finding.SourceSHA256})
 	}
-	return &Report{
-		SchemaVersion: ReportSchemaVersion,
-		Status:        ReportStatusComplete,
-		Trace: ReportTrace{
-			InputSHA256: strings.Repeat("ab", 32),
-			Identities: Identities{
-				RootSessionID: "root", SessionID: "root", TaskID: task, ExecutionRoot: root,
-			},
-			SourceFiles: sources,
-		},
-		Evaluation: ReportEvaluation{Trigger: TriggerReport{Eligible: true}},
-		Dispatch:   ReportDispatch{Eligible: true},
-		Findings:   findings,
+	trace := signalTrace([]CallRecord{{ID: "fixture-failure", Seq: 1, Tool: "read", Status: StatusError, Input: "wrong/docs", Result: []Fragment{{ID: "error", Text: "File not found"}}}, {ID: "fixture-recovery", Seq: 2, Tool: "read", Status: StatusSuccess, Input: "project/docs", Result: []Fragment{{ID: "recovered", Text: "Read correct project docs"}}}})
+	trace.Identities.ExecutionRoot = root
+	trace.Identities.TaskID = task
+	for _, source := range sources {
+		trace.SourceFiles = append(trace.SourceFiles, SourceRef{Path: source.Path, SHA256: source.SHA256})
 	}
+	raw, _ := json.Marshal(trace)
+	report, err := Analyze(context.Background(), DefaultConfig(), trace, raw, &fixtureSignalClient{choice: "actionable"})
+	if err != nil {
+		panic(err)
+	}
+	report.Findings = findings
+	// Labelled interpreted-issue injection ONLY in this test harness. Production
+	// Analyze never sets repair_safe; actual native independent review does.
+	report.RepairSafe = true
+	return report
 }
 
 func writeReport(t *testing.T, dir string, report *Report) string {

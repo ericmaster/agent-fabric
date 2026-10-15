@@ -4,6 +4,7 @@ package retrospective
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -124,51 +125,18 @@ func decodeWireChoiceRequest(body []byte) *ChoiceRequest {
 			choices = append(choices, choice)
 		}
 		sort.Strings(choices)
-		internal := Question{ID: id, Text: question.Instructions, Choices: canonicalChoices(id, question.Instructions, choices), Subject: strings.TrimPrefix(id, "q-")}
+		internal := Question{ID: id, Text: question.Instructions, Choices: choices}
 		internal.Evidence = state.Evidence[id]
-		switch {
-		case id == "q-context-page":
-			internal.Scope = "context-only"
-		case id == outcomeQuestionID:
-			internal.Subject = "task"
-			internal.Scope = ScopeOutcome
-		case strings.Contains(question.Instructions, requirementQuestionText):
-			internal.Scope = ScopeRequirementOmission
-		default:
-			internal.Scope = ScopeCallClassification
+		fmt.Sscanf(question.Instructions, "Subject ID: %s (scope: %s", &internal.Subject, &internal.Scope)
+		internal.Scope = strings.TrimSuffix(internal.Scope, ").")
+		if internal.Evidence == nil {
+			internal.Evidence = state.Evidence[internal.Subject]
 		}
 		internal.Text = strings.TrimPrefix(internal.Text, "Subject ID: "+internal.Subject+" (scope: "+internal.Scope+"). ")
 		decoded.Requests = append(decoded.Requests, internal)
 	}
 	sort.Slice(decoded.Requests, func(i, j int) bool { return decoded.Requests[i].ID < decoded.Requests[j].ID })
 	return decoded
-}
-
-// canonicalChoices restores the evaluator's declared choice order when the
-// decoded set matches one of the known question contracts.
-func canonicalChoices(id, instructions string, sorted []string) []string {
-	var declared []string
-	switch {
-	case id == outcomeQuestionID:
-		declared = outcomeChoices
-	case strings.Contains(instructions, requirementQuestionText):
-		declared = requirementChoices
-	default:
-		declared = callClassificationChoices
-	}
-	if len(declared) != len(sorted) {
-		return sorted
-	}
-	set := make(map[string]bool, len(sorted))
-	for _, choice := range sorted {
-		set[choice] = true
-	}
-	for _, choice := range declared {
-		if !set[choice] {
-			return sorted
-		}
-	}
-	return append([]string(nil), declared...)
 }
 
 // record appends one captured call and returns its 1-based index.
@@ -204,9 +172,9 @@ func newJev(t *testing.T, cfg *Config, sleep func(d time.Duration)) *JevClient {
 }
 
 func stageSampleRequest() *ChoiceRequest {
-	return buildRequest(GlideModel, []byte(`{"stage":"one"}`), nil, []Question{{
-		ID: outcomeQuestionID, Subject: "task", Scope: ScopeOutcome,
-		Text: "any", Choices: outcomeChoices,
+	return buildRequest(GlideModel, []byte(`{"evidence":{}}`), []Question{{
+		ID: "action:signal", Subject: "signal", Scope: ScopeActionability,
+		Text: "interpret observed friction", Choices: []string{"actionable", "justified", "uncertain"},
 	}})
 }
 

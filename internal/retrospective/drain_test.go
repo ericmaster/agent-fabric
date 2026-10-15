@@ -212,6 +212,15 @@ func (m *mockChoiceServer) handler() http.Handler {
 				}
 			}
 			wire.Choice = answer.Choice
+			if question.Scope == ScopeSupport && answer.Choice == "observed" {
+				for _, id := range question.Choices {
+					if id != "insufficient-evidence" {
+						answer.Choice = id
+						wire.Choice = id
+						break
+					}
+				}
+			}
 			if answer.Confidence != nil {
 				confidence := *answer.Confidence
 				wire.Confidence = &confidence
@@ -239,13 +248,12 @@ func successScript(t *testing.T) func(subject, scope string) (string, []string, 
 	t.Helper()
 	return func(subject, scope string) (string, []string, float64, float64, bool) {
 		switch scope {
-		case ScopeOutcome:
-			return "succeeded", nil, 0.98, 0.92, true
-		case ScopeCallClassification:
-			if strings.Contains(subject, "call_wrong") {
-				return "wrong-direction", []string{"wrong-direction"}, 0.95, 0.90, true
-			}
-			return "productive", nil, 0.95, 0.90, true
+		case ScopeActionability:
+			return "actionable", nil, .98, .92, true
+		case ScopeCause:
+			return "instruction", nil, .98, .92, true
+		case ScopeSupport:
+			return "observed", nil, .98, .92, true
 		default:
 			return "", nil, 0, 0, false
 		}
@@ -257,10 +265,10 @@ func successScript(t *testing.T) func(subject, scope string) (string, []string, 
 func unknownScript(t *testing.T) func(subject, scope string) (string, []string, float64, float64, bool) {
 	t.Helper()
 	return func(subject, scope string) (string, []string, float64, float64, bool) {
-		if scope == ScopeOutcome {
-			return "unknown", nil, 0.40, 0.70, true
+		if scope == ScopeSupport {
+			return "insufficient-evidence", nil, .99, .99, true
 		}
-		return "", nil, 0, 0, false
+		return "uncertain", nil, .99, .99, true
 	}
 }
 
@@ -477,7 +485,7 @@ func drainCluster(t *testing.T, f *loopFixture, envKey string) *DrainSummary {
 func pageSubjects(request ChoiceRequest) int {
 	score := 0
 	for _, question := range request.Requests {
-		if question.Scope == ScopeCallClassification || question.Scope == ScopeRequirementOmission {
+		if question.Scope == ScopeActionability {
 			score++
 		}
 	}
@@ -575,51 +583,24 @@ func TestLoopDrainSuccessFixesOwningInstructionExactlyOnce(t *testing.T) {
 	if !strings.Contains(promptPayload.Text, "authoritative_report_locator") {
 		t.Fatalf("intake packet missing the report locator: %s", promptPayload.Text)
 	}
-	// The success payload / pages order: the stage one question is sent
-	// before any stage-two page; the outcome must have been "succeeded".
+	// Only compact signal interpretation is requested, not success or every-call classification.
 	jevRequests := f.jev.recorded()
-	if len(jevRequests) < 2 {
-		t.Fatalf("jev requests = %d (stage one + pages)", len(jevRequests))
+	if len(jevRequests) == 0 || len(jevRequests) > 10 {
+		t.Fatal("unbounded or missing signal packets")
 	}
-	if len(jevRequests[0].Requests) != 1 || jevRequests[0].Requests[0].Scope != ScopeOutcome || jevRequests[0].Requests[0].ID != outcomeQuestionID {
-		t.Fatalf("first request = %+v", jevRequests[0].Requests[0])
-	}
-	var evidence map[string]json.RawMessage
-	if err := json.Unmarshal(jevRequests[0].Requests[0].Evidence, &evidence); err != nil {
-		t.Fatal(err)
-	}
-	if _, present := evidence["user_messages"]; !present {
-		t.Fatalf("stage-one user_messages missing")
-	}
-	if _, present := evidence["final_assistant_response"]; !present {
-		t.Fatalf("stage-one final_assistant_response missing")
-	}
-	if _, present := evidence["last_ten_steps"]; !present {
-		t.Fatalf("stage-one last_ten_steps missing")
-	}
-	if len(evidence) != 3 {
-		t.Fatalf("stage-one payload carries foreign fields: %v", evidence)
-	}
-	stagePages := 0
-	classifyCalls := 0
 	for _, request := range jevRequests {
+		if len(request.Requests) != 3 {
+			t.Fatal("not one three-choice signal packet")
+		}
 		for _, question := range request.Requests {
-			if question.Scope != ScopeCallClassification {
-				continue
+			if !containsString([]string{ScopeActionability, ScopeCause, ScopeSupport}, question.Scope) {
+				t.Fatal("obsolete question scope")
 			}
-			if strings.Contains(question.Subject, "call_wrong") {
-				classifyCalls++
+			var packet candidatePacket
+			if json.Unmarshal(question.Evidence, &packet) != nil || len(packet.Records) == 0 || packet.Signal.ID != question.Subject {
+				t.Fatal("missing actual signal/sequence evidence")
 			}
 		}
-		if pageSubjects(request) > 0 {
-			stagePages++
-		}
-	}
-	if stagePages == 0 {
-		t.Fatalf("stage two delivered no pages")
-	}
-	if classifyCalls != 6 {
-		t.Fatalf("wrong-directory calls classified %d times (want 6: one per unique call", classifyCalls)
 	}
 	// The owning instruction is repaired exactly once in place.
 	fixed := readFileText(t, f.agentSource)

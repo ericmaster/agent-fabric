@@ -213,27 +213,35 @@ func runRetrospectiveDrain(args []string) error {
 // retrospectiveAnalyzeOptions carries the analyze command flags.
 // Spec: docs/specs/task-retrospective.md via runRetrospectiveAnalyze
 type retrospectiveAnalyzeOptions struct {
-	input       string
-	output      string
-	config      string
-	signalsOnly bool
+	input  string
+	output string
+	config string
 }
 
-// runRetrospectiveAnalyze replays one trace through the bounded success gate
-// and the paginated evaluation, writing the versioned report to --output.
-// The host supplies TYPESAFE_API_KEY from the environment; it stays in
+// runRetrospectiveAnalyze detects signals then interprets bounded candidates,
+// writing the versioned report to --output even without a provider.
+// The host supplies FASTINO_API_KEY from the environment; it stays in
 // process memory and is never persisted.
 // Spec: docs/specs/task-retrospective.md
 func runRetrospectiveAnalyze(args []string) error {
 	fs := flag.NewFlagSet("retrospective analyze", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	options := &retrospectiveAnalyzeOptions{}
+	var retiredSignals bool
 	fs.StringVar(&options.input, "input", "", "task trace JSON file (schema v1)")
 	fs.StringVar(&options.output, "output", "", "retrospective report JSON path")
 	fs.StringVar(&options.config, "config", "", "optional retrospective config JSON (endpoint, budgets, thresholds, extra redact patterns)")
-	fs.BoolVar(&options.signalsOnly, "signals-only", false, "offline Phase 1 signal report; no evaluation or dispatch")
+	fs.BoolVar(&retiredSignals, "signals-only", false, "retired Phase 1 flag; omit to use the integrated signal pipeline")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "signals-only" {
+			retiredSignals = true
+		}
+	})
+	if retiredSignals {
+		return fmt.Errorf("--signals-only is retired: analyze now always detects signals; omit this flag")
 	}
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected arguments: %s", fs.Args()[0])
@@ -262,19 +270,6 @@ func runRetrospectiveAnalyze(args []string) error {
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return fmt.Errorf("decode trace %s: trailing data", options.input)
 	}
-	if options.signalsOnly {
-		signalConfig := retrospective.DefaultSignalConfig()
-		signalConfig.RedactPatterns = cfg.RedactPatterns
-		report, err := retrospective.DetectSignals(trace, rawInput, &signalConfig)
-		if err != nil {
-			return err
-		}
-		if err := retrospective.WriteSignalReport(options.output, report); err != nil {
-			return err
-		}
-		fmt.Printf("retrospective signals=%d requests=0 repair_safe=false\n", report.Counts.Signals)
-		return nil
-	}
 	client := buildRetrospectiveClient(cfg, retrospective.EvaluatorAPIKey(cfg.Evaluator))
 	report, err := retrospective.Analyze(context.Background(), cfg, trace, rawInput, client)
 	if err != nil {
@@ -283,8 +278,8 @@ func runRetrospectiveAnalyze(args []string) error {
 	if err := retrospective.WriteReport(options.output, report); err != nil {
 		return err
 	}
-	fmt.Printf("retrospective report status=%s requests=%d trigger=%t\n",
-		report.Status, report.Usage.Requests, report.Evaluation.Trigger.Eligible)
+	fmt.Printf("retrospective report status=%s signals=%d requests=%d actionable=%t\n",
+		report.Status, report.Counts.Signals, report.Usage.Requests, report.Routing.Actionable)
 	return nil
 }
 

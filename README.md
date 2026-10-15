@@ -209,9 +209,11 @@ Agent Fabric's opt-in retrospective observes OpenCode tasks and supports
 guarded instruction repair in separate visible roots. The approved replacement
 contract detects deterministic friction first and uses bounded GLiDE evidence
 interpretation only for candidates, not modeled task success or every call.
-**Implementation pending:** current code still uses the superseded success-gated
-evaluator; the [canonical plan](.artifacts-manager/plan-task-retrospective.md)
-defines the remaining three phases. These docs do not claim the replacement is live.
+The Phase 2 candidate replaces the old success/per-call evaluator in analyze/drain;
+independent review and Phase 3 acceptance remain pending. The
+[canonical plan](.artifacts-manager/plan-task-retrospective.md) owns acceptance.
+Nothing is activated by this change. `--signals-only` and old success/rate config
+keys are retired with explicit errors; v1 reports cannot start new repairs.
 
 Evaluation defaults to Fastino GLiDE using host `FASTINO_API_KEY` (never
 persisted). Jev is unavailable pending a verified current contract. Local

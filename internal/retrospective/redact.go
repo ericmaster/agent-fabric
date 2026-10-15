@@ -59,6 +59,11 @@ func defaultRails() []rail {
 			replacement: redactBearer,
 		},
 		{
+			name:        "json-secret-assignment",
+			pattern:     regexp.MustCompile(`(?i)("(?:password|passwd|secret|token|passphrase|api[-_]?key|apikey|access[-_]?token|refresh[-_]?token|client[-_]?secret)[a-z0-9_-]*"\s*:\s*)"(?:[^"\\]|\\.)*"`),
+			replacement: `${1}"` + redactSecretValue + `"`,
+		},
+		{
 			name: "secret-assignment",
 			// Key name may embed separators (AWS_SECRET_ACCESS_KEY); the value is
 			// quoted or an unquoted single token.

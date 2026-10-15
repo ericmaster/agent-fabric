@@ -108,23 +108,21 @@ func TestRedactorAppliesConfiguredSensitivePatterns(t *testing.T) {
 	}
 }
 
-func TestSafeUnicodeSplittingKeepsRuneBoundaries(t *testing.T) {
+func TestSafeUnicodeEvidenceRetainedOrOmittedWhole(t *testing.T) {
 	content := "привет-мир-🏁-✅-🚨" + strings.Repeat("α", 4096)
-	pieces := utf8Slices(content, 2048)
-	rejoined := ""
-	for _, piece := range pieces {
-		if !utf8.ValidString(piece) {
-			t.Fatalf("piece is not valid UTF-8")
+	trace := signalTrace([]CallRecord{{ID: "unicode", Seq: 1, Tool: "read", Status: StatusError, Input: "read", Result: []Fragment{{ID: "result", Text: content}}}})
+	cfg := DefaultSignalConfig()
+	cfg.EvidenceLimitBytes = 2048
+	r := detectForTest(t, trace, &cfg)
+	for _, record := range r.Evidence {
+		for _, fragment := range record.Result {
+			if !utf8.ValidString(fragment.Text) || fragment.Text != content {
+				t.Fatal("truncated Unicode")
+			}
 		}
-		rejoined += piece
 	}
-	if rejoined != content {
-		t.Fatal("split pieces dropped bytes")
-	}
-	for _, piece := range pieces {
-		if len(piece) > 2048 {
-			t.Fatalf("piece exceeds limit: %d", len(piece))
-		}
+	if r.Coverage.OmittedContextRecords != 1 || r.Coverage.EvidenceComplete {
+		t.Fatal("oversized record hidden")
 	}
 }
 

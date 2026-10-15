@@ -78,31 +78,39 @@ type FrictionSignal struct {
 // SignalCoverage separates observation, retention and omissions, without token guesses.
 // Spec: docs/specs/task-retrospective.md via SignalReport
 type SignalCoverage struct {
-	CollectedRecords      int      `json:"collected_records"`
-	Deduplicated          int      `json:"deduplicated_records"`
-	ExcludedRecords       int      `json:"excluded_records"`
-	OutOfContextScope     int      `json:"out_of_context_scope"`
-	OmittedSignals        int      `json:"omitted_signals"`
-	OmittedEvidenceCalls  int      `json:"omitted_evidence_calls"`
-	OmittedContextRecords int      `json:"omitted_context_records"`
-	EvidenceComplete      bool     `json:"evidence_complete"`
-	Reasons               []string `json:"reasons,omitempty"`
+	RecordDispositions    []SignalRecordDisposition `json:"record_dispositions"`
+	IntervalRecords       int                       `json:"interval_records"`
+	Requirements          int                       `json:"requirements"`
+	CollectedRecords      int                       `json:"collected_records"`
+	Deduplicated          int                       `json:"deduplicated_records"`
+	ExcludedRecords       int                       `json:"excluded_records"`
+	OutOfContextScope     int                       `json:"out_of_context_scope"`
+	OmittedSignals        int                       `json:"omitted_signals"`
+	OmittedEvidenceCalls  int                       `json:"omitted_evidence_calls"`
+	OmittedContextRecords int                       `json:"omitted_context_records"`
+	EvidenceComplete      bool                      `json:"evidence_complete"`
+	Reasons               []string                  `json:"reasons,omitempty"`
 }
 
-// SignalReport is a non-dispatchable v2 preview. Interpretation/integration is Phase 2.
+// SignalRecordDisposition accounts for IDs, never excluded record bodies.
+// Spec: docs/specs/task-retrospective.md via SignalCoverage
+type SignalRecordDisposition struct {
+	ID          string `json:"id"`
+	Kind        string `json:"kind"`
+	Disposition string `json:"disposition"`
+}
+
+// SignalReport is provider-independent data shared with the integrated Report.
 // Spec: docs/specs/task-retrospective.md
 type SignalReport struct {
-	SchemaVersion   int         `json:"schema_version"`
-	Mode            string      `json:"mode"`
-	DetectorVersion string      `json:"detector_version"`
-	Trace           ReportTrace `json:"trace"`
-	TerminalOutcome struct {
-		Status   string `json:"status"`
-		Observed bool   `json:"observed"`
-	} `json:"terminal_outcome"`
-	Thresholds SignalConfig     `json:"thresholds"`
-	Signals    []FrictionSignal `json:"signals"`
-	Counts     struct {
+	SchemaVersion   int              `json:"schema_version"`
+	Mode            string           `json:"mode"`
+	DetectorVersion string           `json:"detector_version"`
+	Trace           ReportTrace      `json:"trace"`
+	TerminalOutcome ObservedOutcome  `json:"terminal_outcome"`
+	Thresholds      SignalConfig     `json:"thresholds"`
+	Signals         []FrictionSignal `json:"signals"`
+	Counts          struct {
 		TerminalCalls   int            `json:"terminal_calls"`
 		RawFailures     int            `json:"raw_failures"`
 		Cancellations   int            `json:"cancellations"`
@@ -114,12 +122,9 @@ type SignalReport struct {
 	Coverage       SignalCoverage            `json:"coverage"`
 	Evidence       []evidenceRecord          `json:"task_evidence"`
 	Redaction      map[string]int            `json:"redaction_substitutions"`
-	Interpretation struct {
-		Status   string `json:"status"`
-		Requests int    `json:"requests"`
-	} `json:"interpretation"`
-	RepairSafe bool           `json:"repair_safe"`
-	Dispatch   ReportDispatch `json:"dispatch"`
+	Interpretation InterpretationReport      `json:"interpretation"`
+	RepairSafe     bool                      `json:"repair_safe"`
+	Dispatch       ReportDispatch            `json:"dispatch"`
 }
 
 // signalCall holds exact local comparison values, never persisted input hashes.
@@ -164,6 +169,12 @@ func DetectSignals(trace *Trace, input []byte, config *SignalConfig) (*SignalRep
 		for name, value := range record.Env {
 			if secretEnvNamePattern.MatchString(name) && value != "" {
 				secrets[value] = true
+				// Inputs can be JSON strings; observed secret values must be
+				// removed in their exact encoded form as well as literal form.
+				encoded, _ := json.Marshal(value)
+				if len(encoded) >= 2 {
+					secrets[string(encoded[1:len(encoded)-1])] = true
+				}
 			}
 		}
 	}
@@ -180,11 +191,11 @@ func DetectSignals(trace *Trace, input []byte, config *SignalConfig) (*SignalRep
 	for _, value := range values {
 		redactor.rails = append(redactor.rails, rail{name: "observed-env-value", pattern: regexp.MustCompile(regexp.QuoteMeta(value)), replacement: redactEnvValue})
 	}
-	r := &SignalReport{SchemaVersion: 2, Mode: "signals_only_phase1", DetectorVersion: SignalDetectorVersion, Thresholds: cfg,
+	r := &SignalReport{SchemaVersion: 2, Mode: "detector_only", DetectorVersion: SignalDetectorVersion, Thresholds: cfg,
 		Signals: []FrictionSignal{}, Evidence: []evidenceRecord{}, Abstentions: map[string]map[string]int{}}
 	r.Counts.ByRule = map[string]int{}
 	r.Counts.MatchingWindows = map[string]int{}
-	r.Dispatch = ReportDispatch{Eligible: false, Reasons: []string{"phase1 signals are observations only; semantic interpretation and guarded integration pending"}}
+	r.Dispatch = ReportDispatch{Eligible: false, Reasons: []string{"detector observations alone never authorize dispatch or repair"}}
 	r.TerminalOutcome.Status = trace.TerminalStatus
 	r.TerminalOutcome.Observed = trace.TerminalStatus != ""
 	if r.TerminalOutcome.Status == "" {
@@ -200,6 +211,7 @@ func DetectSignals(trace *Trace, input []byte, config *SignalConfig) (*SignalRep
 	r.Trace = ReportTrace{SchemaVersion: 1, InputSHA256: hex.EncodeToString(digest[:]), Identities: ids,
 		TerminalStatus: r.TerminalOutcome.Status, BoundarySource: n.BoundarySource, Interval: ReportInterval{StartSeq: n.IntervalStart, EndSeq: n.IntervalEnd}, Deduplicated: n.Deduplicated}
 	r.Coverage = SignalCoverage{EvidenceComplete: true, Deduplicated: n.Deduplicated, CollectedRecords: len(n.Requirements)}
+	r.Coverage.Requirements = len(n.Requirements)
 	for _, reason := range n.Reasons {
 		if reason.Kind != ReasonTerminalAbortError {
 			r.Coverage.Reasons = append(r.Coverage.Reasons, reason.Kind)
@@ -246,6 +258,7 @@ func DetectSignals(trace *Trace, input []byte, config *SignalConfig) (*SignalRep
 			continue
 		}
 		r.Coverage.CollectedRecords++
+		r.Coverage.IntervalRecords++
 		if !record.Terminal() {
 			continue
 		}
@@ -368,7 +381,7 @@ func DetectSignals(trace *Trace, input []byte, config *SignalConfig) (*SignalRep
 		r.Coverage.EvidenceComplete = false
 		r.Coverage.Reasons = append(r.Coverage.Reasons, "evidence_cap_omission")
 	}
-	r.Interpretation.Status = "pending_phase2"
+	r.Interpretation.Status = "not_requested_detector_only"
 	if r.Counts.Signals == 0 {
 		r.Interpretation.Status = "skipped_no_candidates"
 	}
@@ -604,7 +617,10 @@ func (r *SignalReport) retainEvidence(n *Normalized, calls []signalCall, redacto
 		if record.Kind == RecordUserMessage || record.Kind == RecordAssistantFinal || record.Kind == RecordRequirement {
 			wanted[record] = true
 		}
+		position := len(r.Coverage.RecordDispositions)
+		r.Coverage.RecordDispositions = append(r.Coverage.RecordDispositions, SignalRecordDisposition{ID: redactor.Text(record.ID), Kind: record.Kind, Disposition: "retained"})
 		if unsafeSignalRecord(record) {
+			r.Coverage.RecordDispositions[position].Disposition = "excluded:" + exclusionReason(record)
 			r.Coverage.ExcludedRecords++
 			// Deliberately unobserved private reasoning is not a collection gap.
 			if !record.Reasoning && !record.Hidden {
@@ -613,6 +629,7 @@ func (r *SignalReport) retainEvidence(n *Normalized, calls []signalCall, redacto
 			continue
 		}
 		if !wanted[record] {
+			r.Coverage.RecordDispositions[position].Disposition = "out_of_context_scope"
 			r.Coverage.OutOfContextScope++
 			continue
 		}
@@ -630,6 +647,7 @@ func (r *SignalReport) retainEvidence(n *Normalized, calls []signalCall, redacto
 		}
 		body, _ := json.Marshal(gram)
 		if bytesUsed+len(body)+1 > cfg.EvidenceLimitBytes {
+			r.Coverage.RecordDispositions[position].Disposition = "omitted:evidence_byte_cap"
 			r.Coverage.OmittedContextRecords++
 			continue
 		}
@@ -646,6 +664,12 @@ func WriteSignalReport(filename string, report *SignalReport) error {
 	if err != nil {
 		return err
 	}
+	return writeSignalDocument(filename, body)
+}
+
+// Spec: docs/specs/task-retrospective.md via WriteReport and WriteSignalReport
+func writeSignalDocument(filename string, body []byte) error {
+	var err error
 	if err = os.MkdirAll(filepath.Dir(filename), 0700); err != nil {
 		return err
 	}

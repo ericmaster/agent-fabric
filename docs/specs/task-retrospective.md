@@ -15,13 +15,12 @@ server. The replacement loop is observe → ingest → deterministic signals/rep
 → bounded semantic interpretation (only with candidates) → guarded dispatch.
 Supervisor ledgers are not a retrospective database.
 
-**Delivery status:** Phase 1 adds an explicit offline `analyze --signals-only`
-preview backed by `signals.go`, `SignalConfig` and frozen signal fixtures.
-Default analyze/ingest/drain/dispatch and production Config still implement the
-baseline model-heavy evaluator unchanged. Phase 2 performs the SINGLE replacement
-and report/config migration; Phase 3 acceptance remains pending. The offline
-preview cannot interpret, dispatch or authorize repair and is not a permanent
-second evaluator. Planned keys below are not accepted by production Config.
+**Delivery status:** the Phase 2 candidate implements the single signal-first
+analyzer for CLI/drain and production config. The old outcome/per-call/omission
+engine is removed. Phase 1's `--signals-only` flag is retired with an explicit
+migration error; `DetectSignals` remains the common provider-independent module,
+not another evaluator. Independent Phase 2 review and Phase 3 acceptance remain
+pending; this contract does not claim live acceptance or deployment.
 The model success gate, every-call classification, omission detection and
 N>=20/>5% waste-rate routing are removed from the target contract, not retained
 as an alternate engine. Requirement omission is deferred outside the minimal loop.
@@ -137,19 +136,12 @@ Redaction counters (per pattern kind) are recorded; never the original values.
 
 ## Deterministic detection (provider-independent)
 
-Phase 1 entry point: `DetectSignals` → bounded `SignalReport` →
-`WriteSignalReport`; public replay: `agf retrospective analyze --signals-only
---input trace.json --output signals.json`. This flag is a temporary offline
-Phase 1 access path, to be retired into the single pipeline in Phase 2.
-`SignalConfig` exposes detector thresholds to Go callers; CLI uses documented
-defaults plus existing additive redaction patterns from `--config`. Production
-configuration deliberately rejects new signal keys until Phase 2. Preview v2
-reports are labelled `mode: signals_only_phase1`, have zero provider requests,
-`repair_safe:false` and `dispatch.eligible:false` unconditionally. Existing
-strict report loading rejects this preview; it cannot become repair authority.
-Interpretation status is `pending_phase2` with signals, otherwise
-`skipped_no_candidates`. The full v2 semantic/migration contract remains planned.
-Phase 1 retains whole redacted context records under an aggregate 24,000-byte
+Common entry point: `DetectSignals` → bounded detector data → `Analyze` →
+`WriteReport`; public replay: `agf retrospective analyze --input trace.json
+--output report.json`. Production `Config` embeds `SignalConfig` defaults and
+accepts the documented flat detector keys plus conservative semantic thresholds.
+Old `signals_only_phase1` previews remain inspectable, never dispatchable.
+Whole redacted context records are retained under an aggregate 24,000-byte
 compact JSON evidence-array bound (`evidence_limit_bytes`, only lowerable), with exact
 omitted counts. Metadata/signal caps are separate; no byte/token equivalence.
 Abstentions are scalar per-rule/reason counters; raw failures and cancellations
@@ -162,6 +154,13 @@ bodies are excluded with incomplete coverage; secret-file hashes are not copied
 into the preview. Observed secret environment values are scrubbed wherever they
 occur, not only in the environment map. The frozen fixture is
 `fixtures/retrospective/signals/frozen.json`; tests do not resample live output.
+Coverage separates `interval_records` from explicit `requirements`; their sum
+is `collected_records`. Requirements remain intent only, never omission verdicts.
+`record_dispositions` persists redacted stable IDs and retained/out-of-scope/
+excluded/byte-cap reasons; omitted bodies are never persisted as truncated text.
+Redaction covers quoted JSON secret-key assignments including escaped strings,
+and observed secret env values in both literal and JSON-escaped input forms,
+before packet construction and report persistence.
 
 Normalize the resolved interval and descendants by stable `(seq,id)` order;
 deduplicate call IDs before counting. Terminal calls exclude running/empty
@@ -255,6 +254,10 @@ claim of full model coverage. Omission of any required neighborhood, intent,
 signal or source evidence is incomplete, not an innocuous scope exclusion.
 No whole-task per-call questions,
 omission questions, model success request or paginated full-trace classification.
+Wire state holds one packet under `state.evidence[signal_id]`, referenced by
+three ID-bound questions (`action:`, `cause:`, `support:`). Evidence is not
+triplicated per question. A packet digest covers only this redacted packet;
+dispatch rechecks its exact evidence IDs/digest and support call membership.
 Missing intent, material collection gaps, unsafe redaction or an indivisible
 oversized packet retains local signals but skips semantic actionability;
 safe partial evidence may be displayed locally as advisory, never a repair basis.
@@ -282,6 +285,10 @@ success. Host error/abort never becomes success through interpretation/repair.
 Failed/aborted tasks with complete relevant evidence may produce actionable
 advisories; automatic writes additionally require the explicit safeguards below.
 Missing final/child/boundary evidence still blocks writes, not local diagnostics.
+An observed error/abort in a fully collected descendant is likewise not a
+synthetic `partial_stream` gap. Keep genuine child gaps/missing references,
+call statuses and source-session IDs; do not confuse unsuccessful work with
+missing collection or reinterpret it as successful work.
 
 ### Provider and transport safeguards
 
@@ -333,6 +340,19 @@ failed/aborted/incomplete or provider unavailable. Retain:
 - `dispatch` eligibility never alone authorizes writes; downstream verified
   findings and independent native review/QA remain mandatory.
 
+`status` describes collected evidence completeness independently of
+`interpretation.status`. A complete signal report can truthfully record an
+unavailable/incomplete interpretation and an error/aborted source outcome.
+Redaction counters are `redaction_substitutions`; the safety/omission verdict
+is `coverage.evidence_complete` with record dispositions and reasons.
+`Analyze` always emits `repair_safe:false`: `dispatch.eligible` authorizes only
+an independently guarded investigation. Before native application, the exact
+candidate's completed independent reviewer verdict, collected source version,
+failed behavior/recovery and installed QA validation capability permit the
+local application copy to set `repair_safe`. A successful semantic judgment
+alone cannot do this. Existing causal/canonical/hash/WAL checks still run at
+the write sink, and postimage QA failure restores only the matching repair.
+
 Trace/envelope schema v1 remains supported; no invented input fields. Legacy v1
 reports remain inspectable, labelled legacy, but cannot dispatch new repairs;
 re-analyze original evidence into v2, never translate old success/trigger bits
@@ -340,6 +360,10 @@ into write authority. Existing journals/receipts keep their original identity;
 resume validates recorded hashes/provenance and does not replay old evaluation
 or duplicate native roots. Remove obsolete success/rate/tail config keys with
 explicit migration errors rather than silently retaining two evaluators.
+For v1, only an exact already-persisted native pending WAL finding with the same
+report hash/incident, root, independent review and preimage can resume; existing
+journal/reviewer/hash/mode/QA checks apply. Unjournalled/queued legacy reports
+stay read-only and require explicit re-analysis, never blind redispatch.
 
 ## CLI
 
@@ -385,6 +409,13 @@ Dispatch reads this same struct and the dispatch keys below.
 `evaluator` defaults to `glide`;
 `jev` is rejected pending verified contract. The pinned evaluator model is not a
 config key; a `model` key remains unknown.
+Explicit null config values are rejected; omit optional keys to retain defaults.
+Retry-After caps may only be lowered from 30s. Provider failures retain typed
+diagnostic reasons (size rejection, budget, malformed response, rate limit,
+permanent rejection, unavailable/timeout), never arbitrary provider error bodies.
+Also retired: `min_fragment_bytes` (there is no full-trace fragmentation).
+`--signals-only` returns an explicit retirement error before producing output;
+omit it to run the single pipeline. Legacy report files themselves are unchanged.
 
 ## Testing contract
 

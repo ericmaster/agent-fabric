@@ -267,8 +267,8 @@ func TestSignalsEvidenceBoundsAndSchemaControls(t *testing.T) {
 	if err := WriteSignalReport(file, r); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := LoadReport(file); err == nil {
-		t.Fatal("preview can enter legacy dispatch")
+	if preview, _, err := LoadReport(file); err == nil && ineligible(preview) == "" {
+		t.Fatal("preview can enter dispatch")
 	}
 	// Expected private-reasoning exclusion preserves complete observable evidence.
 	trace := signalTrace(nil)

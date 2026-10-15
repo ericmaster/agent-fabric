@@ -691,6 +691,9 @@ func Dispatch(ctx context.Context, opts DispatchOptions) (*Receipt, error) {
 		return nil, err
 	}
 	if reason := ineligible(report); reason != "" {
+		if report.SchemaVersion == 1 {
+			return resumeLegacyDispatch(ctx, opts, report, raw)
+		}
 		return nil, fmt.Errorf("%w: %s", ErrIneligible, reason)
 	}
 	for _, root := range opts.Config.CanonicalRoots {
@@ -1174,16 +1177,13 @@ func ineligible(report *Report) string {
 	if report.Status != ReportStatusComplete {
 		return "status"
 	}
-	if !report.Evaluation.Trigger.Eligible {
-		return "trigger.eligible"
+	if !report.Routing.Actionable || !actionableEvidence(report) {
+		return "routing.actionable evidence"
 	}
 	if !report.Dispatch.Eligible {
 		return "dispatch.eligible"
 	}
-	if report.Redaction.MateriallyIncomplete {
-		return "redaction.materially_incomplete"
-	}
-	if report.Coverage.UndeliveredRecords != 0 {
+	if !report.Coverage.EvidenceComplete || report.Coverage.OmittedSignals+report.Coverage.OmittedEvidenceCalls+report.Coverage.OmittedContextRecords != 0 {
 		return "coverage"
 	}
 	if report.Trace.Identities.TaskID == "" || report.Trace.Identities.ExecutionRoot == "" {
@@ -1193,6 +1193,51 @@ func ineligible(report *Report) string {
 		return "trace input hash"
 	}
 	return ""
+}
+
+// resumeLegacyDispatch permits only an existing exact approved native WAL intent;
+// a v1 success/trigger or queued root can never create new v2 write authority.
+// Spec: docs/specs/task-retrospective.md via Dispatch
+func resumeLegacyDispatch(ctx context.Context, opts DispatchOptions, report *Report, raw []byte) (*Receipt, error) {
+	reject := func() (*Receipt, error) {
+		return nil, fmt.Errorf("%w: legacy v1 report is inspectable only; re-analyze original evidence into v2 (only an existing exact native WAL intent may resume)", ErrIneligible)
+	}
+	client, ok := opts.Client.(*HTTPSessionClient)
+	if !ok || !client.messageGeneration() || opts.Config.StateDir == "" {
+		return reject()
+	}
+	if _, err := os.Stat(opts.Config.StateDir); err != nil {
+		return reject()
+	}
+	for _, root := range opts.Config.CanonicalRoots {
+		if err := checkCanonicalRoot(root); err != nil {
+			return nil, err
+		}
+	}
+	if !withinAny(opts.Config.CanonicalRoots, report.Trace.Identities.ExecutionRoot) {
+		return reject()
+	}
+	if err := consistentSources(report); err != nil {
+		return nil, err
+	}
+	store, err := OpenStore(opts.Config.StateDir)
+	if err != nil {
+		return nil, err
+	}
+	unlock, err := store.Lock()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	incident := incidentID(sha256hex(raw), report.Trace.Identities.TaskID)
+	receipt, err := store.ReadReceipt(incident)
+	if err != nil {
+		return reject()
+	}
+	if receipt.NativeCompleted || receipt.ReportSHA256 != sha256hex(raw) || receipt.RootID == "" || receipt.ReviewVerdict == "" || len(receipt.Findings) != 1 || receipt.Findings[0].Action != StatusPending || receipt.Findings[0].PreimageSHA256 == "" {
+		return reject()
+	}
+	return continueReceipt(ctx, opts, store, receipt, report, learningOrigin(incident))
 }
 
 // consistentSources requires listed source hashes to match finding hashes.
@@ -1410,6 +1455,9 @@ func immutableMarker(path string) bool {
 // applyFindings classifies every finding and writes only a verified text repair.
 // Spec: docs/specs/task-retrospective.md via finishVerified
 func applyFindings(opts DispatchOptions, store *Store, receipt *Receipt, report *Report) ([]FindingResult, []CopyNote, error) {
+	if len(report.Findings) > 0 && !report.RepairSafe {
+		return []FindingResult{{Action: StatusSuggested, Suggestion: "repair_safe is false: independent causal review and possible validation are required", Reviewer: opts.Config.Reviewer, SelfCertified: false}}, nil, nil
+	}
 	if len(report.Findings) == 0 {
 		return []FindingResult{{
 			Action:        StatusSuggested,

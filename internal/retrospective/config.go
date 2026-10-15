@@ -85,12 +85,16 @@ const (
 )
 
 // RubricVersion identifies the deterministic counting rubric of the report.
-const RubricVersion = "task-retrospective-rubric-1"
+const RubricVersion = SignalDetectorVersion
 
 // Config is the single contract for retrospective defaults and thresholds.
 // Later phases (dispatch, OpenCode decoding) read the same struct; adapters
 // must not duplicate the values.
 type Config struct {
+	SignalConfig
+	InterpretationSignalCap     int     `json:"interpretation_signal_cap,omitempty"`
+	MinActionabilityProbability float64 `json:"minimum_actionability_probability,omitempty"`
+	MinActionabilityConfidence  float64 `json:"minimum_actionability_confidence,omitempty"`
 	// Endpoint is the evaluator base URL. Defaults to the Fastino API host; tests
 	// must override it with a local mock endpoint.
 	Endpoint string `json:"endpoint,omitempty"`
@@ -101,7 +105,7 @@ type Config struct {
 	// byte budget (conservative GLiDE state+question bound).
 	StateQuestionLimitBytes int `json:"state_question_limit_bytes,omitempty"`
 	// RequestBudget is the maximum number of HTTP requests per task run,
-	// counted across both stages, retries, and size-rejection splits.
+	// counted across candidate packets and retries.
 	RequestBudget int `json:"request_budget,omitempty"`
 	// HTTPTimeout is the per-request timeout. JSON config accepts a
 	// unit-suffixed string ("30s"); a bare number is rejected so 30 cannot
@@ -109,8 +113,6 @@ type Config struct {
 	HTTPTimeout time.Duration `json:"http_timeout,omitempty"`
 	// MaxAttemptsPerRequest caps attempts (initial + retries) per request.
 	MaxAttemptsPerRequest int `json:"max_attempts_per_request,omitempty"`
-	// MinFragmentBytes is the smallest permitted split fragment size.
-	MinFragmentBytes int `json:"min_fragment_bytes,omitempty"`
 	// BackoffBase is the first backoff delay for retryable transport errors.
 	// JSON config accepts a unit-suffixed string ("300ms").
 	BackoffBase time.Duration `json:"backoff_base,omitempty"`
@@ -119,18 +121,6 @@ type Config struct {
 	BackoffMax time.Duration `json:"backoff_max,omitempty"`
 	// RetryAfterMaxSeconds caps an honored Retry-After seconds value.
 	RetryAfterMaxSeconds int `json:"retry_after_max_seconds,omitempty"`
-	// MinSuccessProbability is the confident success/attribution probability floor.
-	MinSuccessProbability float64 `json:"min_success_probability,omitempty"`
-	// MinConfidence is the confident judgment floor.
-	MinConfidence float64 `json:"min_confidence,omitempty"`
-	// MinCountForRate is the minimum terminal-call count for the rate trigger.
-	MinCountForRate int `json:"min_count_for_rate,omitempty"`
-	// RateThreshold is the exclusive avoidable-rate threshold.
-	RateThreshold float64 `json:"rate_threshold,omitempty"`
-	// RedundantAttemptsRequired is the verified-redundant-attempts exception count.
-	RedundantAttemptsRequired int `json:"redundant_attempts_required,omitempty"`
-	// TailSteps is the stage-one last-N observable steps size.
-	TailSteps int `json:"tail_steps,omitempty"`
 	// RedactPatterns are additional configured sensitive patterns (regular
 	// expressions) beyond the built-in rails. Defaults cannot be removed.
 	RedactPatterns []string `json:"redact_patterns,omitempty"`
@@ -182,29 +172,26 @@ type Config struct {
 // Spec: docs/specs/task-retrospective.md via Config
 func DefaultConfig() *Config {
 	return &Config{
-		Evaluator:                 EvaluatorGlide,
-		Endpoint:                  EvaluatorEndpoint(EvaluatorGlide),
-		RequestLimitBytes:         24_000,
-		StateQuestionLimitBytes:   16_000,
-		RequestBudget:             100,
-		HTTPTimeout:               30 * time.Second,
-		MaxAttemptsPerRequest:     3,
-		MinFragmentBytes:          1024,
-		BackoffBase:               300 * time.Millisecond,
-		BackoffMax:                4 * time.Second,
-		RetryAfterMaxSeconds:      30,
-		MinSuccessProbability:     0.90,
-		MinConfidence:             0.80,
-		MinCountForRate:           20,
-		RateThreshold:             0.05,
-		RedundantAttemptsRequired: 3,
-		TailSteps:                 10,
-		RedactPatterns:            nil,
-		DispatchTimeout:           30 * time.Second,
-		MaxRepairAttempts:         2,
-		SpoolMaxBytes:             2_000_000,
-		DrainMaxJobs:              10,
-		DispatchEndpoint:          EndpointPrompt,
+		SignalConfig:                DefaultSignalConfig(),
+		InterpretationSignalCap:     10,
+		MinActionabilityProbability: .90,
+		MinActionabilityConfidence:  .80,
+		Evaluator:                   EvaluatorGlide,
+		Endpoint:                    EvaluatorEndpoint(EvaluatorGlide),
+		RequestLimitBytes:           24_000,
+		StateQuestionLimitBytes:     16_000,
+		RequestBudget:               30,
+		HTTPTimeout:                 30 * time.Second,
+		MaxAttemptsPerRequest:       3,
+		BackoffBase:                 300 * time.Millisecond,
+		BackoffMax:                  4 * time.Second,
+		RetryAfterMaxSeconds:        30,
+		RedactPatterns:              nil,
+		DispatchTimeout:             30 * time.Second,
+		MaxRepairAttempts:           2,
+		SpoolMaxBytes:               2_000_000,
+		DrainMaxJobs:                10,
+		DispatchEndpoint:            EndpointPrompt,
 	}
 }
 
@@ -212,6 +199,15 @@ func DefaultConfig() *Config {
 // default rails are not user-configurable.
 // Spec: docs/specs/task-retrospective.md via Config
 func (c *Config) Validate() error {
+	if err := c.SignalConfig.validate(); err != nil {
+		return err
+	}
+	if c.InterpretationSignalCap < 1 || c.InterpretationSignalCap > 10 {
+		return fmt.Errorf("interpretation_signal_cap must be within [1,10]")
+	}
+	if !probabilityInRange(c.MinActionabilityProbability) || c.MinActionabilityProbability < .9 || !probabilityInRange(c.MinActionabilityConfidence) || c.MinActionabilityConfidence < .8 {
+		return fmt.Errorf("semantic actionability thresholds may only be raised from .9/.8")
+	}
 	if c.Endpoint == "" {
 		return fmt.Errorf("retrospective config: endpoint is required")
 	}
@@ -230,47 +226,26 @@ func (c *Config) Validate() error {
 	if c.RequestLimitBytes > 24_000 || c.StateQuestionLimitBytes > 16_000 {
 		return fmt.Errorf("retrospective config: byte limits may only be lowered")
 	}
-	if c.RequestLimitBytes < c.MinFragmentBytes {
-		return fmt.Errorf("retrospective config: request_limit_bytes must be >= min_fragment_bytes (%d)", c.MinFragmentBytes)
+	if c.RequestLimitBytes < 1 {
+		return fmt.Errorf("retrospective config: request_limit_bytes must be positive")
 	}
-	if c.StateQuestionLimitBytes < c.MinFragmentBytes || c.StateQuestionLimitBytes > c.RequestLimitBytes {
-		return fmt.Errorf("retrospective config: state_question_limit_bytes must be within [min_fragment_bytes, request_limit_bytes]")
+	if c.StateQuestionLimitBytes < 1 || c.StateQuestionLimitBytes > c.RequestLimitBytes {
+		return fmt.Errorf("retrospective config: state_question_limit_bytes must be positive and no greater than request_limit_bytes")
 	}
-	if c.RequestBudget < 1 {
-		return fmt.Errorf("retrospective config: request_budget must be >= 1")
+	if c.RequestBudget < 1 || c.RequestBudget > 30 {
+		return fmt.Errorf("retrospective config: request_budget must be within [1,30]")
 	}
 	if c.HTTPTimeout <= 0 {
 		return fmt.Errorf("retrospective config: http_timeout must be positive")
 	}
-	if c.MaxAttemptsPerRequest < 1 {
-		return fmt.Errorf("retrospective config: max_attempts_per_request must be >= 1")
-	}
-	if c.MinFragmentBytes < 1 {
-		return fmt.Errorf("retrospective config: min_fragment_bytes must be >= 1")
+	if c.MaxAttemptsPerRequest < 1 || c.MaxAttemptsPerRequest > 3 {
+		return fmt.Errorf("retrospective config: max_attempts_per_request must be within [1,3]")
 	}
 	if c.BackoffBase <= 0 || c.BackoffMax < c.BackoffBase {
 		return fmt.Errorf("retrospective config: backoff_max must be >= backoff_base > 0")
 	}
-	if c.RetryAfterMaxSeconds < 0 {
-		return fmt.Errorf("retrospective config: retry_after_max_seconds must be >= 0")
-	}
-	if c.MinSuccessProbability < 0 || c.MinSuccessProbability > 1 {
-		return fmt.Errorf("retrospective config: min_success_probability must be within [0,1]")
-	}
-	if c.MinConfidence < 0 || c.MinConfidence > 1 {
-		return fmt.Errorf("retrospective config: min_confidence must be within [0,1]")
-	}
-	if c.MinCountForRate < 0 {
-		return fmt.Errorf("retrospective config: min_count_for_rate must be >= 0")
-	}
-	if c.RateThreshold <= 0 || c.RateThreshold >= 1 {
-		return fmt.Errorf("retrospective config: rate_threshold must be within (0,1)")
-	}
-	if c.RedundantAttemptsRequired < 0 {
-		return fmt.Errorf("retrospective config: redundant_attempts_required must be >= 0")
-	}
-	if c.TailSteps < 0 {
-		return fmt.Errorf("retrospective config: tail_steps must be >= 0")
+	if c.RetryAfterMaxSeconds < 0 || c.RetryAfterMaxSeconds > 30 {
+		return fmt.Errorf("retrospective config: retry_after_max_seconds must be within [0,30]")
 	}
 	for _, pattern := range c.RedactPatterns {
 		if pattern == "" {
@@ -318,10 +293,8 @@ func (c *Config) Validate() error {
 var configJSONKeys = map[string]struct{}{
 	"endpoint": {}, "request_limit_bytes": {}, "state_question_limit_bytes": {},
 	"request_budget": {}, "http_timeout": {}, "max_attempts_per_request": {},
-	"min_fragment_bytes": {}, "backoff_base": {}, "backoff_max": {},
-	"retry_after_max_seconds": {}, "min_success_probability": {}, "min_confidence": {},
-	"min_count_for_rate": {}, "rate_threshold": {}, "redundant_attempts_required": {},
-	"tail_steps": {}, "redact_patterns": {},
+	"backoff_base": {}, "backoff_max": {}, "retry_after_max_seconds": {}, "redact_patterns": {},
+	"repeat_min_calls": {}, "repeat_window_calls": {}, "helper_min_calls": {}, "helper_window_calls": {}, "search_min_calls": {}, "search_window_calls": {}, "broad_search_min_calls": {}, "early_context_window_calls": {}, "early_context_search_min_calls": {}, "signal_cap": {}, "signal_evidence_cap": {}, "interpretation_signal_cap": {}, "context_neighbor_calls": {}, "evidence_limit_bytes": {}, "minimum_actionability_probability": {}, "minimum_actionability_confidence": {},
 	"dispatch_server": {}, "dispatch_ui_template": {}, "dispatch_model": {},
 	"dispatch_directory": {}, "dispatch_timeout": {}, "canonical_roots": {},
 	"reviewer": {}, "state_dir": {}, "max_repair_attempts": {},
@@ -335,6 +308,9 @@ var configJSONKeys = map[string]struct{}{
 // ("30s", "300ms"); a bare number is rejected.
 // Spec: docs/specs/task-retrospective.md via Config
 func (c *Config) UnmarshalJSON(data []byte) error {
+	if !uniqueJSONKeys(data) {
+		return fmt.Errorf("invalid or duplicate-key retrospective config JSON")
+	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	var raw map[string]json.RawMessage
@@ -342,6 +318,12 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	for key := range raw {
+		if bytes.Equal(bytes.TrimSpace(raw[key]), []byte("null")) {
+			return fmt.Errorf("retrospective config key %q cannot be null; omit it to retain defaults", key)
+		}
+		if containsString([]string{"min_success_probability", "min_confidence", "min_count_for_rate", "rate_threshold", "redundant_attempts_required", "tail_steps", "min_fragment_bytes"}, key) {
+			return fmt.Errorf("retired retrospective config key %q: remove old success/rate/pagination settings; use signal thresholds and minimum_actionability_probability/confidence", key)
+		}
 		if _, ok := configJSONKeys[key]; !ok {
 			return fmt.Errorf("json: unknown field %q", key)
 		}
@@ -380,28 +362,19 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	if err := assign("max_attempts_per_request", &c.MaxAttemptsPerRequest); err != nil {
 		return err
 	}
-	if err := assign("min_fragment_bytes", &c.MinFragmentBytes); err != nil {
-		return err
-	}
 	if err := assign("retry_after_max_seconds", &c.RetryAfterMaxSeconds); err != nil {
 		return err
 	}
-	if err := assign("min_success_probability", &c.MinSuccessProbability); err != nil {
+	if err := json.Unmarshal(data, &c.SignalConfig); err != nil {
 		return err
 	}
-	if err := assign("min_confidence", &c.MinConfidence); err != nil {
+	if err := assign("interpretation_signal_cap", &c.InterpretationSignalCap); err != nil {
 		return err
 	}
-	if err := assign("min_count_for_rate", &c.MinCountForRate); err != nil {
+	if err := assign("minimum_actionability_probability", &c.MinActionabilityProbability); err != nil {
 		return err
 	}
-	if err := assign("rate_threshold", &c.RateThreshold); err != nil {
-		return err
-	}
-	if err := assign("redundant_attempts_required", &c.RedundantAttemptsRequired); err != nil {
-		return err
-	}
-	if err := assign("tail_steps", &c.TailSteps); err != nil {
+	if err := assign("minimum_actionability_confidence", &c.MinActionabilityConfidence); err != nil {
 		return err
 	}
 	if err := assign("redact_patterns", &c.RedactPatterns); err != nil {

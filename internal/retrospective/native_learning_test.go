@@ -23,9 +23,11 @@ func TestNativeDispatchRequiresExecutedIndependentStages(t *testing.T) {
 			original := "Use wrong/docs.\n"
 			hash := writeText(t, target, original)
 			finding := Finding{ID: "native-direction", SourcePath: target, SourceSHA256: hash, InstructionVersion: hash, Cause: CauseStale, FailedBehavior: "wrong/docs attempts", Recovery: "used project docs", Excerpt: "wrong/docs", Replacement: "project/docs"}
-			report := eligibleReport(root, "native-direction", nil)
+			report := eligibleReport(root, "native-direction", []Finding{finding})
+			report.Findings = nil
+			report.RepairSafe = false
 			report.Trace.SourceFiles = []ReportSourceFile{{Path: target, SHA256: hash}}
-			report.TaskEvidence = []evidenceRecord{{ID: "source-recovery", Text: "Read canonical instruction; wrong/docs failed; project/docs succeeded"}}
+			// Actual detector/interpretation evidence is supplied by eligibleReport.
 			reportPath := writeReport(t, t.TempDir(), report)
 			serverState := &loopSessionServer{directory: root, proposal: NativeProposal{Summary: "causal investigation", Findings: []Finding{finding}}, fault: fault}
 			server := httptest.NewServer(serverState.handler())
@@ -123,9 +125,11 @@ func TestNativeRepairWriteAheadCrashWindows(t *testing.T) {
 				postimage := "Use project/docs.\n"
 				hash := writeText(t, target, original)
 				finding := Finding{ID: "crash-direction", SourcePath: target, SourceSHA256: hash, InstructionVersion: hash, Cause: CauseStale, FailedBehavior: "wrong/docs attempts", Recovery: "used project docs", Excerpt: "wrong/docs", Replacement: "project/docs"}
-				report := eligibleReport(root, "crash-direction", nil)
+				report := eligibleReport(root, "crash-direction", []Finding{finding})
+				report.Findings = nil
+				report.RepairSafe = false
 				report.Trace.SourceFiles = []ReportSourceFile{{Path: target, SHA256: hash}}
-				report.TaskEvidence = []evidenceRecord{{ID: "recovery", Text: "wrong/docs failed, project/docs succeeded"}}
+				// Preserve the exact signal/call evidence rather than a fabricated summary.
 				reportPath := writeReport(t, t.TempDir(), report)
 				serverState := &loopSessionServer{directory: root, proposal: NativeProposal{Summary: "causal investigation", Findings: []Finding{finding}}}
 				if control == "qa-reject" {

@@ -18,16 +18,19 @@ evidence and independent review/QA still gate writes. Contract:
 (observation section). Everything is one explicit global opt-in; nothing runs by
 default.
 
-**Default pipeline replacement pending:** Phase 1 provides only offline
-`agf retrospective analyze --signals-only --input trace.json --output signals.json`.
-It never calls a provider or dispatches; signals do not authorize repair. Default
-analyze/ingest/drain still use the superseded model success gate/per-call
-evaluation. The [canonical plan](../../.artifacts-manager/plan-task-retrospective.md)
-defines the three remaining phases. Setup below describes existing commands,
-not an already shipped signal pipeline. New v2 reports/config migration become
-available to the default pipeline only with Phase 2; do not put planned signal
-keys into current config. The preview accepts existing additive redaction patterns
-only; detector thresholds are currently configurable through the Go API.
+**Phase 2 candidate:** default analyze/drain use the single signal-first pipeline.
+Independent review and Phase 3 acceptance are pending; nothing is installed or
+activated by this change. The [canonical plan](../../.artifacts-manager/plan-task-retrospective.md)
+owns remaining acceptance. Replay with `agf retrospective analyze --input
+trace.json --output report.json`; no candidate means no provider request, and
+missing provider leaves useful signals. The former `--signals-only` flag and
+success/rate/tail/fragment config keys produce explicit migration errors.
+Use the spec's flat signal keys and `minimum_actionability_probability` /
+`minimum_actionability_confidence` instead. V1 reports stay readable and unchanged,
+but cannot start new repairs; re-analyze original evidence. Only an existing exact
+native WAL intent can resume under its recorded hash/reviewer/QA safeguards.
+Analysis sets `repair_safe:false`; semantic dispatch is an investigation, not
+permission for a detector/model-only source write.
 
 ## Setup
 

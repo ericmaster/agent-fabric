@@ -16,30 +16,30 @@ func TestDefaultConfigPassesValidation(t *testing.T) {
 	if cfg.RequestLimitBytes != 24_000 || cfg.StateQuestionLimitBytes != 16_000 {
 		t.Fatalf("conservative byte budgets wrong: %+v", cfg)
 	}
-	if cfg.RequestBudget != 100 || cfg.MaxAttemptsPerRequest != 3 {
+	if cfg.RequestBudget != 30 || cfg.MaxAttemptsPerRequest != 3 {
 		t.Fatalf("budget/attempt defaults wrong: %+v", cfg)
 	}
-	if cfg.MinCountForRate != 20 || cfg.RateThreshold != 0.05 {
+	if cfg.RepeatMinCalls != 3 || cfg.RepeatWindowCalls != 20 || cfg.InterpretationSignalCap != 10 {
 		t.Fatalf("threshold defaults wrong: %+v", cfg)
 	}
-	if cfg.MinSuccessProbability != 0.90 || cfg.MinConfidence != 0.80 {
+	if cfg.MinActionabilityProbability != 0.90 || cfg.MinActionabilityConfidence != 0.80 {
 		t.Fatalf("confidence floors wrong: %+v", cfg)
 	}
-	if cfg.TailSteps != 10 {
-		t.Fatalf("tail steps = %d", cfg.TailSteps)
+	if cfg.SignalCap != 100 || cfg.ContextNeighborCalls != 2 {
+		t.Fatal("signal caps/context defaults drifted")
 	}
 }
 
 func TestValidateRejectsBrokenConfigs(t *testing.T) {
 	cases := map[string]func(*Config){
-		"missing endpoint":       func(c *Config) { c.Endpoint = "" },
-		"request below minimum":  func(c *Config) { c.RequestLimitBytes = 512 },
-		"state above request":    func(c *Config) { c.StateQuestionLimitBytes = 30_000 },
-		"zero budget":            func(c *Config) { c.RequestBudget = 0 },
-		"invalid rate threshold": func(c *Config) { c.RateThreshold = 1.5 },
-		"invalid probability":    func(c *Config) { c.MinSuccessProbability = -1 },
-		"timeout missing":        func(c *Config) { c.HTTPTimeout = 0 },
-		"empty redact pattern":   func(c *Config) { c.RedactPatterns = []string{""} },
+		"missing endpoint":      func(c *Config) { c.Endpoint = "" },
+		"request below minimum": func(c *Config) { c.RequestLimitBytes = 0 },
+		"state above request":   func(c *Config) { c.StateQuestionLimitBytes = 30_000 },
+		"zero budget":           func(c *Config) { c.RequestBudget = 0 },
+		"invalid confidence":    func(c *Config) { c.MinActionabilityConfidence = .7 },
+		"invalid probability":   func(c *Config) { c.MinActionabilityProbability = -1 },
+		"timeout missing":       func(c *Config) { c.HTTPTimeout = 0 },
+		"empty redact pattern":  func(c *Config) { c.RedactPatterns = []string{""} },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -105,7 +105,7 @@ func TestLoadConfigDurationRequiresUnitSuffix(t *testing.T) {
 	if cfg.HTTPTimeout.String() != "30s" || cfg.BackoffBase.String() != "300ms" || cfg.BackoffMax.String() != "4s" {
 		t.Fatalf("durations = %s %s %s", cfg.HTTPTimeout, cfg.BackoffBase, cfg.BackoffMax)
 	}
-	if cfg.RequestBudget != 100 {
+	if cfg.RequestBudget != 30 {
 		t.Fatalf("omitted budget was not preserved: %d", cfg.RequestBudget)
 	}
 }

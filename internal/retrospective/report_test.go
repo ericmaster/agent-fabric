@@ -9,7 +9,7 @@ import (
 
 func TestWriteReportAtomicallyAndPrivate(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "report.json")
-	report := &Report{SchemaVersion: ReportSchemaVersion, Status: ReportStatusComplete, GeneratedAt: "2026-10-06T00:00:00Z"}
+	report := &Report{SignalReport: SignalReport{SchemaVersion: ReportSchemaVersion}, Status: ReportStatusComplete, GeneratedAt: "2026-10-06T00:00:00Z"}
 	if err := WriteReport(path, report); err != nil {
 		t.Fatal(err)
 	}

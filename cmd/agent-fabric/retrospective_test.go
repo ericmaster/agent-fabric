@@ -41,9 +41,17 @@ func newJevMockServer(t *testing.T, _ map[string]string) *httptest.Server {
 		}
 		answers := map[string]any{}
 		for id, question := range decoded.Questions {
-			choice := "productive"
-			if id == "q-outcome" {
-				choice = "succeeded"
+			choice := "justified"
+			if strings.HasPrefix(id, "cause:") {
+				choice = "other"
+			}
+			if strings.HasPrefix(id, "support:") {
+				for key := range question.Criteria {
+					if key != "insufficient-evidence" {
+						choice = key
+						break
+					}
+				}
 			}
 			probabilities := map[string]float64{}
 			for key := range question.Criteria {
@@ -123,10 +131,10 @@ func TestRetrospectiveAnalyzeWritesVersionedReport(t *testing.T) {
 	if err := json.Unmarshal(body, &report); err != nil {
 		t.Fatal(err)
 	}
-	if report["schema_version"].(float64) != 1 {
+	if report["schema_version"].(float64) != 2 {
 		t.Fatalf("schema_version = %v", report["schema_version"])
 	}
-	if report["status"] != "complete" || report["outcome"].(map[string]any)["choice"] != "succeeded" {
+	if report["status"] != "complete" || report["counts"].(map[string]any)["terminal_calls"].(float64) != 1 || report["usage"].(map[string]any)["requests"].(float64) != 0 {
 		t.Fatalf("CLI did not evaluate: %v", report)
 	}
 	if report["model"].(map[string]any)["model"] != retrospective.GlideModel {

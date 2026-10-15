@@ -305,16 +305,6 @@ func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock
 	}
 	trace := assembleTrace(store, spool, spool.SessionID)
 	trace.Gaps = append(trace.Gaps, reconcileGaps...)
-	for _, gap := range trace.Gaps {
-		if gap.Kind == "missing_startup" {
-			path := filepath.Join(store.Dir, "reports", drainReportName(firstNonEmpty(trace.Identities.TaskID, spool.SessionID)))
-			diagnostic := &Report{SchemaVersion: ReportSchemaVersion, Status: ReportStatusIncomplete, IncompleteReasons: []string{gap.Detail}, Trace: ReportTrace{Identities: trace.Identities}}
-			if err := WriteReport(path, diagnostic); err != nil {
-				return save(JobFailed, "cannot retain incomplete startup diagnostic")
-			}
-			return save(JobFailed, "collection startup incomplete; full report: "+path)
-		}
-	}
 	if !rootTriggerCandidate(spool, job.SessionID) {
 		return save(JobSkipped, "non-root session observed; the owning root aggregates it")
 	}
@@ -332,7 +322,7 @@ func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock
 			if trace.Identities.TaskID == "" {
 				path = filepath.Join(store.Dir, "reports", drainReportName(spool.SessionID))
 			}
-			diagnostic := &Report{SchemaVersion: ReportSchemaVersion, Status: ReportStatusIncomplete, IncompleteReasons: []string{"collection startup incomplete; trace validation failed: " + err.Error()}, Trace: ReportTrace{Identities: trace.Identities}}
+			diagnostic := &Report{SignalReport: SignalReport{SchemaVersion: ReportSchemaVersion, Trace: ReportTrace{Identities: trace.Identities}}, Status: ReportStatusIncomplete, IncompleteReasons: []string{"collection startup incomplete; trace validation failed"}}
 			if writeErr := WriteReport(path, diagnostic); writeErr != nil {
 				return save(JobFailed, "cannot retain incomplete collection diagnostic")
 			}
@@ -371,7 +361,7 @@ func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock
 	// never advance the boundary (the turn stays open for re-analysis).
 	conclusive := receiptStatus != "" && conclusivelySettled[receiptStatus]
 	accepted := report.Status == ReportStatusComplete &&
-		(conclusive || (receiptStatus == "" && !report.Evaluation.Trigger.Eligible))
+		(conclusive || (receiptStatus == "" && !report.Dispatch.Eligible))
 	if accepted {
 		if job.Incidents == nil {
 			job.Incidents = map[string]string{}
@@ -383,6 +373,11 @@ func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock
 	if accepted {
 		if err := acceptBoundary(store, cfg, spool.SessionID, spoolIntervalEnd(spool)); err != nil {
 			return save(JobFailed, "accepted boundary: "+err.Error())
+		}
+	}
+	for _, gap := range trace.Gaps {
+		if gap.Kind == "missing_startup" {
+			return save(JobFailed, "collection startup incomplete; full report: "+reportPath)
 		}
 	}
 	return save(JobDone, "")
@@ -962,9 +957,6 @@ func assembleTrace(store *Store, spool *Spool, sessionID string) *Trace {
 	}
 	for _, child := range trace.Descendants {
 		trace.Gaps = append(trace.Gaps, child.Gaps...)
-		if child.TerminalStatus == TaskStatusAborted || child.TerminalStatus == TaskStatusError {
-			trace.Gaps = append(trace.Gaps, Gap{Kind: "partial_stream", Detail: "descendant session ended in error: " + child.Identities.SessionID})
-		}
 	}
 	return trace
 }

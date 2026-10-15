@@ -28,7 +28,7 @@ func nativeHistoryFixture(t *testing.T) []json.RawMessage {
 
 // Public ingest -> drain -> authenticated paginated native backfill -> mock Choice.
 func TestNativeHistoryControlsDrainLiteralWire(t *testing.T) {
-	f := newLoopFixture(t, successScript(t))
+	f := newLoopFixture(t, unknownScript(t))
 	rows := nativeHistoryFixture(t)
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +91,7 @@ func TestNativeHistoryControlsDrainLiteralWire(t *testing.T) {
 	if err := json.Unmarshal(body, &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != ReportStatusComplete || requests != 2 || len(f.jev.recorded()) < 2 {
+	if report.Status != ReportStatusComplete || requests != 2 || len(f.jev.recorded()) != 1 || len(report.Signals) != 1 {
 		t.Fatalf("history never reached mock evaluation: %+v requests=%d reasons=%v", job, requests, report.IncompleteReasons)
 	}
 	spool, err := loadSpool(f.store, "ses_history")
@@ -249,12 +249,15 @@ func TestNativeHistoryGapsNoGuessedSuccessOrPrivateText(t *testing.T) {
 			}
 			var report Report
 			json.Unmarshal(body, &report)
-			success := mode == "private-reasoning" || mode == "old-idle-error"
+			success := mode == "private-reasoning" || mode == "old-idle-error" || mode == "interrupted"
 			if success != (report.Status == ReportStatusComplete) {
 				t.Fatalf("wrong coverage: %+v", report.IncompleteReasons)
 			}
 			if !success && len(f.jev.recorded()) != 0 {
 				t.Fatal("gap/status guessed terminal success")
+			}
+			if mode == "interrupted" && report.TerminalOutcome.Status != TaskStatusAborted {
+				t.Fatal("interruption reinterpreted as success")
 			}
 			if strings.Contains(string(body), "CANARY-private-history") {
 				t.Fatal("private history leaked to report")

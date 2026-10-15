@@ -41,14 +41,10 @@ var (
 // systemOnePath is the shared decision-engine route appended to the endpoint.
 const systemOnePath = SystemOnePath
 
-// GLiDE requires a non-empty question map even on fragment-only context pages.
-// This transport acknowledgement never produces a classification or trigger.
+// GLiDE requires a non-empty question map; empty requests fail before transport.
 // Spec: docs/specs/task-retrospective.md via systemOneWireRequest
 func providerQuestions(request *ChoiceRequest) []Question {
-	if len(request.Requests) > 0 {
-		return request.Requests
-	}
-	return []Question{{ID: "q-context-page", Subject: "context-page", Scope: "context-only", Text: "Is this context-only page readable? Select context-only or unreadable-context; do not classify any task, call or requirement.", Choices: []string{"context-only", "unreadable-context"}}}
+	return request.Requests
 }
 
 // systemOneQuestion is one typed choice question of the System One wire
@@ -109,10 +105,6 @@ type ChoiceRequest struct {
 	Model    string          `json:"model"`
 	State    json.RawMessage `json:"state"`
 	Requests []Question      `json:"requests"`
-	// Overlaps are the previous page's tail records re-presented for context
-	// on the next page (each with an explicit overlap marker; evaluator-side
-	// accounting deduplicates by record id).
-	Overlaps []evidenceRecord `json:"overlap,omitempty"`
 }
 
 // Answer is one returned choice over a supplied request id. Probability and
@@ -198,13 +190,15 @@ func NewJevClient(endpoint, apiKey string, cfg *Config) *JevClient {
 
 // wireRequest translates one internal request onto the System One contract.
 // The question id becomes the map key; choices become criteria labels. The
-// System One contract has no per-question evidence or top-level overlap
-// fields, so both fold into the shared state: per-question evidence under
-// state.evidence[<id>] (stage one's exact three-field payload) and the
-// previous page's tail records under state.overlap. Encoding errors fail closed.
+// System One contract folds optional question evidence into shared state.
+// The integrated analyzer instead sends one compact signal packet referenced
+// by all three questions. Encoding errors fail closed, never drop evidence.
 // Spec: docs/specs/task-retrospective.md via JevClient
 func systemOneWireRequest(request *ChoiceRequest) (*systemOneRequest, error) {
 	if request == nil {
+		return nil, ErrInvalidRequest
+	}
+	if len(request.Requests) == 0 {
 		return nil, ErrInvalidRequest
 	}
 	state := request.State
@@ -225,20 +219,13 @@ func systemOneWireRequest(request *ChoiceRequest) (*systemOneRequest, error) {
 		}
 		evidence[question.ID] = question.Evidence
 	}
-	if len(evidence) > 0 || len(request.Overlaps) > 0 {
+	if len(evidence) > 0 {
 		if len(evidence) > 0 {
 			encoded, err := json.Marshal(evidence)
 			if err != nil {
 				return nil, err
 			}
 			stateMap["evidence"] = encoded
-		}
-		if len(request.Overlaps) > 0 {
-			encoded, err := json.Marshal(request.Overlaps)
-			if err != nil {
-				return nil, err
-			}
-			stateMap["overlap"] = encoded
 		}
 		merged, err := json.Marshal(stateMap)
 		if err != nil {
@@ -495,12 +482,8 @@ func (j *JevClient) Usage() JevUsage { return j.usage }
 
 // buildRequest assembles one serialized request to send.
 // Spec: docs/specs/task-retrospective.md via JevClient
-func buildRequest(model string, state []byte, overlap []evidenceRecord, requests []Question) *ChoiceRequest {
-	request := &ChoiceRequest{Model: model, State: state, Requests: requests}
-	if len(overlap) > 0 {
-		request.Overlaps = overlap
-	}
-	return request
+func buildRequest(model string, state []byte, requests []Question) *ChoiceRequest {
+	return &ChoiceRequest{Model: model, State: state, Requests: requests}
 }
 
 // measureRequest measures the serialized request bytes for the budget gates.

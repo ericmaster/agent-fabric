@@ -356,10 +356,11 @@ func TestTerminalAbortedCallIsNotStepButRawError(t *testing.T) {
 	}
 }
 
-func TestAbortedTerminalStatusMapsLocallyToFailedOutcome(t *testing.T) {
-	n := &Normalized{Trace: &Trace{TerminalStatus: TaskStatusAborted}}
-	n.Reasons = []CompletenessReason{{Kind: ReasonTerminalAbortError}}
-	if localOutcomeChoice(n) != "failed" {
-		t.Fatalf("aborted trace outcome = %q, want failed", localOutcomeChoice(n))
+func TestAbortedTerminalStatusRemainsObservedAbort(t *testing.T) {
+	trace := signalTrace(nil)
+	trace.TerminalStatus = TaskStatusAborted
+	r := detectForTest(t, trace, nil)
+	if r.TerminalOutcome.Status != TaskStatusAborted || !r.TerminalOutcome.Observed {
+		t.Fatal("aborted task was reinterpreted")
 	}
 }
