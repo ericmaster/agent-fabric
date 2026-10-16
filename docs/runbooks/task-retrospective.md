@@ -245,6 +245,10 @@ rows until the source hash changes.
 
 ## Recovery
 
+- **Read-only monitor presentation:** use the reviewed metadata helper and
+  [scheduler prompt block](retrospective-monitor.md), not ad hoc row/counter sums.
+  Helper/prompt rollout is separate from Go-core wrapper pin activation.
+
 - Gap retention: identical owner/kind/record/range observations share a row
   before the 800-row cap, with additional occurrence counts. Changed range or
   owner stays distinct. Any known row/part/compaction evidence eviction creates
