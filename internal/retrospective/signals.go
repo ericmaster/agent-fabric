@@ -83,6 +83,7 @@ type SignalCoverage struct {
 	Requirements          int                       `json:"requirements"`
 	CollectedRecords      int                       `json:"collected_records"`
 	Deduplicated          int                       `json:"deduplicated_records"`
+	DeduplicatedGaps      int                       `json:"deduplicated_gaps,omitempty"`
 	ExcludedRecords       int                       `json:"excluded_records"`
 	OutOfContextScope     int                       `json:"out_of_context_scope"`
 	OmittedSignals        int                       `json:"omitted_signals"`
@@ -212,6 +213,7 @@ func DetectSignals(trace *Trace, input []byte, config *SignalConfig) (*SignalRep
 		TerminalStatus: r.TerminalOutcome.Status, BoundarySource: n.BoundarySource, Interval: ReportInterval{StartSeq: n.IntervalStart, EndSeq: n.IntervalEnd}, Deduplicated: n.Deduplicated}
 	r.Coverage = SignalCoverage{EvidenceComplete: true, Deduplicated: n.Deduplicated, CollectedRecords: len(n.Requirements)}
 	r.Coverage.Requirements = len(n.Requirements)
+	r.Coverage.DeduplicatedGaps = n.DeduplicatedGaps
 	for _, reason := range n.Reasons {
 		if reason.Kind != ReasonTerminalAbortError {
 			r.Coverage.Reasons = append(r.Coverage.Reasons, reason.Kind)
@@ -232,7 +234,7 @@ func DetectSignals(trace *Trace, input []byte, config *SignalConfig) (*SignalRep
 	sources = func(t *Trace) {
 		if t != trace {
 			r.Trace.DescendantSessions = append(r.Trace.DescendantSessions, redactor.Text(t.Identities.SessionID))
-			if len(t.Gaps) > 0 || len(t.ChildRefs) > 0 {
+			if len(t.ChildRefs) > 0 {
 				r.Coverage.EvidenceComplete = false
 				r.Coverage.Reasons = append(r.Coverage.Reasons, "descendant coverage requires verification")
 			}
@@ -244,14 +246,14 @@ func DetectSignals(trace *Trace, input []byte, config *SignalConfig) (*SignalRep
 				r.Coverage.EvidenceComplete = false
 			}
 		}
-		for _, gap := range t.Gaps {
-			r.Trace.Gaps = append(r.Trace.Gaps, ReportGap{Kind: redactor.Text(gap.Kind), Detail: redactor.Text(gap.Detail)})
-		}
 		for _, child := range t.Descendants {
 			sources(child)
 		}
 	}
 	sources(trace)
+	for _, gap := range n.Gaps {
+		r.Trace.Gaps = append(r.Trace.Gaps, ReportGap{Omitted: gap.Omitted, Kind: redactor.Text(gap.Kind), Detail: redactor.Text(gap.Detail), ID: gap.ID, Scope: gap.Scope, SessionID: redactor.Text(gap.SessionID), RecordID: redactor.Text(gap.RecordID), StartSeq: gap.StartSeq, EndSeq: gap.EndSeq})
+	}
 	calls := []signalCall{}
 	for _, record := range n.Records {
 		if !n.InInterval(record) {

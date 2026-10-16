@@ -236,6 +236,7 @@ type SpoolPart struct {
 // SpoolEvent is one append-only session-level event.
 // Spec: docs/specs/task-retrospective.md via Spool
 type SpoolEvent struct {
+	RecordID  string `json:"record_id,omitempty"`
 	SessionID string `json:"session_id"`
 	Event     string `json:"event"`
 	Status    string `json:"status,omitempty"`
@@ -251,6 +252,7 @@ type Spool struct {
 	LastSeq          int                      `json:"last_seq"`
 	AcceptedAfterSeq int                      `json:"accepted_after_seq,omitempty"`
 	Overflows        int                      `json:"overflows,omitempty"`
+	GapOmissions     int                      `json:"gap_omissions,omitempty"`
 	Suppressed       bool                     `json:"suppressed,omitempty"`
 	ObservedSDK      string                   `json:"observed_sdk,omitempty"`
 	ServerURL        string                   `json:"server_url,omitempty"`
@@ -330,7 +332,7 @@ func IngestEnvelope(opts IngestOptions, envelope *Envelope) (*IngestResult, erro
 		if !collectionServerURL(location, cfg) {
 			serverURLRejected = true
 			spool.ServerURL = ""
-			spool.Gaps = append(spool.Gaps, Gap{Kind: "partial_stream", Detail: "observation server URL rejected; require loopback or configured host without URL credentials/query/fragment"})
+			spool.appendGap(Gap{Kind: "partial_stream", Detail: "observation server URL rejected; require loopback or configured host without URL credentials/query/fragment"})
 			continue
 		}
 		spool.ServerURL = location
@@ -530,11 +532,15 @@ func stageRecords(redactor *Redactor, records []EnvelopeRecord, spool *Spool) in
 		record.Error = redactor.Text(record.Error)
 		record.Title = redactor.Text(record.Title)
 		record.Directory = redactor.Text(record.Directory)
+		detail := ""
 		if record.Detail != "" && (record.Kind == "part" || record.Kind == "message") {
-			spool.appendGap(Gap{Kind: "partial_stream", Detail: record.Detail + " (" + record.RecordID + ")"})
+			detail = record.Detail + " (" + record.RecordID + ")"
 			record.Detail = ""
 		}
 		spool.upsert(&record)
+		if detail != "" {
+			spool.recordGap("partial_stream", detail, record.SessionID, record.RecordID)
+		}
 		staged++
 	}
 	return staged
@@ -663,19 +669,19 @@ func (spool *Spool) upsert(record *EnvelopeRecord) {
 			entry.Tool, entry.ToolStatus, entry.CallID = "", "", ""
 		}
 	case "removed":
-		spool.appendGap(Gap{Kind: "partial_stream", Detail: "removed " + record.RecordID})
+		spool.recordGap("partial_stream", "removed "+record.RecordID, record.SessionID, record.RecordID)
 	case "event":
 		spool.appendEvent(SpoolEvent{
+			RecordID:  record.RecordID,
 			SessionID: record.SessionID,
 			Event:     record.Event,
 			Status:    record.Status,
 			Detail:    record.Detail,
-			Seq:       spool.nextSeq(),
 		})
 	case "source":
 		spool.upsertSourceRef(record.Path, record.SHA256)
 	case "source_gap":
-		spool.appendGap(Gap{Kind: "missing_source", Detail: record.Path + ": " + record.Detail})
+		spool.recordGap("missing_source", record.Path+": "+record.Detail, record.SessionID, record.RecordID)
 	}
 }
 
@@ -698,11 +704,24 @@ func (spool *Spool) startupCovered(marker StartupGap) bool {
 	return false
 }
 
-// appendGap bounds the gap list, dropping the oldest rows beyond the cap.
+// appendGap deduplicates exact observed identities before the cap. Every distinct
+// eviction leaves a sticky counter outside that cap, projected as unknown scope.
 // Spec: docs/specs/task-retrospective.md via upsert
 func (spool *Spool) appendGap(gap Gap) {
+	if gap.SessionID == "" {
+		gap.SessionID = spool.SessionID
+	}
+	if key := gapObservationKey(gap); key != "" {
+		for i, previous := range spool.Gaps {
+			if gapObservationKey(previous) == key {
+				spool.Gaps[i].Duplicates = gapCountAdd(previous.Duplicates, gapCountAdd(gap.Duplicates, 1))
+				return
+			}
+		}
+	}
 	spool.Gaps = append(spool.Gaps, gap)
 	if len(spool.Gaps) > SpoolEventsRetained*2 {
+		spool.GapOmissions = gapCountAdd(spool.GapOmissions, len(spool.Gaps)-SpoolEventsRetained*2)
 		spool.Gaps = spool.Gaps[len(spool.Gaps)-SpoolEventsRetained*2:]
 	}
 }
@@ -710,8 +729,21 @@ func (spool *Spool) appendGap(gap Gap) {
 // appendEvent appends a bounded event row.
 // Spec: docs/specs/task-retrospective.md via upsert
 func (spool *Spool) appendEvent(event SpoolEvent) {
+	if event.RecordID != "" {
+		for _, previous := range spool.Events {
+			if previous.RecordID == event.RecordID && previous.SessionID == event.SessionID && previous.Event == event.Event {
+				return
+			}
+		}
+	}
+	event.Seq = spool.nextSeq()
 	spool.Events = append(spool.Events, event)
 	if len(spool.Events) > SpoolEventsRetained {
+		for _, evicted := range spool.Events[:len(spool.Events)-SpoolEventsRetained] {
+			if evicted.Event == "session.compacted" {
+				spool.GapOmissions = gapCountAdd(spool.GapOmissions, 1)
+			}
+		}
 		spool.Events = spool.Events[len(spool.Events)-SpoolEventsRetained:]
 	}
 }
@@ -816,6 +848,10 @@ func loadSpool(store *Store, sessionID string) (*Spool, error) {
 	if spool.Schema != SpoolSchemaVersion || spool.SessionID == "" {
 		return nil, fmt.Errorf("spool %s: schema/session mismatch", path)
 	}
+	if spool.GapOmissions < 0 || spool.Overflows < 0 {
+		return nil, errors.New("negative spool loss counter")
+	}
+	spool.compactGaps()
 	return spool, nil
 }
 
@@ -835,12 +871,11 @@ func dropSpool(store *Store, sessionID string) error {
 }
 
 // writeSpoolBounded replaces the spool document, enforcing spool_max_bytes:
-// oldest parts drop first (the accepted boundary + server reconcile restore
-// the evidence later), then the oldest gap rows. One bounded gap row per
-// write records the overflow count; per-part gap rows would themselves grow
-// the document without bound.
+// oldest parts drop first, then oldest gap rows. Fixed sticky loss counters
+// cannot be dropped: assembly always projects them as unknown coverage.
 // Spec: docs/specs/task-retrospective.md via IngestEnvelope
 func writeSpoolBounded(cfg *Config, store *Store, spool *Spool) error {
+	spool.compactGaps()
 	limit := cfg.SpoolMaxBytes
 	if limit <= 0 {
 		limit = DefaultConfig().SpoolMaxBytes
@@ -849,7 +884,6 @@ func writeSpoolBounded(cfg *Config, store *Store, spool *Spool) error {
 	if err != nil {
 		return err
 	}
-	dropped := 0
 	for len(body) > limit && (len(spool.Parts) > 0 || len(spool.Gaps) > 0) {
 		switch {
 		case len(spool.Parts) > 0:
@@ -860,9 +894,10 @@ func writeSpoolBounded(cfg *Config, store *Store, spool *Spool) error {
 				}
 			}
 			delete(spool.Parts, oldestID)
-			dropped++
+			spool.Overflows = gapCountAdd(spool.Overflows, 1)
 		default:
 			spool.Gaps = spool.Gaps[1:]
+			spool.GapOmissions = gapCountAdd(spool.GapOmissions, 1)
 		}
 		if body, err = json.Marshal(spool); err != nil {
 			return err
@@ -877,27 +912,6 @@ func writeSpoolBounded(cfg *Config, store *Store, spool *Spool) error {
 		// the observable record (ingest exits 1 with this message on
 		// stderr; drain jobs fail with it recorded).
 		return errors.New("retrospective spool bound exceeded; refusing growth")
-	}
-	if dropped > 0 {
-		spool.Overflows += dropped
-		spool.appendGap(Gap{Kind: "partial_stream", Detail: fmt.Sprintf("spool overflow dropped %d staged records", dropped)})
-		if body, err = json.Marshal(spool); err != nil {
-			return err
-		}
-	}
-	if len(body) > limit {
-		// The one-row gap note itself overflowed a tiny bound: drop it.
-		spool.Gaps = spool.Gaps[:max(0, len(spool.Gaps)-1)]
-		spooledBody, err := json.Marshal(spool)
-		if err != nil {
-			return err
-		}
-		if len(spooledBody) > limit {
-			// Same consistency rule as above: no unpersisted bump; the
-			// refusal is the observable record.
-			return errors.New("retrospective spool bound exceeded; refusing growth")
-		}
-		body = spooledBody
 	}
 	return writePrivate(spoolPath(store, spool.SessionID), body)
 }

@@ -72,7 +72,7 @@ Top level:
 | `requirements` | no | explicit requirements `[ {id, text} ]`; intent context only, no omission analysis |
 | `child_refs` | no | linked descendant session ids that must resolve |
 | `descendants` | no | full child traces (same schema, `session_id != root_session_id`); depth ≤ 16 |
-| `gaps` | no | collection gaps `[ {kind, detail} ]` |
+| `gaps` | no | collection gaps `[ {kind, detail, session_id?, record_id?, start_seq?, end_seq?} ]`; optional inclusive range requires both nonnegative bounds, end >= start |
 | `source_files` | no | provenance `[ {path, sha256, excerpt?, secret_file?} ]` |
 
 Validation (fail closed before any network or report write, exit 1):
@@ -103,6 +103,82 @@ repair-eligible): ambiguous multi-task interval; unresolved running
 tool; missing linked child trace (`child_refs` without a matching descendant);
 compacted-away evidence (gap `kind: "compacted"`); missing final assistant
 response in the interval.
+
+### Historical versus current collection gaps
+
+Retention is coverage-critical: the common spool append seam deduplicates exact
+observations BEFORE the 800-row cap. Equality requires owner session, kind,
+producer record ID and both range bounds (including absent bounds). Anonymous
+gaps are never deduplicated. Changed ranges/owners are distinct observations,
+including in report IDs; descendant container namespaces cannot alias root IDs.
+`duplicates` counts additional identical observations retained in a row, and is
+included in report `deduplicated_gaps`. Counts do not assert global unique issues.
+When ANY distinct row is discarded by count or byte limits, sticky spool
+`gap_omissions` increments outside the row cap. Assembly emits a structured
+`coverage_overflow` gap with `omitted` count, always unknown regardless of supplied
+range or task boundary. It cannot be evicted by further gaps, restart or later
+accepted boundary. Existing spool `overflows` also independently forces this
+marker for known staged-record loss. Failure to fit fixed counters refuses the
+write, never drops the marker. Load/write/assembly compact legacy over-cap rows
+through this same seam; absent legacy loss counters cannot reconstruct past loss
+and do not certify that no loss happened. No automatic counter clearing exists.
+Compaction event eviction also increments `gap_omissions`. Counts saturate at the
+platform maximum rather than wrap; negative persisted loss/count fields are
+invalid. `omitted` counts discarded retained rows plus staged-record losses, not
+globally distinct original issues or duplicate occurrences. Public native child
+gap projections remain visible in assembled parent traces; normalization visits
+an exact explicitly child-owned projection once via its present child original.
+Root-owned claims in descendant containers never alias the root namespace.
+
+The existing host `task` interval, else accepted-success boundary, else whole
+session remains the only interval authority. A user follow-up, synthetic input,
+session title, task-ID suffix, or current file contents does not invent a new
+task/start/success boundary. Incomplete reports never advance accepted-success.
+
+Gap scope is derived, not a trusted input field. `session_id` records the observed
+owning session; `record_id` is a stable producer identity, never parsed from free
+text. `start_seq/end_seq` describe the entire affected inclusive range in that
+session's staged sequence. A lost record can use its known existing part sequence;
+compaction conservatively affects the prefix `0..event.seq`, not just its marker.
+Unknown/lost-start, transport, overflow and legacy free-text gaps stay unscoped.
+No later source read manufactures historical provenance. Native descendants use
+local sequence spaces: their gap ranges cannot be compared to the root interval.
+
+Reports retain gap rows with `scope:historical|current|outside_interval|unknown`:
+- `historical`: a known root-owned range ends at/before the resolved interval's
+  exclusive start; retain the diagnostic but do not block this later interval.
+- `current`: a known root-owned range intersects the interval; material incomplete.
+- `outside_interval`: a known range starts after an explicit interval end; retain
+  it without changing this interval's completeness.
+- `unknown`: no complete range, foreign/descendant sequence space or conflicting
+  scope/owner proofs for the same identity; conservative material incomplete,
+  even when detail sounds historical.
+An inferred last-visible-record seq is not an explicit task end: a gap for a
+missing/private tail record still blocks that open-ended interval.
+
+Stable report gap `id` is a digest of root/container-session/owner-session/kind,
+producer record ID and range bounds, not of body/detail. Same identity is emitted once per report
+(duplicate count retained); IDs stay equal across reports/windows for a distinct
+issue projection to count once without mutating historical report bytes. Gaps
+without record identity or range have no dedup identity: preserve each occurrence
+rather than merge potentially distinct unknown issues. Detail/IDs/session fields
+use the existing shared redactor before persistence. Scope does not make a gap
+body trustworthy or grant source/write authority.
+
+Producers scope only what they observe: part-specific capture/removal gaps use an
+existing staged part's exact seq; private synthetic gaps likewise retain the part
+identity without its body. Compaction controls retain native stable row IDs;
+repeated native backfill of the same event preserves its first staged seq instead
+of appending another marker while retained under the existing event cap. Re-seen
+Identical retained observations keep the same gap identity; changed or lost range/owner evidence
+never gains a guessed historical scope. Legacy events without IDs are not guessed equal.
+Unknown legacy gaps are never retroactively assigned a range from a detail string.
+Trace v1 legacy gaps remain valid and conservatively unknown. Report v2 adds
+optional provenance/scope fields; prior strict report readers reject unfamiliar
+fields rather than silently promote coverage. Old report bytes are never migrated.
+Raw signals remain visible for incomplete intervals. Missing current source
+provenance and all interpretation, citations, canonical/hash/WAL/review/QA guards
+are unchanged; there is no partial-evidence semantic or write exemption.
 
 Step definition: a step is a terminal tool attempt with paired input/result
 (`input` present, `input_omitted` false, and `len(result) > 0`) or a non-final

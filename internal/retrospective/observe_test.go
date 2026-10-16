@@ -478,8 +478,8 @@ func TestSpoolBoundOverflowDropsOldest(t *testing.T) {
 		t.Fatalf("overflow not recorded: %+v", reloaded)
 	}
 	found := false
-	for _, gap := range reloaded.Gaps {
-		if gap.Kind == "partial_stream" && strings.HasPrefix(gap.Detail, "spool overflow dropped") {
+	for _, gap := range assembleTrace(store, reloaded, "ses_bound").Gaps {
+		if gap.Kind == "coverage_overflow" && gap.Omitted == reloaded.Overflows {
 			found = true
 		}
 	}
@@ -809,10 +809,10 @@ func TestWriteSpoolBoundRefusalKeepsDiskConsistent(t *testing.T) {
 	}
 }
 
-func TestWriteSpoolBoundGapNoteDropKeepsDiskConsistent(t *testing.T) {
-	// The tiny-bound gap-note drop path: dropping parts first, then the
-	// appended gap note overflows again, so the note is dropped and the
-	// write still lands within the bound with no unpersisted bump.
+// Spec: docs/specs/task-retrospective.md via writeSpoolBounded
+func TestWriteSpoolBoundLossCounterKeepsDiskConsistent(t *testing.T) {
+	// The tiny bound fits the fixed loss counter, not a free-text note.
+	// Assembly must still project material unknown loss after reload.
 	store := testStore(t)
 	cfg := observationConfig(store)
 	spool, err := loadSpool(store, "ses_gapdrop")
@@ -821,10 +821,8 @@ func TestWriteSpoolBoundGapNoteDropKeepsDiskConsistent(t *testing.T) {
 	}
 	record := EnvelopeRecord{Kind: "part", RecordID: "prt_one", MessageID: "msg", PartType: "text", Text: strings.Repeat("x", 512)}
 	stageRecords(redactorForTest(), []EnvelopeRecord{record}, spool)
-	// Bound sits between the empty-doc size and the empty-doc-plus-note
-	// size: the part must drop (its gap note appended), then the gap note
-	// itself must drop for the write to fit, and the single dropped part is
-	// the persisted count.
+	// The old free-text note would not fit this bound. The fixed counter
+	// must fit instead, and remain material when projected after reload.
 	noted := &Spool{Schema: SpoolSchemaVersion, SessionID: "ses_gapdrop"}
 	noted.appendGap(Gap{Kind: "partial_stream", Detail: "spool overflow dropped 1 staged records"})
 	notedBody, err := json.Marshal(noted)
@@ -854,6 +852,10 @@ func TestWriteSpoolBoundGapNoteDropKeepsDiskConsistent(t *testing.T) {
 		t.Fatalf("persisted overflows = %d (want the one dropped part)", reloaded.Overflows)
 	}
 	if len(reloaded.Gaps) != 0 {
-		t.Fatalf("gap note must be dropped for the fit: %+v", reloaded.Gaps)
+		t.Fatalf("loss is stored outside the row cap: %+v", reloaded.Gaps)
+	}
+	trace := assembleTrace(store, reloaded, "ses_gapdrop")
+	if len(trace.Gaps) != 1 || trace.Gaps[0].Kind != "coverage_overflow" || trace.Gaps[0].Omitted != 1 {
+		t.Fatal("loss counter no longer enforces incomplete coverage")
 	}
 }

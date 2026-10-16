@@ -280,7 +280,7 @@ func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock
 		latest, err := loadSpool(store, spool.SessionID)
 		if err == nil {
 			latest.ServerURL = ""
-			latest.Gaps = append(latest.Gaps, Gap{Kind: "partial_stream", Detail: "persisted observation server URL rejected; no backfill request sent"})
+			latest.appendGap(Gap{Kind: "partial_stream", Detail: "persisted observation server URL rejected; no backfill request sent"})
 			err = writeSpoolBounded(cfg, store, latest)
 			spool = latest
 		}
@@ -616,7 +616,7 @@ func backfillLoadStage(ctx context.Context, client *HTTPSessionClient, store *St
 		gap := Gap{Kind: "partial_stream", Detail: "persisted descendant/server origin rejected; no backfill request sent"}
 		if !collectionServerURL(spool.ServerURL, cfg) {
 			spool.ServerURL = ""
-			spool.Gaps = append(spool.Gaps, gap)
+			spool.appendGap(gap)
 			if err := writeSpoolBounded(cfg, store, spool); err != nil {
 				return nil, []Gap{{Kind: "partial_stream", Detail: "cannot sanitize persisted descendant server URL"}}
 			}
@@ -816,7 +816,12 @@ func assembleTrace(store *Store, spool *Spool, sessionID string) *Trace {
 			continue
 		}
 		if part.Reasoning || part.Synthetic || messageRole(spool, part.MessageID) != "context" {
-			trace.Gaps = append(trace.Gaps, Gap{Kind: "partial_stream", Detail: "native synthetic context is private or has incompatible ownership"})
+			gap := Gap{Kind: "partial_stream", Detail: "native synthetic context is private or has incompatible ownership", SessionID: part.SessionID, RecordID: staged.id}
+			if part.SessionID == sessionID && part.Seq > 0 {
+				start, end := part.Seq, part.Seq
+				gap.StartSeq, gap.EndSeq = &start, &end
+			}
+			trace.Gaps = append(trace.Gaps, gap)
 			continue
 		}
 		trace.Messages = append(trace.Messages, Message{ID: "m:" + part.MessageID, Seq: part.Seq, Role: "context", Kind: "synthetic", Text: part.Text})
@@ -951,7 +956,12 @@ func assembleTrace(store *Store, spool *Spool, sessionID string) *Trace {
 		}
 		switch event.Event {
 		case "session.compacted":
-			trace.Gaps = append(trace.Gaps, Gap{Kind: "compacted", Detail: "session history compacted before seq " + fmt.Sprintf("%d", event.Seq)})
+			gap := Gap{Kind: "compacted", Detail: "session history compacted before seq " + fmt.Sprintf("%d", event.Seq), SessionID: sessionID, RecordID: event.RecordID}
+			if event.Seq > 0 {
+				start, end := 0, event.Seq
+				gap.StartSeq, gap.EndSeq = &start, &end
+			}
+			trace.Gaps = append(trace.Gaps, gap)
 		case "session.error", "session.idle", "session.status":
 			// Terminal status derives above; idle/status are trigger
 			// candidates, not evidence gaps.
@@ -962,14 +972,27 @@ func assembleTrace(store *Store, spool *Spool, sessionID string) *Trace {
 	trace.ChildRefs = append(trace.ChildRefs, refs...)
 	trace.Descendants = append(trace.Descendants, descendants...)
 	trace.SourceFiles = append(trace.SourceFiles, spool.SourceRefs...)
-	trace.Gaps = append(trace.Gaps, spool.Gaps...)
+	// Also defend direct/legacy assembly, without modifying the caller's rows.
+	coverage := *spool
+	coverage.compactGaps()
+	trace.Gaps = append(trace.Gaps, coverage.Gaps...)
+	if coverage.GapOmissions > 0 || coverage.Overflows > 0 {
+		trace.Gaps = append(trace.Gaps, Gap{Kind: "coverage_overflow", SessionID: sessionID, Omitted: gapCountAdd(coverage.GapOmissions, coverage.Overflows), Detail: "retained evidence was discarded; coverage scope unknown"})
+	}
 	for _, marker := range spool.StartupGaps {
 		if marker.Seq > spool.AcceptedAfterSeq && !spool.startupCovered(marker) {
 			trace.Gaps = append(trace.Gaps, Gap{Kind: "missing_startup", Detail: "terminal segment lacks its opening user evidence: " + marker.MessageID})
 		}
 	}
+	// Keep the existing public assembled-trace child-gap projection. Ownership
+	// stays explicit; normalization visits the original child once, not this copy.
 	for _, child := range trace.Descendants {
-		trace.Gaps = append(trace.Gaps, child.Gaps...)
+		for _, gap := range child.Gaps {
+			if gap.SessionID == "" {
+				gap.SessionID = child.Identities.SessionID
+			}
+			trace.Gaps = append(trace.Gaps, gap)
+		}
 	}
 	return trace
 }

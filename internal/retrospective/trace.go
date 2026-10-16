@@ -139,8 +139,14 @@ type Requirement struct {
 // the enumerated kinds carry defined incompleteness semantics).
 // Spec: docs/specs/task-retrospective.md via Trace
 type Gap struct {
-	Kind   string `json:"kind"` // compacted | partial_stream | missing_source
-	Detail string `json:"detail,omitempty"`
+	Duplicates int    `json:"duplicates,omitempty"`
+	Omitted    int    `json:"omitted,omitempty"`
+	Kind       string `json:"kind"` // compacted | partial_stream | missing_source
+	Detail     string `json:"detail,omitempty"`
+	SessionID  string `json:"session_id,omitempty"`
+	RecordID   string `json:"record_id,omitempty"`
+	StartSeq   *int   `json:"start_seq,omitempty"`
+	EndSeq     *int   `json:"end_seq,omitempty"`
 }
 
 // Trace is the schema v1 input document.
@@ -271,7 +277,9 @@ type Normalized struct {
 
 	// Deduplicated counts duplicate record IDs collapsed during
 	// normalization (first occurrence wins).
-	Deduplicated int
+	Deduplicated     int
+	Gaps             []scopedGap
+	DeduplicatedGaps int
 
 	// Steps lists every stable step of the interval in order.
 	Steps []*Step
@@ -388,6 +396,9 @@ func Normalize(trace *Trace) (*Normalized, error) {
 		return normalized.Records[i].ID < normalized.Records[j].ID
 	})
 	if err := resolveInterval(normalized); err != nil {
+		return nil, err
+	}
+	if err := resolveGaps(normalized); err != nil {
 		return nil, err
 	}
 	resolveCompleteness(normalized)
@@ -661,13 +672,22 @@ func resolveCompleteness(n *Normalized) {
 			n.Reasons = append(n.Reasons, CompletenessReason{Kind: ReasonMissingChild, Detail: "linked child trace not available: " + ref})
 		}
 	}
-	for _, gap := range n.Trace.Gaps {
+	unknownGap := false
+	for _, scoped := range n.Gaps {
+		if scoped.Scope != "current" && scoped.Scope != "unknown" {
+			continue
+		}
+		unknownGap = unknownGap || scoped.Scope == "unknown"
+		gap := scoped.Gap
 		switch gap.Kind {
 		case "compacted":
 			n.Reasons = append(n.Reasons, CompletenessReason{Kind: ReasonCompacted, Detail: gap.Detail})
 		default:
 			n.Reasons = append(n.Reasons, CompletenessReason{Kind: "collection_gap", Detail: gap.Kind + ": " + gap.Detail})
 		}
+	}
+	if unknownGap {
+		n.Reasons = append(n.Reasons, CompletenessReason{Kind: "unknown_gap_scope", Detail: "gap scope cannot be proven outside the current interval"})
 	}
 	running := 0
 	for _, record := range n.Records {

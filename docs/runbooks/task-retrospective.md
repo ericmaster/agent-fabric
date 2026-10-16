@@ -245,6 +245,24 @@ rows until the source hash changes.
 
 ## Recovery
 
+- Gap retention: identical owner/kind/record/range observations share a row
+  before the 800-row cap, with additional occurrence counts. Changed range or
+  owner stays distinct. Any known row/part/compaction evidence eviction creates
+  sticky `coverage_overflow` (unknown) from fixed persisted loss counters. Never
+  clear those counters or treat them as historical to enable repair. Legacy
+  missing counters cannot prove the absence of past loss.
+
+- **Historical versus current gap alerts.** Read `trace.boundary_source` and
+  `trace.interval` before calling a gap historical. Reports classify structured
+  gaps as `historical`, `current`, `outside_interval`, or `unknown`; unknown scope
+  still blocks semantic/write eligibility. A follow-up is not proof of a new task.
+  Count stable gap IDs distinctly across reports, not repeated rows; unidentified
+  legacy gaps remain separate unknown occurrences. Old report bytes/state are not
+  rewritten. Current missing provenance still blocks writes; no new file hash or
+  inferred success may clear it. Whole-session legacy reports with no accepted or
+  explicit host boundary remain honestly incomplete. Monitor/UI projection is a
+  separate change, not activated by this reporting contract.
+
 - **Native history control/unknown-row failure.** Native idle/agent/model
   selections are not user/assistant messages. Inspect the retained job/report
   and redacted history. Valid snapshot normalization preserves actual tool

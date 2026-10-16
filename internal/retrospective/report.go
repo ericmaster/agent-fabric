@@ -24,8 +24,15 @@ type ModelInfo struct {
 
 // Spec: docs/specs/task-retrospective.md via Report
 type ReportGap struct {
-	Kind   string `json:"kind"`
-	Detail string `json:"detail,omitempty"`
+	Omitted   int    `json:"omitted,omitempty"`
+	Kind      string `json:"kind"`
+	Detail    string `json:"detail,omitempty"`
+	ID        string `json:"id,omitempty"`
+	Scope     string `json:"scope,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
+	RecordID  string `json:"record_id,omitempty"`
+	StartSeq  *int   `json:"start_seq,omitempty"`
+	EndSeq    *int   `json:"end_seq,omitempty"`
 }
 
 // Spec: docs/specs/task-retrospective.md via Report

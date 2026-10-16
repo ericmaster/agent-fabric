@@ -258,7 +258,7 @@ func normalizeNativeHistory(wire nativeHistoryRow, id string) (SessionMessageRow
 	row.Info.ID = wire.ID
 	row.Info.SessionID = id
 	event := func(kind, detail string) {
-		row.Events = append(row.Events, EnvelopeRecord{Kind: "event", SessionID: id, Event: kind, Detail: detail})
+		row.Events = append(row.Events, EnvelopeRecord{Kind: "event", SessionID: id, RecordID: wire.ID, Event: kind, Detail: detail})
 	}
 	bad := errors.New("native history row type/content malformed or unsupported")
 	switch wire.Type {
