@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,6 +15,80 @@ import (
 
 	"github.com/ericmaster/agent-fabric/internal/retrospective"
 )
+
+// CLI replay bypasses native staging. Both root and descendant public context
+// must be redacted at the shared boundary; private context never reaches HTTP.
+// Spec: docs/specs/task-retrospective.md via runRetrospectiveAnalyze
+func TestSyntheticContextCLIReplayPrivacy(t *testing.T) {
+	fixture, err := os.ReadFile("../../fixtures/retrospective/opencode/synthetic-replay-privacy.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"public", "hidden-root", "hidden-child", "binary-root", "reasoning-kind"} {
+		t.Run(mode, func(t *testing.T) {
+			var trace retrospective.Trace
+			if err := json.Unmarshal(fixture, &trace); err != nil {
+				t.Fatal(err)
+			}
+			switch mode {
+			case "hidden-root":
+				trace.Messages[1].Hidden = true
+			case "hidden-child":
+				trace.Descendants[0].Messages[0].Hidden = true
+			case "binary-root":
+				trace.Messages[1].Binary = true
+			case "reasoning-kind":
+				trace.Messages[1].Kind = "reasoning"
+			}
+			mock := newJevMockServer(t, nil)
+			hits := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits++
+				body, _ := io.ReadAll(r.Body)
+				if strings.Contains(string(body), "CANARY-") {
+					t.Error("CLI semantic HTTP request leaked context secret")
+				}
+				if !strings.Contains(string(body), "Public root context") || !strings.Contains(string(body), "Public child context") {
+					t.Error("CLI lost required public context")
+				}
+				r.Body = io.NopCloser(bytes.NewReader(body))
+				mock.Config.Handler.ServeHTTP(w, r)
+			}))
+			defer server.Close()
+			dir := t.TempDir()
+			input, output := filepath.Join(dir, "input.json"), filepath.Join(dir, "report.json")
+			raw, _ := json.Marshal(trace)
+			if err := os.WriteFile(input, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("FASTINO_API_KEY", "synthetic-key-not-a-secret")
+			err := runRetrospective([]string{"analyze", "--input", input, "--output", output, "--config", e2eConfig(t, dir, server.URL)})
+			if mode == "reasoning-kind" {
+				if err == nil || strings.Contains(err.Error(), "CANARY-") || hits != 0 {
+					t.Fatal("reasoning context was reclassified or echoed")
+				}
+				if _, err := os.Stat(output); !os.IsNotExist(err) {
+					t.Fatal("invalid private context wrote report")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			report, persisted, err := retrospective.LoadReport(output)
+			if err != nil || strings.Contains(string(persisted), "CANARY-") {
+				t.Fatal("CLI report leaked secret", err)
+			}
+			if mode == "public" {
+				if hits != 1 || !report.Coverage.EvidenceComplete || !strings.Contains(string(persisted), "opencode.synthetic") || !strings.Contains(string(persisted), "child-context") {
+					t.Fatal("public CLI context did not reach pipeline")
+				}
+			} else if hits != 0 || report.Coverage.EvidenceComplete {
+				t.Fatal("private CLI context became complete or reached HTTP")
+			}
+		})
+	}
+}
 
 // f64 returns a pointer to the given float (test helper for answer values).
 // Spec: docs/specs/task-retrospective.md

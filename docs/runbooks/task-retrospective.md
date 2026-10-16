@@ -254,7 +254,20 @@ rows until the source hash changes.
   actionability. Do not invent a role,
   final answer or historical source hash, or force a job eligible. Existing
   same-ID empty control projections can reconcile from trusted valid history;
-  unexpected payloads remain incomplete. A supervisor owns any live retry.
+   unexpected payloads remain incomplete. A supervisor owns any live retry.
+   OpenCode 2.0.30 `synthetic` rows are durable session input: validated public
+   text is retained as explicitly nonhuman `synthetic_context` evidence under
+   the same redaction/caps. Missing context cannot yield complete coverage.
+   It is not a human task boundary, assistant action or completed answer. Opaque
+   metadata (when present, a non-null JSON object) and display descriptions are
+   never forwarded; malformed metadata fails closed. A native
+   synthetic part's reasoning flag always withholds its body and leaves material
+   incomplete coverage, including late flags and descendants. Replay/direct input
+   uses the same shared context redactor as native capture; spool redaction alone
+   is not evidence that replay is safe. A native
+   `system`, `skill`, or `shell` diagnostic still identifies material unsupported
+   evidence; do not drop those rows, relax guards, or repeatedly retry to force
+   eligibility. Unknown type values/private row bodies are never diagnostic text.
 
 - **Opening observations/ingest batch missing.** Failed reads are terminal
   task evidence, not source loads. Native prompt intake obtains current identity

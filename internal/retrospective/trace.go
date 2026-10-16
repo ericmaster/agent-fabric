@@ -28,6 +28,7 @@ const (
 	RecordUserMessage      = "user_message"
 	RecordAssistantMessage = "assistant_message"
 	RecordAssistantFinal   = "assistant_final"
+	RecordSyntheticContext = "synthetic_context"
 	RecordToolCall         = "tool_call"
 	RecordRequirement      = "requirement"
 )
@@ -99,8 +100,8 @@ type SourceRef struct {
 type Message struct {
 	ID     string            `json:"id"`
 	Seq    int               `json:"seq"`
-	Role   string            `json:"role"`           // user | assistant
-	Kind   string            `json:"kind,omitempty"` // "" | final | action | reasoning | unsupported
+	Role   string            `json:"role"`           // user | assistant | context (only kind synthetic)
+	Kind   string            `json:"kind,omitempty"` // "" | final | action | reasoning | unsupported | synthetic
 	Text   string            `json:"text,omitempty"`
 	Hidden bool              `json:"hidden,omitempty"`
 	Binary bool              `json:"binary,omitempty"`
@@ -504,6 +505,12 @@ func (state *normalization) validateMessage(m *Message) error {
 	if m.Seq < 0 {
 		return fmt.Errorf("message %q has invalid seq %d", m.ID, m.Seq)
 	}
+	if m.Role == "context" {
+		if m.Kind != "synthetic" {
+			return fmt.Errorf("context message has unsupported source kind")
+		}
+		return nil
+	}
 	switch m.Role {
 	case "user", "assistant":
 	default:
@@ -532,6 +539,8 @@ func messageRecord(m *Message, sessionID string) *Record {
 		Text: m.Text, Hidden: m.Hidden, Binary: m.Binary, Env: m.Env,
 	}
 	switch {
+	case m.Role == "context":
+		record.Kind = RecordSyntheticContext
 	case m.Role == "user":
 		record.Kind = RecordUserMessage
 	case kind == "final":

@@ -614,7 +614,7 @@ func (r *SignalReport) retainEvidence(n *Normalized, calls []signalCall, redacto
 		if !n.InInterval(record) {
 			continue
 		}
-		if record.Kind == RecordUserMessage || record.Kind == RecordAssistantFinal || record.Kind == RecordRequirement {
+		if record.Kind == RecordUserMessage || record.Kind == RecordSyntheticContext || record.Kind == RecordAssistantFinal || record.Kind == RecordRequirement {
 			wanted[record] = true
 		}
 		position := len(r.Coverage.RecordDispositions)
@@ -623,7 +623,7 @@ func (r *SignalReport) retainEvidence(n *Normalized, calls []signalCall, redacto
 			r.Coverage.RecordDispositions[position].Disposition = "excluded:" + exclusionReason(record)
 			r.Coverage.ExcludedRecords++
 			// Deliberately unobserved private reasoning is not a collection gap.
-			if !record.Reasoning && !record.Hidden {
+			if record.Kind == RecordSyntheticContext || (!record.Reasoning && !record.Hidden) {
 				r.Coverage.EvidenceComplete = false
 			}
 			continue

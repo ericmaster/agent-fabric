@@ -139,7 +139,7 @@ func (e *Envelope) validate() error {
 			if record.RecordID == "" {
 				return fmt.Errorf("record %d: message record without record_id", i)
 			}
-			if record.Role != "user" && record.Role != "assistant" {
+			if record.Role != "user" && record.Role != "assistant" && record.Role != "context" {
 				return fmt.Errorf("record %d: message role %q is not observable", i, record.Role)
 			}
 		case "part":
@@ -622,6 +622,7 @@ func (spool *Spool) upsert(record *EnvelopeRecord) {
 			entry = &SpoolPart{SessionID: record.SessionID, Seq: spool.LastSeq}
 			spool.Parts[record.RecordID] = entry
 		}
+		nativeContext := entry.PartType == "synthetic" || record.PartType == "synthetic"
 		entry.MessageID = record.MessageID
 		if record.PartType != "" {
 			entry.PartType = record.PartType
@@ -629,7 +630,7 @@ func (spool *Spool) upsert(record *EnvelopeRecord) {
 		if record.CallID != "" {
 			entry.CallID = record.CallID
 		}
-		if record.Text != "" || record.PartType == "text" {
+		if record.Text != "" || record.PartType == "text" || record.PartType == "synthetic" {
 			entry.Text = record.Text
 			entry.NonFinal = record.NonFinal
 		}
@@ -653,6 +654,13 @@ func (spool *Spool) upsert(record *EnvelopeRecord) {
 		}
 		if record.Error != "" {
 			entry.Error = record.Error
+		}
+		if nativeContext && entry.Reasoning {
+			// Privacy is monotonic, including late flags and attempted relabels.
+			// Preserve identity/sequence, not any formerly retained body.
+			entry.PartType = "synthetic"
+			entry.Text, entry.Input, entry.Output, entry.Error = "", "", "", ""
+			entry.Tool, entry.ToolStatus, entry.CallID = "", "", ""
 		}
 	case "removed":
 		spool.appendGap(Gap{Kind: "partial_stream", Detail: "removed " + record.RecordID})

@@ -67,7 +67,7 @@ Top level:
 | `terminal_status` | no | `ok` (default), `aborted`, `error` |
 | `task` | no | host task block `{id, start_seq, end_seq?}`; when present it defines the interval and is preferred |
 | `boundaries` | no | explicit boundaries; `accepted_success` entries carry `after_seq` (interval = records with `seq > after_seq`); `task_start` entries mark earlier task starts |
-| `messages` | no | `[ {id, seq, role: user\|assistant, kind: message\|action\|final\|reasoning\|unsupported, text, hidden?, env?} ]` |
+| `messages` | no | `[ {id, seq, role: user\|assistant, kind: message\|action\|final\|reasoning\|unsupported, text, hidden?, env?} ]`; durable native input uses only `role:context, kind:synthetic` |
 | `calls` | no | `[ {id, seq, tool, status: success\|error\|failed\|aborted\|cancelled\|running ("" = running), exit_code?, input?, input_omitted?, result?, env?, prereq_fingerprint?, source_refs?} ]` |
 | `requirements` | no | explicit requirements `[ {id, text} ]`; intent context only, no omission analysis |
 | `child_refs` | no | linked descendant session ids that must resolve |
@@ -107,7 +107,7 @@ response in the interval.
 Step definition: a step is a terminal tool attempt with paired input/result
 (`input` present, `input_omitted` false, and `len(result) > 0`) or a non-final
 visible assistant action message. User messages, the final assistant response,
-hidden reasoning, unsupported or binary messages, and unpaired or
+native synthetic context, hidden reasoning, unsupported or binary messages, and unpaired or
 `input_omitted` terminal calls are not steps. The legacy tail-step definition
 remains readable for old reports, not a model success payload or routing gate.
 
@@ -245,7 +245,7 @@ any further causal explanation with citations; GLiDE's Choice API is not an
 invented free-prose citation interface. Instruction defects, ignored instructions,
 environment recovery and implementation bugs remain distinct downstream.
 
-Each candidate packet contains its redacted evidence, all task user intent
+Each candidate packet contains its redacted evidence, all in-interval native synthetic context, all task user intent
 messages/explicit requirements, observed terminal outcome, final response if
 present, source provenance references, plus the 2 preceding and 2 following
 terminal calls around each signal evidence call (deduplicated, ordered). Include
@@ -778,6 +778,80 @@ imported synthetic transcript (not new model/tool execution). Its role/model
 controls and queued prompt events come from actual disposable public endpoints;
 replay flush triggers are labelled synthetic. Raw public responses and the real
 default-loader-to-Go-ingest spool are retained separately from protocol mocks.
+
+Native history also validates the exact-tag `synthetic` union member: base
+identity/time/optional metadata, required string `text`, optional string
+`description`, and no other fields. This is durable model-facing session input,
+not ignorable metadata. Preserve public text as a message with the exact pair
+`role:context, kind:synthetic`, normalized kind `synthetic_context`; it is neither
+human intent nor assistant authorship. Native part type `synthetic` carries its
+stable message ID, owner session and existing staged sequence. It is distinct
+from the legacy v1 `synthetic:true` ignored-part flag. It does not create a user
+task boundary, supply assistant→user ownership, select a final, count as a step,
+record a tool attempt or attest at-use source provenance. Existing session parent
+relations and task intervals are preserved. Missing human intent still abstains.
+Description is display-only and metadata is an opaque optional JSON object;
+neither is copied to messages, diagnostics, evidence or privileged routing.
+Present metadata must be a non-null object (any string-keyed JSON values);
+scalar/array/null values, duplicate keys and nesting beyond 128 fail closed.
+This base-metadata validation applies to every native history row, not just input.
+Missing/null/wrong-type text, null/wrong-type description, oversized
+text/description or incompatible fields fail closed. Synthetic-only history
+still lacks assistant evidence. Source: exact `v2.0.30` commit above,
+`packages/schema/src/session-message.ts` (`Synthetic`, `Info`) and
+`packages/protocol/src/groups/message.ts` (`PublicSessionMessage`). A bounded
+existing managed-session structural capture observed `type:synthetic` with
+`id,time.created,text`; no transcript body was retained.
+
+Exact production/consumption: session API `session.synthetic` durably admits input
+and schedules execution; `core/src/session/projector.ts` projects admitted input
+to the `synthetic` history row with text and ID; the exact-tag
+`core/src/session/runner/to-llm-message.ts` passes its text to the LLM as user-role
+content. Retrospective preserves the native source distinction rather than
+claiming human authorship from that provider-facing role.
+
+Every in-interval synthetic-context record is required bounded task context in
+the local evidence and every signal candidate packet, even outside the tool
+neighborhood. Apply the same local redaction before spool/report/HTTP, whole-record
+evidence caps, stable-ID deduplication and interval exclusion as other records.
+Omitted/unsafe context makes coverage incomplete and skips semantic routing;
+there is no context-only completeness exemption. Evidence records additionally
+carry `source_kind:opencode.synthetic` (not a source-file hash or trust authority).
+Shared `Redactor.Record` applies the existing message text/environment rails to
+`synthetic_context`, including direct Analyze, detector-only replay, CLI input and
+descendant normalization; native spool redaction is not a substitute. Observed
+secret environment values (literal and JSON-escaped) are scrubbed from context
+before whole-record UTF-8/encoded-byte budget decisions, report persistence or
+candidate HTTP. Unknown record kinds have no transmittable body at this shared
+redaction boundary; private/hidden/binary/unsupported records remain excluded.
+
+A native synthetic part marked `reasoning:true` is private regardless of its
+public-looking part type or context role. Its body is cleared before spool
+persistence and withheld before trace message construction, with a fixed material
+`partial_stream` gap; prior persisted private parts are likewise withheld on read.
+The reasoning flag is monotonic under upsert: a late privacy flag clears retained
+content, and a later false/unset flag or part-type relabel cannot republish it.
+This applies to descendant spools too. Direct trace hidden/binary context is
+excluded with incomplete coverage; a context/reasoning kind mismatch fails
+normalization, never reclassifies private text as public context. Public synthetic
+input without privacy flags remains material retained context, not a blanket gap.
+Trace v1 remains readable for legacy user/assistant messages; only the exact
+new role/kind pair is accepted. Other role/kind combinations fail normalization.
+Report v2 gains this optional provenance field only on native synthetic context:
+old strict report decoders reject it rather than silently consuming an unknown
+context kind; old trace normalizers reject the new role. New pipeline tests must
+cover full public reconciliation→Analyze→packet and strict report round-trip,
+legacy message compatibility, intervals, caps and deduplication. No old report is
+rewritten or promoted to new authority.
+
+The remaining exact-tag union members `system`, `skill`, and `shell` are audited
+but **not** synthetic exclusions: they carry frozen model-facing context, skill
+activation text, and explicit shell execution respectively. They remain material
+unsupported evidence (fixed public type diagnostics, no raw payload/unknown type
+echo), never silently ignored or coerced into user/assistant roles. No retry or
+live eligibility claim follows from supporting synthetic rows. Unknown future
+types still fail closed without echoing their values. Compaction/provenance,
+pagination, limits, terminal status and all independent repair guards are unchanged.
 The v2 loader requires a default `{id,setup}` definition, not the v1 named
 function returning hooks. `@opencode/plugin@2.0.24` is the native typing pin;
 v1 SDK pins remain replay compatibility only, not live compatibility claims.
@@ -866,7 +940,7 @@ Every record is one of the following kinds (single object, `kind` selects):
 
 - `session` — `{session_id, parent_id?, title?, directory?}`; identity and
   parent linkage observed from session events.
-- `message` — `{record_id, session_id, role, parent_id?}`; role map (`user`/`assistant`); assistant parent_id is the observed admitted opening user message, never a later inferred prompt.
+- `message` — `{record_id, session_id, role, parent_id?}`; role map (`user`/`assistant`, or `context` paired only with native part type `synthetic`); assistant parent_id is the observed admitted opening user message, never a later inferred prompt. Context never attests this ownership. A synthetic context part with incompatible ownership/legacy ignored flag leaves an explicit collection gap.
 - `part` — `{record_id, session_id, message_id, part_type, text?, synthetic?,
   reasoning?, tool?, tool_status?, call_id?, input?, output?, error?}`.
   Reasoning parts are emitted with `reasoning: true` and no text: private
@@ -941,7 +1015,8 @@ bump, so memory and disk stay consistent.
 | user text parts of a message | one `messages[]` record, role `user` |
 | assistant text parts of a message | one `messages[]` record; the last assistant message of the resolved session carries kind `final` |
 | reasoning parts | one `messages[]` record kind `reasoning`, no text (excluded from evidence with coverage reason) |
-| synthetic/ignored parts | not captured (not agent observables); their absence is not a gap |
+| legacy v1 synthetic/ignored parts (`synthetic:true`) | not captured (not agent observables); their absence is not a gap |
+| native durable `synthetic` input | redacted context message (`role:context, kind:synthetic`); required task context, never a productive step or human task boundary |
 | tool part (`state.status` pending/running) | `calls[]` record status `running` |
 | tool part (`state.status` completed) | `calls[]` record status `success` |
 | tool part (`state.status` error) | `calls[]` record status `error` with `error` detail in the input fragment set |

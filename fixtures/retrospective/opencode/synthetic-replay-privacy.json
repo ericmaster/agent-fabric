@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "identities": {"root_session_id":"root","session_id":"root","execution_root":"/fixture"},
+  "messages": [
+    {"id":"intent","seq":1,"role":"user","text":"Check the expected negative control"},
+    {"id":"root-context","seq":2,"role":"context","kind":"synthetic","text":"Public root context café 🧭: password=CANARY-password-root; {\"token\":\"CANARY-json-root\"}; literal CANARY-env-\"-\\-end; escaped CANARY-env-\\\"-\\\\-end","env":{"API_TOKEN":"CANARY-env-\"-\\-end"}},
+    {"id":"final","seq":6,"role":"assistant","kind":"final","text":"DONE"}
+  ],
+  "calls": [{"id":"fail","seq":4,"tool":"read","status":"error","input":"{\"path\":\"wrong/docs\"}","result":[{"id":"result","text":"File not found (expected negative control)"}]}],
+  "child_refs": ["child"],
+  "descendants": [{
+    "schema_version":1,
+    "identities":{"root_session_id":"root","session_id":"child","execution_root":"/fixture"},
+    "messages":[{"id":"child-context","seq":3,"role":"context","kind":"synthetic","text":"Public child context café 🧭: password=CANARY-password-child; {\"token\":\"CANARY-json-child\"}; literal CANARY-env-child-\"-\\-end; escaped CANARY-env-child-\\\"-\\\\-end","env":{"API_TOKEN":"CANARY-env-child-\"-\\-end"}}]
+  }]
+}

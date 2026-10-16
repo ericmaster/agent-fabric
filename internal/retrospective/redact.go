@@ -174,8 +174,13 @@ func (r *Redactor) Record(record *Record) *Record {
 	out.Env = nil
 	out.SourceRefs = nil
 	out.Result = nil
+	out.Text = ""
+	out.Input = ""
+	if record.Hidden || record.Binary || record.Reasoning || record.Unsupported {
+		return &out
+	}
 	switch record.Kind {
-	case RecordUserMessage, RecordAssistantMessage, RecordAssistantFinal:
+	case RecordUserMessage, RecordAssistantMessage, RecordAssistantFinal, RecordSyntheticContext:
 		out.Text = r.Text(record.Text)
 		out.Env = r.Env(record.Env)
 	case RecordToolCall:
@@ -190,6 +195,9 @@ func (r *Redactor) Record(record *Record) *Record {
 		out.Env = r.Env(record.Env)
 	case RecordRequirement:
 		out.Text = r.Text(record.Text)
+	default:
+		// A new record kind must opt into a body mapping before publication.
+		return &Record{ID: record.ID, Kind: record.Kind, Seq: record.Seq, SessionID: record.SessionID, Unsupported: true}
 	}
 	for _, ref := range record.SourceRefs {
 		out.SourceRefs = append(out.SourceRefs, r.SourceFile(ref))

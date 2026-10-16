@@ -21,6 +21,7 @@ type evidenceRecord struct {
 	ID           string      `json:"id"`
 	Kind         string      `json:"kind"`
 	SessionID    string      `json:"session_id,omitempty"`
+	SourceKind   string      `json:"source_kind,omitempty"`
 	Tool         string      `json:"tool,omitempty"`
 	Status       string      `json:"status,omitempty"`
 	ExitCode     *int        `json:"exit_code,omitempty"`
@@ -33,7 +34,11 @@ type evidenceRecord struct {
 
 // Spec: docs/specs/task-retrospective.md via Analyze
 func gramOf(r *Record) evidenceRecord {
-	return evidenceRecord{ID: r.ID, Kind: r.Kind, SessionID: r.SessionID, Tool: r.Tool, Status: r.Status, ExitCode: r.ExitCode, Input: r.Input, InputOmitted: r.InputOmitted, Text: r.Text, Result: r.Result, SourceRefs: r.SourceRefs}
+	gram := evidenceRecord{ID: r.ID, Kind: r.Kind, SessionID: r.SessionID, Tool: r.Tool, Status: r.Status, ExitCode: r.ExitCode, Input: r.Input, InputOmitted: r.InputOmitted, Text: r.Text, Result: r.Result, SourceRefs: r.SourceRefs}
+	if r.Kind == RecordSyntheticContext {
+		gram.SourceKind = "opencode.synthetic"
+	}
+	return gram
 }
 
 // candidatePacket is self-contained; omitted context is never silently repaired
@@ -196,7 +201,7 @@ func packetFor(n *Normalized, r *Report, s FrictionSignal, neighbors int) (candi
 	p := candidatePacket{Signal: s, TerminalOutcome: r.TerminalOutcome, Sources: r.Trace.SourceFiles, Records: []evidenceRecord{}}
 	ids := []string{}
 	for _, record := range r.Evidence {
-		if wanted[record.ID] || record.Kind == RecordUserMessage || record.Kind == RecordAssistantFinal || record.Kind == RecordRequirement {
+		if wanted[record.ID] || record.Kind == RecordUserMessage || record.Kind == RecordSyntheticContext || record.Kind == RecordAssistantFinal || record.Kind == RecordRequirement {
 			p.Records = append(p.Records, record)
 			ids = append(ids, record.ID)
 		}

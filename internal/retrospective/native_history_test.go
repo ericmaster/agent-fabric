@@ -161,6 +161,129 @@ func TestNative2030RecordedSessionHistoryAndControls(t *testing.T) {
 	}
 }
 
+// Exact-tag union audit: synthetic context is retained, material context and
+// explicit shell execution are not silently discarded. Never echo private data.
+// Spec: docs/specs/task-retrospective.md via HTTPSessionClient.Messages
+func TestNative2030SyntheticHistoryControls(t *testing.T) {
+	fixture, err := os.ReadFile("../../fixtures/retrospective/opencode/native-synthetic-2.0.30.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"valid", "description", "empty-text", "missing-text", "null-text", "wrong-text", "null-description", "wrong-description", "oversized-text", "oversized-description", "extra-field", "extra-time", "private-content", "unknown-type", "system", "skill", "shell", "synthetic-only", "missing-final"} {
+		t.Run(mode, func(t *testing.T) {
+			var synthetic map[string]any
+			if err := json.Unmarshal(fixture, &synthetic); err != nil {
+				t.Fatal(err)
+			}
+			switch mode {
+			case "description":
+				synthetic["description"] = "CANARY-private-description"
+			case "empty-text":
+				synthetic["text"] = ""
+			case "missing-text":
+				delete(synthetic, "text")
+			case "null-text":
+				synthetic["text"] = nil
+			case "wrong-text":
+				synthetic["text"] = 7
+			case "null-description":
+				synthetic["description"] = nil
+			case "wrong-description":
+				synthetic["description"] = []string{"CANARY-private"}
+			case "oversized-text":
+				synthetic["text"] = strings.Repeat("x", EnvelopeRecordMaxBytes+1)
+			case "oversized-description":
+				synthetic["description"] = strings.Repeat("x", EnvelopeRecordMaxBytes+1)
+			case "extra-field":
+				synthetic["future"] = "CANARY-private"
+			case "extra-time":
+				synthetic["time"] = map[string]any{"created": 1, "completed": 2}
+			case "private-content":
+				synthetic["content"] = []any{map[string]any{"type": "reasoning", "text": "CANARY-private"}}
+			case "unknown-type":
+				synthetic["type"] = "CANARY-private-type"
+			case "system", "skill", "shell":
+				synthetic["type"] = mode
+				// Extra fields on unsupported material types cannot turn them
+				// into synthetic controls; diagnostics expose only the known tag.
+				synthetic["private"] = "CANARY-private"
+			}
+			data := []any{synthetic}
+			if mode != "synthetic-only" {
+				assistant := map[string]any{"id": "msg_final", "type": "assistant", "time": map[string]any{"created": 2, "completed": 3}, "agent": "build", "model": map[string]any{"id": "worker", "providerID": "fixture"}, "finish": "stop", "content": []any{map[string]any{"type": "text", "text": "DONE"}}}
+				if mode == "missing-final" {
+					assistant["content"] = []any{map[string]any{"type": "reasoning", "text": "CANARY-private-reasoning"}}
+				}
+				data = append(data, assistant)
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/api/session/ses_synthetic/message" {
+					t.Error("unexpected public route")
+				}
+				json.NewEncoder(w).Encode(map[string]any{"data": data, "cursor": map[string]any{"next": nil}})
+			}))
+			defer server.Close()
+			client := &HTTPSessionClient{BaseURL: server.URL, Generation: EndpointMessage}
+			rows, err := client.Messages(context.Background(), "ses_synthetic")
+			valid := mode == "valid" || mode == "description" || mode == "empty-text" || mode == "missing-final"
+			if !valid {
+				if err == nil || rows != nil || strings.Contains(err.Error(), "CANARY") {
+					t.Fatal("malformed/material history accepted or private diagnostic leaked")
+				}
+				if (mode == "system" || mode == "skill" || mode == "shell") && !strings.Contains(err.Error(), "native history "+mode+" evidence unsupported") {
+					t.Fatal("known material row diagnostic lost")
+				}
+				return
+			}
+			if err != nil || len(rows) != 2 {
+				t.Fatalf("synthetic control refused: %v", err)
+			}
+			if rows[0].Control != "" || rows[0].Info.Role != "context" || len(rows[0].Parts) != 1 || rows[0].Parts[0].Type != "synthetic" || rows[0].Parts[0].Synthetic || len(rows[0].Events) != 0 {
+				t.Fatal("durable context missing or misattributed")
+			}
+			encoded, _ := json.Marshal(rows)
+			if strings.Contains(string(encoded), "CANARY-private-description") || strings.Contains(string(encoded), "CANARY-private-reasoning") {
+				t.Fatal("display context/private reasoning leaked")
+			}
+			if mode == "missing-final" && len(rows[1].Events) != 1 {
+				t.Fatal("synthetic row supplied a missing final")
+			}
+		})
+	}
+}
+
+// Optional base metadata is a JSON object, not arbitrary raw JSON or a route.
+// Spec: docs/specs/task-retrospective.md via HTTPSessionClient.Messages
+func TestNativeSyntheticMetadataObjectContract(t *testing.T) {
+	for index, metadata := range []string{"", `{}`, `{"private_key":"CANARY-metadata","nested":{"reasoning":"CANARY-private"}}`, `7`, `[]`, `null`, `"CANARY-private"`, `true`, `{"a":1,"a":2}`, `{"nested":{"a":1,"a":2}}`, `{"bad":}`, `{"deep":` + strings.Repeat(`[`, 130) + `0` + strings.Repeat(`]`, 130) + `}`} {
+		t.Run(fmt.Sprint(index), func(t *testing.T) {
+			field := ""
+			if metadata != "" {
+				field = `,"metadata":` + metadata
+			}
+			body := `{"data":[{"id":"msg_context","time":{"created":1},"type":"synthetic","text":"public context"` + field + `},{"id":"msg_final","time":{"created":2,"completed":3},"type":"assistant","agent":"build","model":{"id":"worker","providerID":"fixture"},"finish":"stop","content":[{"type":"text","text":"DONE"}]}],"cursor":{"next":null}}`
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
+			defer server.Close()
+			client := &HTTPSessionClient{BaseURL: server.URL, Generation: EndpointMessage}
+			rows, err := client.Messages(context.Background(), "ses_metadata")
+			valid := metadata == "" || metadata == `{}` || strings.Contains(metadata, `"private_key"`)
+			if !valid {
+				if err == nil || rows != nil || strings.Contains(err.Error(), "CANARY") || strings.Contains(err.Error(), "private_key") {
+					t.Fatal("invalid metadata accepted or echoed")
+				}
+				return
+			}
+			if err != nil || len(rows) != 2 {
+				t.Fatalf("valid metadata refused: %v", err)
+			}
+			encoded, _ := json.Marshal(rows)
+			if strings.Contains(string(encoded), "CANARY") || strings.Contains(string(encoded), "private_key") {
+				t.Fatal("opaque metadata copied into normalized output")
+			}
+		})
+	}
+}
+
 // Literal 2.0.27 schema addition retained for 2.0.30's identical history schema.
 // Spec: docs/specs/task-retrospective.md via HTTPSessionClient.Messages
 func TestNative2027IdleErrorLiteralWire(t *testing.T) {
@@ -196,6 +319,13 @@ func TestNative2027IdleErrorLiteralWire(t *testing.T) {
 func TestNativeHistoryControlsDrainLiteralWire(t *testing.T) {
 	f := newLoopFixture(t, unknownScript(t))
 	rows := nativeHistoryFixture(t)
+	// Live structural shape, anonymized ID; timestamp/text are synthetic canaries.
+	// The actual row body was never retained. Test text is material nonhuman input.
+	synthetic, err := os.ReadFile("../../fixtures/retrospective/opencode/native-synthetic-2.0.30.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows = append(rows, json.RawMessage(synthetic))
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
@@ -220,7 +350,7 @@ func TestNativeHistoryControlsDrainLiteralWire(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Intake is observed; all tools/final come from real-shape history backfill.
-	_, err := IngestEnvelope(IngestOptions{Config: f.cfg, Store: f.store}, &Envelope{Version: 1, Harness: HarnessOpenCode, SessionID: "ses_history", ServerURL: server.URL, Trigger: true, Records: []EnvelopeRecord{
+	_, err = IngestEnvelope(IngestOptions{Config: f.cfg, Store: f.store}, &Envelope{Version: 1, Harness: HarnessOpenCode, SessionID: "ses_history", ServerURL: server.URL, Trigger: true, Records: []EnvelopeRecord{
 		{Kind: "session", SessionID: "ses_history", Directory: f.root},
 		{Kind: "message", SessionID: "ses_history", RecordID: "msg_11816a0f1001Lpag8sItprEyak", Role: "user"},
 		{Kind: "part", SessionID: "ses_history", RecordID: "msg_11816a0f1001Lpag8sItprEyak:text", MessageID: "msg_11816a0f1001Lpag8sItprEyak", PartType: "text", Text: "Actual synthetic opening"},
@@ -265,11 +395,71 @@ func TestNativeHistoryControlsDrainLiteralWire(t *testing.T) {
 		t.Fatal(err)
 	}
 	trace := assembleTrace(f.store, spool, "ses_history")
+	for _, value := range []any{spool, trace, report, f.jev.recorded()} {
+		encoded, err := json.Marshal(value)
+		if err != nil || strings.Contains(string(encoded), "CANARY-context-secret") || !strings.Contains(string(encoded), "expected negative control") || !strings.Contains(string(encoded), "msg_0c003f2bca58eb41") {
+			t.Fatal("material context disappeared or redaction failed")
+		}
+	}
+	contextRows := 0
+	for _, record := range report.Evidence {
+		if strings.Contains(record.ID, "msg_0c003f2bca58eb41") {
+			if record.Kind != "synthetic_context" || record.SessionID != "ses_history" || len(record.SourceRefs) != 0 {
+				t.Fatal("nonhuman context became human/assistant/file provenance")
+			}
+			contextRows++
+		}
+	}
+	if contextRows != 1 {
+		t.Fatal("material context absent/duplicated in report")
+	}
+	loaded, _, err := LoadReport(job.ReportPath)
+	if err != nil {
+		t.Fatal("context report cannot be read back", err)
+	}
+	normalized, err := Normalize(trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range normalized.Steps {
+		if strings.Contains(step.ID, "msg_0c003f2bca58eb41") {
+			t.Fatal("context counted as productive work")
+		}
+	}
+	for _, boundary := range trace.Boundaries {
+		if boundary.Kind == "task_start" {
+			t.Fatal("nonhuman context invented a user task boundary")
+		}
+	}
+	if spool.Messages["msg_0c003f2bca58eb41"].ParentID != "" || loaded.Evidence[0].Kind == "" {
+		t.Fatal("context invented human ownership or lost report evidence")
+	}
+	// Counterfactual packet selection: removing the actual collected context
+	// changes the same signal's packet; it cannot disappear behind complete=true.
+	packet, _ := packetFor(normalized, loaded, loaded.Signals[0], f.cfg.ContextNeighborCalls)
+	withContext, _ := json.Marshal(packet)
+	without := *loaded
+	without.Evidence = nil
+	for _, record := range loaded.Evidence {
+		if record.Kind != "synthetic_context" {
+			without.Evidence = append(without.Evidence, record)
+		} else if record.SourceKind != "opencode.synthetic" {
+			t.Fatal("context lost source-kind provenance")
+		}
+	}
+	packetWithout, _ := packetFor(normalized, &without, loaded.Signals[0], f.cfg.ContextNeighborCalls)
+	withoutContext, _ := json.Marshal(packetWithout)
+	if string(withContext) == string(withoutContext) || !strings.Contains(string(withContext), "expected negative control") || strings.Contains(string(withoutContext), "expected negative control") {
+		t.Fatal("candidate selection ignores material context")
+	}
 	if len(trace.Calls) != 2 {
 		t.Fatalf("lost native attempts: %+v", trace.Calls)
 	}
 	final := ""
 	for _, message := range trace.Messages {
+		if message.Role == "context" && message.Kind == "synthetic" {
+			continue
+		}
 		if message.Role != "user" && message.Role != "assistant" {
 			t.Fatal("fake control role")
 		}

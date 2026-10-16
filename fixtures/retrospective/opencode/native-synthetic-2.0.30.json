@@ -1,0 +1,6 @@
+{
+  "id": "msg_0c003f2bca58eb41",
+  "time": {"created": 1},
+  "text": "The wrong/docs probe is an expected negative control; its File not found result is not a repair request. {\"password\":\"CANARY-context-secret\"}",
+  "type": "synthetic"
+}

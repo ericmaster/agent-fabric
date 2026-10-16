@@ -2,10 +2,44 @@
 package retrospective
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"unicode/utf8"
 )
+
+// Every current record kind crosses this shared boundary; new kinds fail closed
+// until their body mapping is explicitly supported. No private flags are erased.
+// Spec: docs/specs/task-retrospective.md via Redactor.Record
+func TestRedactorAllRecordKindsPrivacy(t *testing.T) {
+	for _, kind := range []string{RecordUserMessage, RecordAssistantMessage, RecordAssistantFinal, RecordSyntheticContext, RecordToolCall, RecordRequirement, "future-record"} {
+		for _, privacy := range []string{"public", "hidden", "binary", "reasoning", "unsupported"} {
+			t.Run(kind+"/"+privacy, func(t *testing.T) {
+				body := "Public café 🧭 password=CANARY-record-secret"
+				record := &Record{ID: "record", Kind: kind, Text: body, Input: body, Result: []Fragment{{ID: "fragment", Text: body}}, Env: map[string]string{"API_TOKEN": "CANARY-env-secret"}}
+				record.Hidden = privacy == "hidden"
+				record.Binary = privacy == "binary"
+				record.Reasoning = privacy == "reasoning"
+				record.Unsupported = privacy == "unsupported"
+				out := newRedactorOK(t, DefaultConfig()).Record(record)
+				encoded, _ := json.Marshal(out)
+				if strings.Contains(string(encoded), "CANARY-") {
+					t.Fatal("shared record boundary leaked secret")
+				}
+				if privacy != "public" || kind == "future-record" {
+					if out.Text != "" || out.Input != "" || len(out.Result) != 0 || len(out.Env) != 0 || len(out.SourceRefs) != 0 {
+						t.Fatal("private/unknown record exposed a body")
+					}
+				} else if kind != RecordToolCall && (!strings.Contains(out.Text, "Public café 🧭") || !utf8.ValidString(out.Text)) {
+					t.Fatal("public UTF-8 context lost")
+				}
+				if record.Text != body || record.Env["API_TOKEN"] != "CANARY-env-secret" {
+					t.Fatal("original record mutated")
+				}
+			})
+		}
+	}
+}
 
 func newRedactorOK(t *testing.T, cfg *Config) *Redactor {
 	t.Helper()

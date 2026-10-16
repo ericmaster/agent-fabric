@@ -720,7 +720,7 @@ func partEnvelopeRecord(row *SessionPartRow) EnvelopeRecord {
 		Tool:      row.Tool,
 		CallID:    row.CallID,
 	}
-	if row.Type == "text" {
+	if row.Type == "text" || row.Type == "synthetic" {
 		record.Text = row.Text
 	}
 	if row.Type == "tool" {
@@ -808,6 +808,19 @@ func assembleTrace(store *Store, spool *Spool, sessionID string) *Trace {
 	trace.Identities.ExecutionRoot = directory
 
 	ordered := orderedParts(spool)
+	// Native durable synthetic input is material context, not an assistant
+	// action or user turn. Keep its staged ordering and source-specific kind.
+	for _, staged := range ordered {
+		part := staged.record
+		if part.PartType != "synthetic" {
+			continue
+		}
+		if part.Reasoning || part.Synthetic || messageRole(spool, part.MessageID) != "context" {
+			trace.Gaps = append(trace.Gaps, Gap{Kind: "partial_stream", Detail: "native synthetic context is private or has incompatible ownership"})
+			continue
+		}
+		trace.Messages = append(trace.Messages, Message{ID: "m:" + part.MessageID, Seq: part.Seq, Role: "context", Kind: "synthetic", Text: part.Text})
+	}
 
 	// Aggregate text parts per observable message id; a message record is
 	// one normalized task message.

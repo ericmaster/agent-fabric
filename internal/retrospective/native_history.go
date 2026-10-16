@@ -27,16 +27,17 @@ type nativeHistoryModel struct {
 	Variant    string `json:"variant,omitempty"`
 }
 type nativeHistoryRow struct {
-	ID       string             `json:"id"`
-	Type     string             `json:"type"`
-	Time     nativeHistoryTime  `json:"time"`
-	Text     *string            `json:"text,omitempty"`
-	Content  []json.RawMessage  `json:"content,omitempty"`
-	Agent    string             `json:"agent,omitempty"`
-	Model    nativeHistoryModel `json:"model,omitempty"`
-	Outcome  string             `json:"outcome,omitempty"`
-	Previous json.RawMessage    `json:"previous,omitempty"`
-	Location struct {
+	ID          string             `json:"id"`
+	Type        string             `json:"type"`
+	Time        nativeHistoryTime  `json:"time"`
+	Text        *string            `json:"text,omitempty"`
+	Description *string            `json:"description,omitempty"`
+	Content     []json.RawMessage  `json:"content,omitempty"`
+	Agent       string             `json:"agent,omitempty"`
+	Model       nativeHistoryModel `json:"model,omitempty"`
+	Outcome     string             `json:"outcome,omitempty"`
+	Previous    json.RawMessage    `json:"previous,omitempty"`
+	Location    struct {
 		Directory   string `json:"directory"`
 		WorkspaceID string `json:"workspaceID,omitempty"`
 	} `json:"location,omitempty"`
@@ -64,6 +65,9 @@ type nativeHistoryRow struct {
 // Reject unknown/malformed wire structure without exposing raw private content.
 // Spec: docs/specs/task-retrospective.md via nativeHistory
 func decodeNativeHistory(raw []byte, dst any) error {
+	if !uniqueJSONKeys(raw) {
+		return errors.New("malformed native history JSON structure")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(dst); err != nil {
@@ -109,6 +113,17 @@ func (c *HTTPSessionClient) nativeHistory(ctx context.Context, id string) ([]Ses
 			return nil, errors.New("native history page missing data/cursor")
 		}
 		for _, rawRow := range *envelope.Data {
+			var tag struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal(rawRow, &tag) == nil {
+				switch tag.Type {
+				case "system", "skill", "shell":
+					// Known union members carry material context/execution, not
+					// ignorable synthetic controls. No arbitrary type/body echo.
+					return nil, fmt.Errorf("native history %s evidence unsupported; coverage incomplete", tag.Type)
+				}
+			}
 			var row nativeHistoryRow
 			if err := decodeNativeHistory(rawRow, &row); err != nil {
 				return nil, err
@@ -132,14 +147,30 @@ func (c *HTTPSessionClient) nativeHistory(ctx context.Context, id string) ([]Ses
 				allowed += "location projectID subpath previous "
 			case "compaction":
 				allowed += "status reason model providerState summary recent providerContext cost tokens error "
+			case "synthetic":
+				allowed += "text description "
 			default:
 				return nil, errors.New("native history row type unsupported; coverage incomplete")
 			}
 			var fields map[string]json.RawMessage
 			_ = json.Unmarshal(rawRow, &fields)
+			if metadata, present := fields["metadata"]; present {
+				var object map[string]json.RawMessage
+				if json.Unmarshal(metadata, &object) != nil || object == nil {
+					return nil, errors.New("native history metadata must be an object")
+				}
+			}
 			for field := range fields {
 				if !strings.Contains(allowed, " "+field+" ") {
 					return nil, errors.New("native history row fields incompatible with type")
+				}
+			}
+			if row.Type == "synthetic" {
+				var time struct {
+					Created int64 `json:"created"`
+				}
+				if decodeNativeHistory(fields["time"], &time) != nil || bytes.Equal(bytes.TrimSpace(fields["description"]), []byte("null")) {
+					return nil, errors.New("native synthetic history structure malformed")
 				}
 			}
 			wire = append(wire, row)
@@ -198,7 +229,7 @@ func (c *HTTPSessionClient) nativeHistory(ctx context.Context, id string) ([]Ses
 		if row.Type == "assistant" {
 			lastAssistant = len(rows) - 1
 		}
-		controls = controls || normalized.Control != ""
+		controls = controls || normalized.Control != "" || row.Type == "synthetic"
 	}
 	if lastAssistant >= 0 {
 		final := false
@@ -231,6 +262,14 @@ func normalizeNativeHistory(wire nativeHistoryRow, id string) (SessionMessageRow
 	}
 	bad := errors.New("native history row type/content malformed or unsupported")
 	switch wire.Type {
+	case "synthetic":
+		if wire.Text == nil || wire.Content != nil || len(*wire.Text) > EnvelopeRecordMaxBytes || (wire.Description != nil && len(*wire.Description) > EnvelopeRecordMaxBytes) {
+			return row, bad
+		}
+		// Durable session input reaches the model, but is not human intent
+		// or assistant authorship. Opaque metadata/display description stay out.
+		row.Info.Role = "context"
+		row.Parts = []SessionPartRow{{ID: wire.ID + ":synthetic", SessionID: id, MessageID: wire.ID, Type: "synthetic", Text: *wire.Text}}
 	case "user":
 		if wire.Text == nil || wire.Content != nil {
 			return row, bad
