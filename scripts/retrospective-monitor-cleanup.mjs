@@ -7,6 +7,11 @@ import { pathToFileURL } from 'node:url';
 
 const PROJECT = '/home/ericmaster/nimbler-ops';
 const TASK = 'd2785bca-a95c-4252-ab72-7e89a1b5e941';
+const TASKS = {
+  [TASK]: 'AGF-1 OpenChamber session monitor',
+  '55d5f2b9-3ea8-4223-91fe-7cffdc71bcef': 'Monitor operativo de agentes — progreso y loops',
+  'ce0092b5-5552-4d14-a695-592ff7b48d96': 'Monitor operativo de agentes — persistente',
+};
 const CONTROL = 'ses_eedbd0409ffeOPv2DOxqVRc1iZ';
 const P = '/home/ericmaster/.npm-global/lib/node_modules/@openchamber/web';
 const ROOT = '/home/ericmaster/tools/agent-fabric-worktrees/agf1/.artifacts-manager/monitor-output';
@@ -23,6 +28,80 @@ function check(value, code = 'UNVERIFIED') { if (!value) throw new Error(code); 
 function id(value) { check(typeof value === 'string' && /^ses_[A-Za-z0-9]{1,64}$/.test(value)); return value; }
 // Spec: docs/specs/retrospective-monitor.md via snapshot completion validation.
 function stamp(value) { check(Number.isSafeInteger(value) && value >= 0); return value; }
+
+// Spec: docs/specs/retrospective-monitor.md — closed native bookkeeping, never human intent.
+function record(value) { return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype; }
+// Spec: docs/specs/retrospective-monitor.md via snapshot.
+function scheduledMetadata(metadata, final) {
+  check(record(metadata) && Object.keys(metadata).join(',') === 'openchamber');
+  const m = metadata.openchamber;
+  check(record(m) && m.kind === 'scheduled' && Object.keys(m).every(k => ['kind', 'knowledge_context_delivered', 'assist'].includes(k)));
+  if ('knowledge_context_delivered' in m) {
+    const signature = m.knowledge_context_delivered;
+    check(typeof signature === 'string' && signature.length <= 64);
+    const flags = signature ? signature.split('|') : [];
+    check(flags.every(f => ['l:on', 'm:on:c', 'm:on:p', 'r:on', 'w:ask', 'w:auto'].includes(f))
+      && new Set(flags).size === flags.length && flags.slice().sort().join('|') === signature
+      && !(flags.includes('m:on:c') && flags.includes('m:on:p')) && !(flags.includes('w:ask') && flags.includes('w:auto')));
+  }
+  if ('assist' in m) {
+    const a = m.assist;
+    check(record(a) && Object.keys(a).sort().join(',') === 'forMessageID,generatedAt,recap,suggestion');
+    check(typeof a.recap === 'string' && a.recap.length <= 320 && typeof a.suggestion === 'string' && a.suggestion.length <= 500 && (a.recap.trim() || a.suggestion.trim()));
+    stamp(a.generatedAt);
+    check(a.forMessageID === final.id && a.generatedAt >= final.time.completed && a.generatedAt <= Date.now() && a.generatedAt - final.time.completed <= 86400000);
+  }
+}
+
+// Spec: docs/specs/retrospective-monitor.md — recognized current first-party definitions only.
+function definitions(document) {
+  check(record(document) && Array.isArray(document.tasks) && document.tasks.length <= 1024, 'TASK_DEFINITIONS_UNVERIFIED');
+  const tasks = [], seen = new Set();
+  for (const task of document.tasks) {
+    check(record(task) && typeof task.id === 'string' && !seen.has(task.id), 'TASK_DEFINITIONS_UNVERIFIED'); seen.add(task.id);
+    if (!Object.hasOwn(TASKS, task.id)) continue;
+    check(task.name === TASKS[task.id] && task.enabled === false && !task.targetSessionId
+      && (task.directory === undefined || task.directory === PROJECT) && record(task.state)
+      && [null, 'idle', 'success', 'error', 'skipped'].includes(task.state.lastStatus)
+      && record(task.execution) && typeof task.execution.prompt === 'string' && task.execution.prompt.length > 0
+      && Buffer.byteLength(task.execution.prompt) <= LIMIT / 2 && !task.execution.goalEnabled, 'TASK_DEFINITIONS_UNVERIFIED');
+    tasks.push({ id: task.id, name: task.name, promptSHA256: hash(task.execution.prompt),
+      timezone: task.schedule?.timezone || undefined, lastSessionId: task.state.lastSessionId == null ? null : id(task.state.lastSessionId) });
+  }
+  check(tasks.some(t => t.id === TASK), 'TASK_DEFINITIONS_UNVERIFIED');
+  return tasks;
+}
+
+// Spec: docs/specs/retrospective-monitor.md — exact installed title formatter, no fuzzy prefix.
+function legacyTask(session, tasks) {
+  const matches = tasks.filter(t => {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: t.timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(stamp(session.time?.created));
+    const p = Object.fromEntries(parts.map(x => [x.type, x.value]));
+    return session.title === `${t.name} ${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+  });
+  check(matches.length === 1, 'LEGACY_IDENTITY_UNPROVEN'); return matches[0];
+}
+
+// Spec: docs/specs/retrospective-monitor.md — complete bounded discovery before batch selection.
+async function discover(request, tasks) {
+  const found = new Set(tasks.map(t => t.lastSessionId).filter(Boolean)), seen = new Set(), cursors = new Set(); let cursor;
+  await producer(request);
+  for (let page = 0; page < 8; page++) {
+    const query = new URLSearchParams({ limit: '100', ...(cursor ? { cursor } : {}) });
+    const r = await request(`/api/session?${query}`);
+    check(r.status === 200 && Array.isArray(r.body?.data) && r.body.data.length <= 100 && record(r.body.cursor), 'INVENTORY_PARTIAL');
+    for (const s of r.body.data) {
+      check(record(s) && !seen.has(id(s.id)), 'INVENTORY_PARTIAL'); seen.add(s.id);
+      if (s.location?.directory !== PROJECT || s.metadata?.openchamber?.kind !== 'scheduled') continue;
+      try { legacyTask(s, tasks); found.add(s.id); } catch (e) { if (e.message !== 'LEGACY_IDENTITY_UNPROVEN') throw e; }
+    }
+    const next = r.body.cursor.next;
+    if (next == null) return [...found];
+    check(typeof next === 'string' && next.length > 0 && next.length <= 4096 && !cursors.has(next), 'INVENTORY_PARTIAL');
+    cursors.add(next); cursor = next;
+  }
+  throw new Error('INVENTORY_PARTIAL');
+}
 
 // Spec: docs/specs/retrospective-monitor.md — safe ancestors/private output roots.
 async function directory(target, create = false) {
@@ -131,14 +210,14 @@ async function messages(request, sessionID) {
 }
 
 // Spec: docs/specs/retrospective-monitor.md — common invariant before archive AND removal.
-async function snapshot(request, sessionID) {
+async function snapshot(request, sessionID, tasks) {
   await producer(request);
   const result = await request(`/api/session/${sessionID}`);
   check(result.status === 200, 'SESSION_UNAVAILABLE');
   const s = result.body;
   check(s?.id === sessionID && s.location?.directory === PROJECT && typeof s.projectID === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(s.projectID));
   check(!s.parentID && !s.fork && !s.revert && !s.subpath && !s.time?.archived && s.outcome === 'succeeded');
-  check(JSON.stringify(s.metadata) === JSON.stringify({ openchamber: { kind: 'scheduled' } }));
+  check(s.agent === undefined || (typeof s.agent === 'string' && !/(?:^|[-_.])(supervisor|control|reviewer|review|qa|subagent)(?:$|[-_.])/i.test(s.agent)));
   stamp(s.time.created); stamp(s.time.updated); stamp(s.time.idle);
   const active = await request('/api/session/active');
   check(active.status === 200 && active.body && typeof active.body === 'object' && !Array.isArray(active.body) && !(sessionID in active.body), 'SESSION_ACTIVE');
@@ -151,13 +230,28 @@ async function snapshot(request, sessionID) {
   const seen = new Set();
   for (const row of rows) {
     check(typeof row.id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(row.id) && !seen.has(row.id)); seen.add(row.id); stamp(row.time?.created);
-    check(['user', 'assistant', 'idle', 'agent-switched', 'model-switched'].includes(row.type));
+    check(['user', 'assistant', 'idle', 'agent-switched', 'model-switched', 'synthetic'].includes(row.type));
+    if (row.type === 'synthetic') check(rows.indexOf(row) < rows.findIndex(m => m.type === 'user')
+      && typeof s.metadata?.openchamber?.knowledge_context_delivered === 'string' && typeof row.text === 'string' && row.text.length <= 8000 && !row.metadata);
   }
   const end = rows.at(-1), final = rows.at(-2);
   check(end.type === 'idle' && end.outcome === 'succeeded' && !end.error && end.time.created === s.time.idle);
   check(final.type === 'assistant' && final.finish === 'stop' && !final.error && !final.retry && !final.metadata);
   check(stamp(final.time.completed) <= end.time.created && final.time.completed >= final.time.created && Array.isArray(final.content));
   check(rows.findIndex(m => m.type === 'user') < rows.length - 2);
+  scheduledMetadata(s.metadata, final);
+  let attestation;
+  if (tasks) {
+    const task = legacyTask(s, tasks), user = rows.find(m => m.type === 'user');
+    check(typeof user.text === 'string' && Object.keys(user).every(k => ['id', 'type', 'time', 'text', 'metadata', 'files', 'agents', 'skills'].includes(k))
+      && (user.metadata === undefined || (record(user.metadata) && Object.keys(user.metadata).length === 0))
+      && ['files', 'agents', 'skills'].every(k => user[k] === undefined || (Array.isArray(user[k]) && user[k].length === 0)), 'LEGACY_IDENTITY_UNPROVEN');
+    const instructionSHA256 = hash(user.text);
+    check(instructionSHA256 === task.promptSHA256 && tasks.filter(t => t.promptSHA256 === instructionSHA256).length === 1, 'LEGACY_IDENTITY_UNPROVEN');
+    attestation = { schema: 'agf.monitor-legacy.v1', source: 'schedule.list.current', taskID: task.id, taskName: task.name,
+      project: PROJECT, control: 'http://127.0.0.1:4098', producer: 'http://127.0.0.1:41629', sessionID, kind: 'scheduled', title: s.title,
+      initialUserID: user.id, instructionSHA256, recognizedPromptSHA256: task.promptSHA256 };
+  }
   const text = [];
   for (const part of final.content) {
     if (part.type !== 'text') { check(['reasoning', 'tool'].includes(part.type)); continue; }
@@ -169,7 +263,7 @@ async function snapshot(request, sessionID) {
   check(!/authorization\s*:|\b(?:api[_ -]?key|password|access[_ -]?token)\s*[:=]|-----BEGIN .*PRIVATE KEY-----/i.test(output));
   const version = hash(JSON.stringify({ session: s, rows }));
   await queueClear(request, sessionID);
-  return { sessionID, projectID: s.projectID, finalID: final.id, completed: end.time.created, version, output };
+  return { sessionID, projectID: s.projectID, finalID: final.id, completed: end.time.created, version, output, taskID: attestation?.taskID || TASK, ...(attestation ? { attestation } : {}) };
 }
 
 // Spec: docs/specs/retrospective-monitor.md — settled capture before history disappears.
@@ -183,13 +277,13 @@ async function captured(sessionID, completed) {
 // Spec: docs/specs/retrospective-monitor.md — final-only private immutable archive.
 async function archive(root, snap, write) {
   const relative = `${new Date(snap.completed).toISOString().slice(0, 10)}/${snap.sessionID}.md`;
-  const meta = { schema: 'agf.monitor-output.v1', sessionID: snap.sessionID, taskID: TASK,
+  const meta = { schema: 'agf.monitor-output.v1', sessionID: snap.sessionID, taskID: snap.taskID,
     project: PROJECT, projectID: snap.projectID, producer: 'http://127.0.0.1:41629',
     completed: snap.completed, sourceGeneration: snap.completed, finalID: snap.finalID,
-    version: snap.version, outputSHA256: hash(snap.output) };
+    version: snap.version, outputSHA256: hash(snap.output), ...(snap.attestation ? { attestation: snap.attestation } : {}) };
   const bytes = Buffer.from(`<!-- ${JSON.stringify(meta)} -->\n\n${snap.output}\n`);
   await write(path.join(root, relative), bytes);
-  return { schema: 'agf.monitor-cleanup.v1', sessionID: snap.sessionID, taskID: TASK,
+  return { schema: 'agf.monitor-cleanup.v1', sessionID: snap.sessionID, taskID: snap.taskID, ...(snap.attestation ? { attestation: snap.attestation } : {}),
     relative, bytes: bytes.length, sha256: hash(bytes), version: snap.version };
 }
 
@@ -203,7 +297,7 @@ async function prior(root, sessionID) {
     try { record = JSON.parse(await read(path.join(root, `${sessionID}.deleted.json`))); }
     catch (missing) { if (missing.code === 'ENOENT') return null; throw missing; }
   }
-  check(record.schema === 'agf.monitor-cleanup.v1' && record.sessionID === sessionID && record.taskID === TASK);
+  check(record.schema === 'agf.monitor-cleanup.v1' && record.sessionID === sessionID && Object.hasOwn(TASKS, record.taskID));
   check(typeof record.relative === 'string' && record.relative.match(new RegExp(`^\\d{4}-\\d{2}-\\d{2}/${sessionID}\\.md$`)) && /^[0-9a-f]{64}$/.test(record.version));
   try {
     await directory(path.dirname(path.join(root, record.relative)));
@@ -214,22 +308,27 @@ async function prior(root, sessionID) {
 }
 
 // Spec: docs/specs/retrospective-monitor.md — one deletion attempt, safe restart/ambiguity.
-export async function maintenance(input, { root = ROOT, request, write = publish, jobReady = captured } = {}) {
+export async function maintenance(input, { root = ROOT, request, write = publish, jobReady = captured, listTasks } = {}) {
   check(Array.isArray(input.known) && input.known.length <= 1024 && typeof input.plan === 'boolean');
-  const known = [...new Set(input.known.map(id))].sort();
-  check(input.after == null || known.includes(id(input.after)));
+  let known = [...new Set(input.known.map(id))].sort();
+  check(input.after == null || (id(input.after) && (listTasks || known.includes(input.after))));
   const deadline = Date.now() + 30000, send = request;
   request = async (...args) => { check(Date.now() < deadline, 'BUDGET_EXHAUSTED'); return send(...args); };
-  const result = { deleted: 0, reconciled: 0, eligible: 0, retained: 0, ambiguous: 0, after: input.after, candidates: [], retainedSessions: [], outputDirectory: root };
+  const tasks = listTasks ? definitions(await listTasks()) : null;
+  if (tasks) known = [...new Set([...known, ...await discover(request, tasks)])].sort();
+  check(known.length <= 1024, 'INVENTORY_LIMIT');
+  const result = { deleted: 0, reconciled: 0, eligible: 0, retained: 0, ambiguous: 0, after: input.after, candidates: [], retainedSessions: [], outputDirectory: root, proven: [], inventory: known.length };
   const remaining = known.filter(x => !input.after || x > input.after);
   for (const sessionID of (remaining.length ? remaining : known).slice(0, 8)) {
     if (Date.now() >= deadline) break;
     result.after = sessionID;
     try {
       check(sessionID !== CONTROL, 'CONTROL_EXCLUDED');
-      validateReceipt(input.receipts?.[sessionID], sessionID);
+      const receipt = input.receipts?.[sessionID];
+      if (receipt || !tasks) validateReceipt(receipt, sessionID);
       const attempted = await prior(root, sessionID);
       if (attempted) {
+        if (input.known.includes(sessionID)) result.proven.push(sessionID);
         await producer(request);
         const exists = await request(`/api/session/${sessionID}`);
         if (exists.status === 404) {
@@ -241,13 +340,16 @@ export async function maintenance(input, { root = ROOT, request, write = publish
         continue; // Includes a crash before the first DELETE: never replay an uncertain attempt.
       }
       check(await jobReady(sessionID), 'CAPTURE_UNSETTLED');
-      const first = await snapshot(request, sessionID);
+      const first = await snapshot(request, sessionID, receipt ? null : tasks);
+      result.proven.push(sessionID);
       result.eligible++; result.candidates.push({ sessionID, finalID: first.finalID, completed: first.completed, version: first.version });
-      if (input.plan) continue;
+      // Spec: docs/specs/retrospective-monitor.md — production authorize binds these IDs to the fsynced Python cursor.
+      if (input.plan || !input.known.includes(sessionID)) continue;
       const record = await archive(root, first, write);
       await write(path.join(root, `${sessionID}.attempt.json`), JSON.stringify(record));
-      const second = await snapshot(request, sessionID);
+      const second = await snapshot(request, sessionID, receipt ? null : tasks);
       check(second.version === first.version, 'SNAPSHOT_CHANGED');
+      check(JSON.stringify(second.attestation) === JSON.stringify(first.attestation), 'SNAPSHOT_CHANGED');
       check(await jobReady(sessionID, first.completed), 'CAPTURE_UNSETTLED');
       check((await prior(root, sessionID)).sha256 === record.sha256);
       await queueClear(request, sessionID); // Last observation before the irreversible call.
@@ -261,7 +363,7 @@ export async function maintenance(input, { root = ROOT, request, write = publish
       } else { result.ambiguous++; result.retainedSessions.push({ sessionID, code: 'DELETE_RECONCILIATION_REQUIRED' }); }
     } catch (e) {
       result.retained++;
-      const safe = new Set(['NO_DELETION_RECEIPT', 'USER_QUEUE_PENDING', 'QUEUE_UNVERIFIED', 'CAPTURE_UNSETTLED', 'SESSION_ACTIVE', 'NATIVE_INBOX_PENDING', 'SESSION_HAS_CHILDREN_OR_UNKNOWN', 'CONTINUATION_OR_HISTORY_UNKNOWN', 'CONTROL_EXCLUDED', 'PRODUCER_UNVERIFIED', 'SNAPSHOT_CHANGED', 'BUDGET_EXHAUSTED', 'ARCHIVE_CONFLICT']);
+      const safe = new Set(['NO_DELETION_RECEIPT', 'LEGACY_IDENTITY_UNPROVEN', 'USER_QUEUE_PENDING', 'QUEUE_UNVERIFIED', 'CAPTURE_UNSETTLED', 'SESSION_ACTIVE', 'NATIVE_INBOX_PENDING', 'SESSION_HAS_CHILDREN_OR_UNKNOWN', 'CONTINUATION_OR_HISTORY_UNKNOWN', 'CONTROL_EXCLUDED', 'PRODUCER_UNVERIFIED', 'SNAPSHOT_CHANGED', 'BUDGET_EXHAUSTED', 'ARCHIVE_CONFLICT']);
       result.retainedSessions.push({ sessionID, code: safe.has(e.message) ? e.message : 'CLEANUP_RETAINED_UNVERIFIED' });
     }
   }
@@ -345,7 +447,7 @@ export function firstPartyTransport(requestJson) {
       check(body && Object.keys(body).sort().join(',') === 'cursor,data' && Array.isArray(body.data), 'WIRE_INVALID');
       check(body.cursor && typeof body.cursor === 'object' && !Array.isArray(body.cursor), 'WIRE_INVALID');
       for (const [key, value] of Object.entries(body.cursor)) {
-        check(['previous', 'next'].includes(key) && typeof value === 'string' && value.length > 0 && value.length <= 4096, 'WIRE_INVALID');
+        check(['previous', 'next'].includes(key) && (value === null || (typeof value === 'string' && value.length > 0 && value.length <= 4096)), 'WIRE_INVALID');
       }
     }
     return { status: response.status, body };
@@ -357,8 +459,9 @@ async function transport() {
   const pkg = JSON.parse(await fs.readFile(path.join(P, 'package.json'), 'utf8'));
   check(pkg.name === '@openchamber/web' && pkg.version === '2.3.3');
   const { requestJson } = await import(pathToFileURL(path.join(P, 'bin/lib/cli-http.js')).href);
+  const { requestControlAction } = await import(pathToFileURL(path.join(P, 'bin/lib/cli-control.js')).href);
   globalThis.fetch = boundedFetch(globalThis.fetch); // Isolated short-lived adapter process only.
-  return firstPartyTransport(requestJson);
+  return { request: firstPartyTransport(requestJson), listTasks: () => requestControlAction(4098, 'schedule.list', { directory: PROJECT }, { timeoutMs: 4000 }) };
 }
 
 // Spec: docs/specs/retrospective-monitor.md — shared bounded production stdin reader.
@@ -375,7 +478,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const timer = setTimeout(() => process.exit(1), 45000);
   try {
     const input = await readInput(process.stdin); await authorize(input);
-    const result = await maintenance(input, { request: await transport() });
+    const result = await maintenance(input, await transport());
     process.stdout.write(JSON.stringify(result) + '\n');
   } catch { process.stdout.write('{"error":"CLEANUP_UNAVAILABLE"}\n'); process.exitCode = 1; }
   finally { clearTimeout(timer); }

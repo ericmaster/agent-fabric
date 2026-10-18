@@ -135,6 +135,26 @@ class MonitorTests(unittest.TestCase):
             self.gate('--cleanup-plan', '--task', 'other-task', ok=False)
             self.assertEqual(before, {p.name: p.read_bytes() for p in gate.iterdir()})
 
+    def test_legacy_discovery_rotation_and_proven_ids_persist_without_monitor_wakeup(self):
+        # Spec: docs/specs/retrospective-monitor.md — discovery after is not classification proof.
+        binary = self.cleanup_fixture()
+        self.put('ses_discovered.json', dict(schema=1, session_id='ses_discovered', status='done'), 'jobs')
+        node = binary / 'node'
+        node.write_text('#!' + sys.executable + '\nimport json,sys\n'
+                        'p=json.load(sys.stdin)\n'
+                        'assert p.get("after") in (None, "ses_unproven")\n'
+                        'print(json.dumps(dict(after="ses_unproven", proven=["ses_discovered"], deleted=0)))\n')
+        with patch.dict(os.environ, PATH=str(binary) + ':' + os.environ['PATH']):
+            for _ in range(2):
+                result = self.gate('--cleanup')
+                self.assertEqual(result['decision'], 'quiet')
+                self.assertEqual(result['cli_calls'], 0)
+                saved = json.loads((self.root / 'gate' / 'gate-v1.json').read_text())
+                self.assertEqual(saved['cleanup_after'], 'ses_unproven')
+                self.assertIn('ses_discovered', saved['known'])
+                self.assertNotIn('ses_unproven', saved['known'])
+                self.assertFalse(saved.get('cleanup_receipts'))
+
     def test_full_cleanup_cache_transport_progress_with_maximum_length_ids(self):
         # Spec: docs/specs/retrospective-monitor.md — actual Python→Node stdin, fixture authority only.
         real_node = shutil.which('node')
@@ -209,6 +229,137 @@ class MonitorTests(unittest.TestCase):
         body = elsewhere.read_bytes()
         self.gate('--cleanup-plan', ok=False)
         self.assertEqual(elsewhere.read_bytes(), body)
+
+    def test_cleanup_classification_survives_adapter_process_crashes_before_dispatch(self):
+        # Spec: docs/specs/retrospective-monitor.md — actual Python→Node faulted public pipeline, no live API.
+        for fault in ('after-delete', 'after-delete-mixed', 'after-archive', 'before-delete', 'classify-exit', 'cursor-fsync'):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory(prefix='.cleanup-crash-', dir=CLI.parents[1] / 'tests') as temp:
+                self.root, self.state = Path(temp), Path(temp) / 'state'
+                for family in ('reports', 'jobs', 'spool'):
+                    (self.state / family).mkdir(parents=True)
+                cli, log = self.fake_cli()
+                self.gate()
+                self.put('ses_newlegacy.json', dict(schema=1, session_id='ses_newlegacy', status='done'), 'jobs')
+                self.put('ses_newlegacy.json', {'private': 'CANARY'}, 'spool')
+                if fault == 'after-delete-mixed':
+                    self.put('ses_real.json', dict(schema=1, session_id='ses_real', status='done'), 'jobs')
+                # Establish pending provenance before deletion. It must not be silently reset.
+                self.gate()
+                fault_file = self.root / 'fault'
+                fault_file.write_text('after-delete' if fault == 'after-delete-mixed' else fault)
+                module = CLI.with_name('retrospective-monitor-cleanup.mjs').as_uri()
+                script = f'''import fs from 'node:fs/promises';
+import path from 'node:path';
+import {{readInput, authorize, maintenance, publish, firstPartyTransport}} from {json.dumps(module)};
+const root = {json.dumps(str(self.root))}, gate = path.join(root, 'gate');
+const input = await readInput(process.stdin); await authorize(input, gate);
+const fault = await fs.readFile(path.join(root, 'fault'), 'utf8');
+const id = 'ses_newlegacy', taskID = 'd2785bca-a95c-4252-ab72-7e89a1b5e941';
+const gone = async () => fs.stat(path.join(root, 'gone')).then(() => true, () => false);
+const session = {{id, projectID:'prj_fixture', location:{{directory:'/home/ericmaster/nimbler-ops'}},
+  title:'AGF-1 OpenChamber session monitor 1970-01-01 00:00', metadata:{{openchamber:{{kind:'scheduled'}}}},
+  outcome:'succeeded', time:{{created:1000,updated:3000,idle:3000}}}};
+const rows = [{{id:'msg_user',type:'user',text:'SYNTHETIC_MONITOR',time:{{created:1000}}}},
+  {{id:'msg_final',type:'assistant',finish:'stop',content:[{{type:'text',text:'Visible fixture final.'}}],time:{{created:2000,completed:2900}}}},
+  {{id:'msg_idle',type:'idle',outcome:'succeeded',time:{{created:3000}}}}];
+const request = firstPartyTransport(async (_, e, options) => {{
+  let status = 200, body;
+  if (e === '/health') body = {{openCodePort:41629,openCodeRunning:true,isOpenCodeReady:true}};
+  else if (e === '/api/message-queue') body = {{revision:1,sessions:[]}};
+  else if (e === '/api/session/active') body = {{data:{{}}}};
+  else if (e === '/api/session/'+id) {{
+    if (options.method === 'DELETE') {{
+      const durable = JSON.parse(await fs.readFile(path.join(gate,'gate-v1.json'),'utf8'));
+      await fs.writeFile(path.join(root,'known-at-delete'), JSON.stringify(durable.known));
+      await fs.writeFile(path.join(root,'gone'),'204');
+      if (fault === 'after-delete') process.exit(73);
+      status = 204; body = null;
+    }} else {{ status = await gone() ? 404 : 200; body = {{data:session}}; }}
+  }} else if (e.endsWith('/inbox')) body = {{data:[]}};
+  else if (e.includes('/message?')) body = {{data:rows,cursor:{{previous:null,next:null}}}};
+  else if (e.startsWith('/api/session?')) body = {{data:e.includes('parentID=') || await gone() ? [] : [session],cursor:{{previous:null,next:null}}}};
+  else throw new Error('unexpected fixture request');
+  return {{response:{{status}},body}};
+}});
+const write = async (file, data) => {{
+  await publish(file, data);
+  if ((fault === 'after-archive' && file.endsWith('/'+id+'.md')) || (fault === 'before-delete' && file.endsWith('.attempt.json'))) process.exit(73);
+}};
+const result = await maintenance(input, {{root:path.join(root,'output'),request,write,jobReady:async()=>true,
+  listTasks:async()=>({{tasks:[{{id:taskID,name:'AGF-1 OpenChamber session monitor',enabled:false,
+    schedule:{{timezone:'UTC'}},execution:{{prompt:'SYNTHETIC_MONITOR'}},state:{{lastStatus:'success',lastSessionId:await gone()?null:id}}}}]}})}});
+if (input.plan) {{
+  await fs.writeFile(path.join(root,'classification-ready'),'ready');
+  if (fault === 'classify-exit') process.exit(73);
+}}
+process.stdout.write(JSON.stringify(result));
+'''
+                binary = self.root / 'bin'
+                binary.mkdir()
+                real_node = shutil.which('node')
+                node = binary / 'node'
+                node.write_text('#!' + sys.executable + '\nimport os\n' +
+                                f'os.execv({real_node!r}, [{real_node!r}, "--input-type=module", "-e", {script!r}])\n')
+                node.chmod(0o700)
+                args = ('--cleanup', '--dispatch', '--openchamber', cli)
+                with patch.dict(os.environ, PATH=str(binary) + ':' + os.environ['PATH']):
+                    if fault == 'cursor-fsync':
+                        # Fail the actual cursor-file fsync once, after classification stdout, before destructive adapter start.
+                        runner = ('import os,runpy,stat,sys\nfrom pathlib import Path\n'
+                                  f'root=Path({str(self.root)!r})\noriginal=os.fsync\n'
+                                  'def sync(fd):\n'
+                                  ' if (root/"classification-ready").exists() and (root/"fault").read_text()=="cursor-fsync" and stat.S_ISREG(os.fstat(fd).st_mode):\n'
+                                  '  (root/"fault").write_text("none")\n  raise OSError("fixture fsync failure")\n'
+                                  ' return original(fd)\n'
+                                  f'os.fsync=sync\nsys.argv={[str(CLI), "--state-dir", str(self.state), "--gate-dir", str(self.root / "gate"), *map(str, args)]!r}\n'
+                                  f'runpy.run_path({str(CLI)!r},run_name="__main__")\n')
+                        completed = subprocess.run([sys.executable, '-c', runner], capture_output=True, text=True, timeout=20)
+                        self.assertEqual(completed.returncode, 1, completed.stdout + completed.stderr)
+                        first = json.loads(completed.stdout)
+                    else:
+                        first = self.gate(*args, ok=False)
+                    self.assertEqual(first['cli_calls'], 0)
+                    self.assertTrue(first['health_changed'])
+                    self.assertIn('CLEANUP_UNAVAILABLE', first['health_codes'])
+                    self.assertFalse(log.exists())
+                    cursor = json.loads((self.root / 'gate' / 'gate-v1.json').read_text())
+                    if fault != 'classify-exit':
+                        self.assertIn('ses_newlegacy', cursor['known'])
+                    if fault in ('after-delete', 'after-delete-mixed'):
+                        self.assertIn('ses_newlegacy', json.loads((self.root / 'known-at-delete').read_text()))
+                        self.assertTrue((self.root / 'gone').exists())
+                    else:
+                        self.assertFalse((self.root / 'gone').exists())
+                    if fault == 'after-delete-mixed':
+                        self.assertEqual({row['session'] for row in cursor['pending'].values()}, {'ses_real'})
+                    # Repeat a failed classification: one health edge, no tokens, pending real provenance unchanged.
+                    if fault == 'classify-exit':
+                        again = self.gate(*args, ok=False)
+                        self.assertFalse(again['health_changed'])
+                        self.assertTrue(json.loads((self.root / 'gate' / 'gate-v1.json').read_text())['pending'])
+                    fault_file.write_text('none')
+                    resumed = self.gate(*args)
+                    self.assertEqual(resumed['decision'], 'dispatched' if fault == 'after-delete-mixed' else 'quiet')
+                    self.assertEqual(resumed['cli_calls'], 3 if fault == 'after-delete-mixed' else 0)
+                    self.assertEqual(log.exists(), fault == 'after-delete-mixed')
+                    known = json.loads((self.root / 'gate' / 'gate-v1.json').read_text())['known']
+                    self.assertIn('ses_newlegacy', known)
+                    self.assertEqual(self.gate(*args)['decision'], 'quiet')
+                    if fault == 'after-delete':
+                        # The existing private cursor is the only classification journal; corruption cannot bless or dispatch work.
+                        cursor_path = self.root / 'gate' / 'gate-v1.json'
+                        valid = cursor_path.read_bytes()
+                        cursor_path.write_text('{corrupt')
+                        broken = self.gate(*args, ok=False)
+                        self.assertEqual(broken['decision'], 'gate_state_unreadable')
+                        self.assertTrue(broken['health_changed'])
+                        self.assertFalse(self.gate(*args, ok=False)['health_changed'])
+                        self.assertEqual(cursor_path.read_text(), '{corrupt')
+                        self.assertFalse(log.exists())
+                        cursor_path.write_bytes(valid)  # Fixture-only restoration of exact known authority.
+                    # Genuine work survives the failed tick and is still eligible on a later tick.
+                    self.put('ses_real.json', dict(schema=1, session_id='ses_real', status='pending'), 'jobs')
+                    self.assertEqual(self.gate(*args)['decision'], 'dispatched')
 
     def test_hourly_timer_contract_does_not_reintroduce_five_minute_polling(self):
         # Spec: docs/specs/retrospective-monitor.md — source fixture, never touches installed units.

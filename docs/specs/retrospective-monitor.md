@@ -15,16 +15,93 @@ cron in any future release. No unit/prompt/immutable release is changed here.
 
 `--cleanup` enables maintenance under the existing gate lock, before wakeup
 selection, including quiet ticks. Default behavior is unchanged. Cleanup never
-dispatches a model or changes known-ID classification. `--cleanup-plan` uses an
+dispatches a model; only verified proofs may add known-ID classification. `--cleanup-plan` uses an
 existing cursor/lock read-only and never writes cursor/output/audit, exports,
 dispatches or deletes. It cannot combine with --dispatch/reconciliation.
 Both require the exact task `d2785bca-a95c-4252-ab72-7e89a1b5e941`, project
 `/home/ericmaster/nimbler-ops`, UI4098 and managed native41629. Only the private
-format2 cursor's separate `cleanup_receipts` qualify; `known` is classification
+format2 cursor's separate `cleanup_receipts` or the reviewed composite below qualify; `known` is classification
 ONLY and is never migrated into deletion proof. Command-line known IDs alone,
 titles or scheduled-kind metadata alone cannot grant deletion authority. The Node
 entry independently verifies the canonical gate-v2 private cursor binding. No
-other monitor task is authorized. Exclude the explicit supervisor control session.
+other monitor task may receive run receipts. Exclude the explicit supervisor control session.
+
+### Reviewed historical identity amendment
+
+User-authorized legacy cleanup additionally permits exactly these task ID/name pairs:
+`d2785bca-a95c-4252-ab72-7e89a1b5e941` / `AGF-1 OpenChamber session monitor`,
+`55d5f2b9-3ea8-4223-91fe-7cffdc71bcef` / `Monitor operativo de agentes — progreso y loops`,
+`ce0092b5-5552-4d14-a695-592ff7b48d96` / `Monitor operativo de agentes — persistente`.
+The installed first-party schedule.list scoped to the exact project supplies current
+stored prompt definitions in memory only. Require unique IDs/names, disabled tasks,
+nonrunning state, no targetSessionId, exact optional directory and prompt execution
+without goal/agent attachments. No candidate-derived hash is a recognized template;
+only exact current stored prompt SHA256 is recognized. Historical/expanded templates
+are NOT recognized by this release. Conflicting identical prompt definitions retain.
+
+Complete project native inventory (8 pages x100, unique IDs and cursor safeguards)
+discovers scheduled-kind exact-title candidates beyond the classification cache.
+Titles must equal exact task name + creation minute formatted in the task timezone
+(host default if unspecified), using the installed yyyy-MM-dd HH:mm contract.
+Explicit task lastSessionIds are also inspected, never automatically authorized.
+An incomplete inventory aborts the maintenance batch, not a silent prefix success.
+Union with cached IDs is capped1024; durable cleanup_after rotates eight IDs even
+past failed candidates. It is independent of classification membership. Only fully
+verified identities returned by maintenance join known; manual known IDs alone
+never acquire deletion authority. Discovery/retention never wakes an LLM.
+
+### Classification must survive deletion and adapter crashes
+
+Mutation uses two bounded adapter phases under the existing Python gate lock.
+First perform read-only classification with the unchanged full receipt/composite
+and independent safety gates. Python validates the reduced result, merges only
+verified IDs into known, filters only their pending/baseline provenance and durably
+saves the existing private format2 cursor (file fsync/replace/directory fsync).
+Only after this barrier may it start the destructive adapter phase. Both phases
+share the existing50s parent budget; no adapter writes the Python-owned cursor.
+Plan-only remains one read-only phase with no cursor writes.
+
+The adapter never archives/deletes a newly discovered ID absent from its authorized
+input known snapshot: it can return verified classification for a later phase/tick,
+but manual known membership still cannot substitute for receipt/composite proof.
+The production entry verifies known against the canonical owned0700/0600 nofollow,
+bounded schema/revision/binding cursor before any maintenance. Existing archive
+durability/readback and fresh pre-delete safety checks are unchanged.
+
+On ANY adapter/parse/timeout/barrier failure the current tick is incomplete with
+CLEANUP_UNAVAILABLE health and zero dispatch; preserve real pending provenance.
+Repeated failures announce one stable health edge, recovery one edge. Next tick
+reads the already durable classification BEFORE workload selection, even when
+native history disappeared after DELETE204 and before adapter stdout. Existing
+attempt reconciliation remains GET-only and returns already-known classification;
+it never imports an arbitrary archive filename/receipt as classification. A corrupt
+cursor fails closed before any adapter/workload/dispatch and is not overwritten.
+No new journal, HTTP route or cross-language cursor writer is introduced.
+
+`agf.monitor-legacy.v1` is a distinct ephemeral composite attestation, NOT a native
+historical task execution receipt: bind exact task ID/name/project/control4098/
+producer41629/session/kind/title, initial native authored USER ID and instruction
+SHA256, recognized current stored prompt SHA256 and source `schedule.list.current`.
+It is recorded in the final archive/audit without prompt text; not cached as a
+run receipt. Fresh pre-delete snapshot recomputes it from native user.text and
+the same recognized task definitions, and full metadata/history version must match.
+Exactly one authored user message is mandatory even if later instructions repeat
+the prompt. Native synthetic context is nonhuman: allow only bounded native
+synthetic records before that instruction with delivered knowledge metadata, never
+assistant content as instruction proof. Unknown roles/history retain.
+
+Scheduled metadata is a closed plain object: only openchamber with required kind
+scheduled and optional knowledge_context_delivered/assist. Knowledge permits the
+installed sorted, unique guide-only signatures (empty or l:on, m:on:c/p, r:on,
+w:ask/auto; mutually exclusive alternatives); pinned note/plan/memory revisions
+remain unreviewed and retained. Assist has exactly recap<=320, suggestion<=500,
+forMessageID and safe integer generatedAt; at least one nonempty string, final ID
+match and completed<=generatedAt<=now, no more than24h after final completion.
+Assist is an idle proposed suggestion, NOT a submitted human message. Unknown
+linked/pin/goal/review fields retain; full metadata remains in snapshot comparison.
+Only visible final text is exported; assist strings never enter archives/logs.
+Official cursor previous/next values are absent, null or nonempty opaque strings
+<=4096; unknown keys/types retain. Non-null child cursors still retain the parent.
 
 Each deletion receipt is schema1, expected producer_origin41629, and a body-free
 source receipt binding task_id/session_id/directory/control origin4098/enabled=false/
@@ -37,9 +114,9 @@ is a separate, explicit first-party LIST-only ownership refresh: require the exa
 paused task's current lastSessionId=ID and nonrunning/nonqueued state, then durably
 save the reduced source receipt. It cannot dispatch/export/delete and cannot combine
 with other mutation/plan modes. This enables verified current legacy backlog without
-promoting manual known IDs. Historical IDs no longer named by that task need retained
-authoritative task execution receipts, not kind/title matching; no historical
-execution-list endpoint is established by the supplied installed contract.
+promoting manual known IDs. Historical IDs no longer named by that task need either
+retained authoritative execution receipts or the distinct reviewed composite above,
+never kind/title alone. No historical execution-list endpoint is established.
 
 Wire decoding is operation-specific: native session.get/active/inbox200 responses
 are EXACT `{data: record/map/array}` envelopes (native2.0.30 session protocol289/
@@ -73,7 +150,7 @@ with204/no body, never boolean. A fresh health receipt must identify ready41629.
 
 Require a matching canonical capture jobs/ID.json (owned0600, nofollow), status=done,
 producer41629, freshly checked before deletion. Reject unowned/foreign roots,
-non-scheduled or extra/linked metadata, forks/parents/subpaths/reverts/archived,
+non-scheduled or unknown/linked metadata, forks/parents/subpaths/reverts/archived,
 children, active execution, native inbox, manual continuations/multiple user messages,
 failed/interrupted sessions, unsupported history, incomplete or absent visible final.
 Read whole native message pagination (max8 pages of100), detect repeated cursor/
@@ -118,7 +195,7 @@ Process at most8 sorted IDs/tick with durable cleanup continuation; advance past
 blocked candidates, preserve bounded progress on budget exhaustion. Plan-only
 does not advance the cursor. Cleanup warnings/retained IDs are safe metadata,
 never workload or LLM-wakeup input; scheduler cli_calls excludes maintenance HTTP.
-Legacy backlog without exact receipts remains retained, not silently reclassified.
+Legacy backlog without exact receipts or verified composite remains retained, not silently reclassified.
 Native API has no CAS and deletion cascades children: fresh checks cannot eliminate
 a user continuation/new child arriving in the final check/delete window. Existing
 children always block. This residual race is disclosed, not an atomic guarantee.

@@ -541,27 +541,43 @@ def official_cli(args, action):
         process.stdout.close()
 
 
-def cleanup_monitor(args, cursor):
-    # Spec: docs/specs/retrospective-monitor.md — explicit receipts → first-party maintenance, no dispatch
+def cleanup_monitor(args, cursor, fd):
+    # Spec: docs/specs/retrospective-monitor.md — verify → durable classification → deletion, no dispatch
     if cursor['inflight']:
         return dict(warnings=['CLEANUP_DEFERRED_DISPATCH_AMBIGUOUS'])
     check(args.project_dir == '/home/ericmaster/nimbler-ops' and args.port == 4098
           and args.task == 'd2785bca-a95c-4252-ab72-7e89a1b5e941', 'cleanup_binding_mismatch')
-    payload = dict(known=cursor['known'], receipts=cursor.get('cleanup_receipts', {}),
-                   after=cursor.get('cleanup_after'), plan=args.cleanup_plan)
+    deadline = time.monotonic() + 50
     try:
-        completed = subprocess.run(['node', str(Path(__file__).resolve().with_name('retrospective-monitor-cleanup.mjs'))],
-                                   input=json.dumps(payload).encode(), stdout=subprocess.PIPE,
-                                   stderr=subprocess.DEVNULL, timeout=50, check=False)
-        check(completed.returncode == 0 and len(completed.stdout) <= 65536, 'cleanup_unavailable')
-        result = json.loads(completed.stdout, object_pairs_hook=unique_object, parse_float=finite_number)
-        check(isinstance(result, dict) and 'after' in result, 'cleanup_unavailable')
-        if result['after'] is not None:
-            session_id(result['after'])
-            check(result['after'] in cursor['known'], 'cleanup_unavailable')
-        if not args.cleanup_plan:
+        for plan in ([True] if args.cleanup_plan else [True, False]):
+            payload = dict(known=cursor['known'], receipts=cursor.get('cleanup_receipts', {}),
+                           after=cursor.get('cleanup_after'), plan=plan)
+            check(time.monotonic() < deadline, 'cleanup_unavailable')
+            completed = subprocess.run(['node', str(Path(__file__).resolve().with_name('retrospective-monitor-cleanup.mjs'))],
+                                       input=json.dumps(payload).encode(), stdout=subprocess.PIPE,
+                                       stderr=subprocess.DEVNULL, timeout=max(.01, deadline - time.monotonic()), check=False)
+            check(completed.returncode == 0 and len(completed.stdout) <= 65536, 'cleanup_unavailable')
+            result = json.loads(completed.stdout, object_pairs_hook=unique_object, parse_float=finite_number)
+            check(isinstance(result, dict) and 'after' in result, 'cleanup_unavailable')
+            if result['after'] is not None:
+                session_id(result['after'])
+            proven = result.get('proven', [])
+            check(isinstance(proven, list) and len(proven) <= 8, 'cleanup_unavailable')
+            for session in proven:
+                session_id(session)
+            known = sorted(set(cursor['known']) | set(proven))
+            check(len(known) <= FILES, 'monitor_id_limit')
+            if args.cleanup_plan:
+                return result
+            cursor['known'] = known
+            if plan:
+                cursor['pending'] = workload(cursor['pending'], set(known))
+                if cursor['baseline'] is not None:
+                    cursor['baseline'] = workload(cursor['baseline'], set(known))
+                save_gate(fd, cursor)  # Must finish fsync before the destructive process can start.
+                continue
             cursor['cleanup_after'] = result['after']
-        return result
+            return result
     except (ValueError, subprocess.TimeoutExpired, OSError):
         raise Invalid('cleanup_unavailable') from None
 
@@ -815,7 +831,6 @@ def gate_locked(args, fd):
                 session_id(cursor['claim']['before'])
     if cursor.get('cleanup_after') is not None:
         session_id(cursor['cleanup_after'])
-        check(cursor['cleanup_after'] in cursor['known'], 'invalid_cursor')
     receipts = cursor.get('cleanup_receipts', {})
     check(isinstance(receipts, dict) and len(receipts) <= FILES, 'invalid_cursor')
     for session, receipt in receipts.items():
@@ -831,13 +846,14 @@ def gate_locked(args, fd):
         check(len(cursor['known']) <= FILES, 'monitor_id_limit')
         save_gate(fd, cursor)
         return dict(complete=True, decision='cleanup_receipt_recorded', session_id=session, cli_calls=1)
-    cleanup = None
+    cleanup, cleanup_failed = None, False
     if args.cleanup or args.cleanup_plan:
         try:
             check('gate-v1.json' in os.listdir(fd), 'cleanup_cursor_missing')
-            cleanup = cleanup_monitor(args, cursor)
+            cleanup = cleanup_monitor(args, cursor, fd)
         except (Invalid, OSError):
             cleanup = dict(warnings=['CLEANUP_UNAVAILABLE'])
+            cleanup_failed = True
         if args.cleanup_plan:
             return dict(complete='after' in cleanup, decision='cleanup_plan', cleanup=cleanup)
     known = set(args.known_monitor_session) | set(cursor['known'])
@@ -847,8 +863,10 @@ def gate_locked(args, fd):
     if cursor['baseline'] is not None:
         baseline = workload(cursor['baseline'], known)
         cursor['pending'].update({key: row for key, row in observed.items() if baseline.get(key) != row})
-    complete, calls = finished and reader.error_count == 0, 0
+    complete, calls = finished and reader.error_count == 0 and not cleanup_failed, 0
     decision = 'partial' if reader.error_count else scan_decision
+    if cleanup_failed:
+        decision = 'cleanup_failed'
     if complete:
         decision = 'baseline' if cursor['baseline'] is None else ('pending' if cursor['pending'] else 'quiet')
         cursor['baseline'] = observed
@@ -920,6 +938,8 @@ def gate_locked(args, fd):
     cursor['pending'] = workload(cursor['pending'], known)
     # Health is evaluated only after the durable dispatch/reconciliation transition.
     health = dict(cursor['conditions'])
+    if cleanup_failed:
+        health[hashed('cleanup_failure')] = 'CLEANUP_UNAVAILABLE'
     for session in cursor.get('failed_jobs', []):
         if session in known or session in {'h' + hashlib.sha256(s.encode()).hexdigest() for s in known}:
             health[hashed('monitor_failed', session)] = 'MONITOR_JOB_FAILED'

@@ -110,7 +110,9 @@ on periodic gate ticks. No helper/gate change deploys the pending Go decoder.
 
 ## Final-output archive and completed monitor deletion — OFF by default
 
-Owning task: `d2785bca-a95c-4252-ab72-7e89a1b5e941` only. Public contract/source
+Owning dispatch task: `d2785bca-a95c-4252-ab72-7e89a1b5e941`. Historical cleanup additionally
+allows the two exact operational monitor ID/name pairs in the spec, not other tasks.
+Public contract/source
 evidence: `../../.artifacts-manager/agf1-monitor-cleanup-official-api-contract.md`.
 The installed native API supports DELETE `/api/session/ID`,204; absence of a CLI
 delete action is not a blocker. The helper reuses OpenChamber2.3.3's existing
@@ -134,9 +136,52 @@ exports nothing and deletes nothing. It returns at most eight proven IDs/final I
 completion/version hashes. Repeating a plan does not persist rotation; counts are
 that bounded batch, not a full backlog or zero-pending claim. `known` is classification
 only, including manually supplied --known-monitor-session IDs. Only the separate
-`cleanup_receipts` records authorize deletion; no legacy known ID is automatically
-promoted. Verified fresh schedule run + post-list acknowledgement records future
-receipts. Other monitor tasks require their own equally exact authority.
+`cleanup_receipts` records or the distinct reviewed composite authorize deletion;
+no legacy known ID is automatically promoted. Verified fresh schedule run + post-list
+acknowledgement records future receipts, unchanged.
+
+Cleanup reads first-party schedule.list once per maintenance to recognize exact
+current stored prompts for the three allowlisted task ID/name pairs. Prompt bodies
+remain memory-only. It completes bounded project session inventory (8x100 pages)
+before selecting eight sorted IDs; the result's inventory count is candidate scope,
+NOT an eligible/deletable count. Explicit lastSessionIds for the two operational
+tasks are inspected even if their metadata/title is missing; unproven ones remain.
+The durable cleanup_after advances over retained IDs independently of known, so
+large backlogs make bounded eventual progress without an LLM wake. A plan never
+persists that progress; use separately reviewed maintenance for actual rotation.
+
+Crash-safe classification: --cleanup first runs a read-only verification phase,
+then Python fsyncs the existing private gate cursor's verified known IDs before
+starting the deletion phase. The adapter will not archive/delete a discovered ID
+absent from that authorized cursor snapshot, even with a valid composite. Both
+processes share the existing50s parent budget; no Node cursor writer or new journal.
+After DELETE204 followed by adapter death/no stdout, the next tick already has
+durable monitor classification and reconciles GET-only; missing native history
+cannot turn its retained job/spool into model work. Manual known IDs still need
+full receipt/composite and all deletion guards.
+
+Any adapter/timeout/parse/classification-save failure makes that tick incomplete:
+CLEANUP_UNAVAILABLE health, no dispatch, real pending provenance retained. Repeated
+failure has one stable health edge; the next successful tick recovers normally.
+A corrupt/unsafe private cursor fails closed without adapter calls or dispatch,
+never overwriting it or importing arbitrary archive filenames as authority.
+--cleanup-plan remains one read-only phase and never saves classification.
+
+Exact scheduled kind/project/task-name + creation timestamp title and initial
+native user.text SHA256 matching a unique recognized current stored prompt produce
+`agf.monitor-legacy.v1`. This is an honest composite, NOT a historical task-ID
+execution receipt; archives/audits record its source and IDs/hashes, not prompt
+text. Old observed d432… and expanded snippets are NOT recognized merely from an
+observed candidate. They remain retained. No historical-template registry is added.
+Unknown template recognition is deliberately separate from this working slice.
+Fresh snapshot rechecks initial instruction, all metadata, completion and history.
+Any second authored user message retains even when it repeats the monitor prompt.
+
+Normal knowledge guide flags and final-bound idle assist bookkeeping are allowed
+by a closed schema (see spec); assist suggestion is not a submitted instruction.
+Unknown linked/pin/goal/review fields or revision-bearing knowledge signatures
+remain retained. Assist/context/queue text is never exported. Official nullable
+previous/next cursors are accepted; non-null child cursors still retain parents.
 
 For the legacy session CURRENTLY named by this exact paused task's lastSessionId,
 the supervisor can first perform an explicit LIST-only ownership refresh (after
@@ -154,9 +199,8 @@ This reads schedule list once, requires paused/nonrunning/nonqueued task and exa
 lastSessionId equality, and saves a body-free task/project/control-origin/native-
 origin/source-hash receipt. It does NOT dispatch/archive/delete. A different known
 ID is rejected. Past sessions no longer named by that task need retained authoritative
-task execution receipts; native metadata.kind=scheduled is not task attribution.
-The supplied installed contract does not establish a historical execution-list
-endpoint, so report these older IDs as unproven rather than guessing/importing them.
+execution receipts or the reviewed composite above; kind/title alone is not task
+attribution. The installed contract establishes no historical execution-list endpoint.
 
 Activation is supervisor-only after fresh GPT-6.1 medium review: preserve paused LLM
 cron, native origin41629, service and prompt fields, and append `--cleanup` to the

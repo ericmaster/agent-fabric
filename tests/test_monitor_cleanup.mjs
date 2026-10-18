@@ -22,6 +22,29 @@ function receipt(sessionID) {
     session_id: sessionID, task_id: 'd2785bca-a95c-4252-ab72-7e89a1b5e941' };
   return { schema: 1, producer_origin: 'http://127.0.0.1:41629', source, source_sha256: sha(JSON.stringify(['cleanup_receipt', source])) };
 }
+
+// Spec: docs/specs/retrospective-monitor.md — native wire envelopes, nullable endpoints.
+function wire(request) {
+  return firstPartyTransport(async (_, e, options) => {
+    const r = await request(e, options.method);
+    const wrapped = /^\/api\/session\/ses_[A-Za-z0-9]+(?:\/inbox)?$/.test(e) || e === '/api/session/active';
+    return { response: { status: r.status }, body: r.status === 200 && wrapped ? { data: r.body } : r.body };
+  });
+}
+
+// Spec: docs/specs/retrospective-monitor.md — synthetic trusted current definition, no live prompt.
+function legacyDefinition(id = 'ses_monitor123') {
+  return { id: 'd2785bca-a95c-4252-ab72-7e89a1b5e941', name: 'AGF-1 OpenChamber session monitor', enabled: false,
+    schedule: { timezone: 'UTC' }, execution: { prompt: 'PRIVATE_USER' }, state: { lastStatus: 'success', lastSessionId: id } };
+}
+
+// Spec: docs/specs/retrospective-monitor.md via public legacy regression fixtures.
+function legacyOptions(f, definitions = [legacyDefinition(f.id)]) {
+  f.session.title = 'AGF-1 OpenChamber session monitor 1970-01-01 00:00';
+  return { ...f.options, listTasks: async () => ({ tasks: definitions }), request: wire(async (e, m) =>
+    e.startsWith('/api/session?') && !new URL(e, 'http://fixture').searchParams.has('parentID')
+      ? { status: 200, body: { data: [f.session], cursor: { previous: null, next: null } } } : f.request(e, m)) };
+}
 // Spec: docs/specs/retrospective-monitor.md via maintenance — fixtures only/no live APIs.
 async function fixture(run) {
   const root = await fs.mkdtemp(path.join(HERE, '.cleanup-fixture-'));
@@ -230,12 +253,27 @@ test('review provenance: manual classification ID never authorizes archive or de
 }));
 
 test('review wire: real native data envelopes through first-party transport complete cleanup', () => fixture(async f => {
+  f.session.metadata = { openchamber: { assist: { suggestion: 'PRIVATE_ASSIST', recap: '', forMessageID: 'msg_final', generatedAt: 3100 }, knowledge_context_delivered: 'l:on|m:on:c|r:on|w:auto', kind: 'scheduled' } };
   const transport = firstPartyTransport(async (_, endpoint, options) => {
     const response = await f.request(endpoint, options.method);
+    if (response.body?.cursor) response.body.cursor = { previous: null, next: null };
     const wrapped = endpoint === `/api/session/${f.id}` || endpoint === '/api/session/active' || endpoint.endsWith('/inbox');
     return { response: { status: response.status }, body: wrapped && response.status === 200 ? { data: response.body } : response.body };
   });
   assert.equal((await maintenance(f.input, { ...f.options, request: transport })).deleted, 1);
+}));
+
+test('legacy composite discovery binds native user.text, not assistant text or classification IDs', () => fixture(async f => {
+  f.input.receipts = {};
+  f.session.title = 'AGF-1 OpenChamber session monitor 1970-01-01 00:00';
+  const listTasks = async () => ({ tasks: [{ id: 'd2785bca-a95c-4252-ab72-7e89a1b5e941', name: 'AGF-1 OpenChamber session monitor', enabled: false,
+    execution: { prompt: 'PRIVATE_USER' }, state: { lastStatus: 'success', lastSessionId: f.id } }] });
+  const request = async (e, m) => e.startsWith('/api/session?') && !new URL(e, 'http://fixture').searchParams.has('parentID')
+    ? { status: 200, body: { data: [f.session], cursor: { previous: null, next: null } } } : f.request(e, m);
+  const result = await maintenance(f.input, { ...f.options, request, listTasks });
+  assert.equal(result.deleted, 1);
+  const archive = await fs.readFile(path.join(f.root, '1970-01-01', `${f.id}.md`), 'utf8');
+  assert.match(archive, /agf.monitor-legacy.v1/); assert.doesNotMatch(archive, /PRIVATE_USER/);
 }));
 
 test('review durability: every newly created ancestor entry is parent-fsynced before DELETE', () => fixture(async f => {
@@ -315,4 +353,214 @@ test('ancestor parent fsync failure prevents any DELETE', () => fixture(async f 
   try { await maintenance(f.input, { ...f.options, root: path.join(f.root, '.artifacts-manager', 'monitor-output') }); }
   finally { fs.open = open; }
   assert.equal(f.calls.filter(x => x[1] === 'DELETE').length, 0);
+}));
+
+for (const invalid of ['root', 'null', 'array', 'unknown', 'pin', 'goal', 'knowledge-type', 'knowledge-duplicate', 'knowledge-unsorted', 'knowledge-pin', 'knowledge-conflict', 'assist-null', 'assist-extra', 'assist-long', 'assist-id', 'assist-time', 'assist-future', 'assist-stale', 'assist-empty']) {
+  test(`closed scheduled metadata retains ${invalid} through public wire`, () => fixture(async f => {
+    const m = { kind: 'scheduled', knowledge_context_delivered: 'm:on:p|w:ask',
+      assist: { recap: 'PRIVATE_RECAP', suggestion: 'PRIVATE_SUGGESTION', forMessageID: 'msg_final', generatedAt: 3100 } };
+    f.session.metadata.openchamber = m;
+    if (invalid === 'root') f.session.metadata.extra = true;
+    if (invalid === 'null') f.session.metadata.openchamber = null;
+    if (invalid === 'array') f.session.metadata.openchamber = [];
+    if (invalid === 'unknown') m.taskID = legacyDefinition().id;
+    if (invalid === 'pin') m.project_context_pins = [];
+    if (invalid === 'goal') m.goal = {};
+    if (invalid === 'knowledge-type') m.knowledge_context_delivered = {};
+    if (invalid === 'knowledge-duplicate') m.knowledge_context_delivered = 'l:on|l:on';
+    if (invalid === 'knowledge-unsorted') m.knowledge_context_delivered = 'r:on|l:on';
+    if (invalid === 'knowledge-pin') m.knowledge_context_delivered = 'n:pin:1';
+    if (invalid === 'knowledge-conflict') m.knowledge_context_delivered = 'm:on:c|m:on:p';
+    if (invalid === 'assist-null') m.assist = null;
+    if (invalid === 'assist-extra') m.assist.goal = true;
+    if (invalid === 'assist-long') m.assist.suggestion = 'x'.repeat(501);
+    if (invalid === 'assist-id') m.assist.forMessageID = 'msg_other';
+    if (invalid === 'assist-time') m.assist.generatedAt = '3100';
+    if (invalid === 'assist-future') m.assist.generatedAt = Date.now() + 86400000;
+    if (invalid === 'assist-stale') m.assist.generatedAt = 2900 + 86400001;
+    if (invalid === 'assist-empty') m.assist.recap = m.assist.suggestion = '';
+    const r = await maintenance(f.input, { ...f.options, request: wire(f.request) });
+    assert.equal(r.deleted, 0); assert.equal(r.eligible, 0); assert.deepEqual(await fs.readdir(f.root), []);
+    assert.doesNotMatch(JSON.stringify(r), /PRIVATE/);
+  }));
+}
+
+for (const signature of ['', 'm:on:c', 'l:on|m:on:p|r:on|w:ask', 'r:on|w:auto']) {
+  test(`installed benign guide signature ${signature} is accepted independent of key ordering`, () => fixture(async f => {
+    f.session.metadata.openchamber = { knowledge_context_delivered: signature, kind: 'scheduled' };
+    assert.equal((await maintenance({ ...f.input, plan: true }, { ...f.options, request: wire(f.request) })).eligible, 1);
+  }));
+}
+
+for (const value of [true, 1, '', [], {}, 'x'.repeat(4097)]) {
+  test(`nullable cursor rejects invalid ${typeof value}/${String(value).length}`, async () => {
+    const request = firstPartyTransport(async () => ({ response: { status: 200 }, body: { data: [], cursor: { next: value } } }));
+    await assert.rejects(request('/api/session?limit=100'));
+  });
+}
+for (const key of ['previous', 'next']) {
+  test(`nonnull child ${key} cursor retains parent through wire`, () => fixture(async f => {
+    const request = wire(async (e, m) => e.startsWith('/api/session?')
+      ? { status: 200, body: { data: [], cursor: { previous: null, next: null, [key]: 'opaque' } } } : f.request(e, m));
+    assert.equal((await maintenance(f.input, { ...f.options, request })).eligible, 0);
+    assert.deepEqual(await fs.readdir(f.root), []);
+  }));
+}
+
+for (const fault of ['prompt', 'assistant-only', 'later-repeat', 'project', 'name', 'task', 'kind', 'date', 'duplicate-task', 'ambiguous-prompt', 'supervisor', 'reviewer', 'child', 'parent', 'fork', 'late-instruction', 'queue', 'goal']) {
+  test(`legacy composite never authorizes ${fault}`, () => fixture(async f => {
+    f.input.receipts = {};
+    const tasks = [legacyDefinition(f.id)], options = legacyOptions(f, tasks);
+    if (fault === 'prompt') f.messages[0].text = 'UNRECOGNIZED_HISTORICAL';
+    if (fault === 'assistant-only') { f.messages[0].text = 'OTHER'; f.messages[1].content[0].text = 'PRIVATE_USER'; }
+    if (fault === 'later-repeat') f.messages.splice(1, 0, { ...f.messages[0], id: 'msg_repeat' });
+    if (fault === 'project') f.session.location.directory = '/other';
+    if (fault === 'name') tasks[0].name += ' other';
+    if (fault === 'task') tasks[0].id = 'other-task';
+    if (fault === 'kind') f.session.metadata.openchamber.kind = 'work';
+    if (fault === 'date') f.session.title = 'AGF-1 OpenChamber session monitor 1970-01-01 00:01';
+    if (fault === 'duplicate-task') tasks.push(structuredClone(tasks[0]));
+    if (fault === 'ambiguous-prompt') tasks.push({ ...structuredClone(tasks[0]), id: '55d5f2b9-3ea8-4223-91fe-7cffdc71bcef', name: 'Monitor operativo de agentes — progreso y loops' });
+    if (fault === 'supervisor' || fault === 'reviewer') f.session.agent = `ops-${fault}`;
+    if (fault === 'parent') f.session.parentID = 'ses_parent';
+    if (fault === 'fork') f.session.fork = { sessionID: 'ses_parent' };
+    if (fault === 'goal') tasks[0].execution.goalEnabled = true;
+    if (fault === 'queue') f.queue.sessions.push({ sessionId: f.id, directory: '', items: [{ text: 'PRIVATE_QUEUE' }], sendingId: null });
+    const send = options.request; let reads = 0;
+    options.request = async (e, m) => {
+      if (fault === 'child' && e.includes('parentID=')) return { status: 200, body: { data: [{ id: 'ses_child' }], cursor: { previous: null, next: null } } };
+      if (fault === 'late-instruction' && e === `/api/session/${f.id}` && ++reads === 2) f.messages[0].text = 'CHANGED';
+      return send(e, m);
+    };
+    try { assert.equal((await maintenance(f.input, options)).deleted, 0); }
+    catch (e) { assert.equal(e.message, 'TASK_DEFINITIONS_UNVERIFIED'); }
+    assert.equal(f.calls.filter(c => c[1] === 'DELETE').length, 0);
+    if (fault !== 'late-instruction') assert.deepEqual(await fs.readdir(f.root), []);
+  }));
+}
+
+test('native synthetic knowledge is nonhuman but later authored instructions still retain', () => fixture(async f => {
+  f.input.receipts = {};
+  const options = legacyOptions(f);
+  f.session.metadata.openchamber.knowledge_context_delivered = 'l:on';
+  f.messages.unshift({ type: 'synthetic', id: 'msg_knowledge', text: 'PRIVATE_CONTEXT', time: { created: 1000 } });
+  assert.equal((await maintenance({ ...f.input, plan: true }, options)).eligible, 1);
+  f.messages.splice(2, 0, { ...f.messages[1], id: 'msg_human' });
+  assert.equal((await maintenance(f.input, options)).eligible, 0);
+  assert.deepEqual(await fs.readdir(f.root), []);
+}));
+
+test('complete 195-candidate paginated wire discovery rotates bounded batches across all three tasks without LLM wake', () => fixture(async f => {
+  const names = ['AGF-1 OpenChamber session monitor', 'Monitor operativo de agentes — progreso y loops', 'Monitor operativo de agentes — persistente'];
+  const ids = [legacyDefinition().id, '55d5f2b9-3ea8-4223-91fe-7cffdc71bcef', 'ce0092b5-5552-4d14-a695-592ff7b48d96'];
+  const tasks = ids.map((id, i) => ({ ...legacyDefinition(null), id, name: names[i], execution: { prompt: `SYNTHETIC_TASK_${i}` } }));
+  const sessions = Array.from({ length: 195 }, (_, i) => ({ ...structuredClone(f.session), id: `ses_${String(i).padStart(3, '0')}`, title: `${names[i % 3]} 1970-01-01 00:00` }));
+  const unrelated = Array.from({ length: 78 }, (_, i) => ({ ...structuredClone(f.session), id: `ses_other${i}`, metadata: {}, title: 'Normal work' }));
+  const deleted = new Set(), inspected = new Set(); let pages = 0, deletes = 0;
+  const request = wire(async (e, method) => {
+    if (e.startsWith('/api/session?') && !e.includes('parentID=')) {
+      const q = new URL(e, 'http://fixture').searchParams, offset = Number(q.get('cursor') || 0);
+      const records = [...sessions, ...unrelated].filter(s => !deleted.has(s.id)); pages++;
+      return { status: 200, body: { data: records.slice(offset, offset + 100), cursor: { previous: null, next: offset + 100 < records.length ? String(offset + 100) : null } } };
+    }
+    const match = e.match(/^\/api\/session\/(ses_\d{3})(\/message\?.*|\/inbox)?$/);
+    if (!match) return f.request(e, method);
+    const sessionID = match[1], index = Number(sessionID.slice(4)), session = sessions[index];
+    inspected.add(sessionID);
+    if (method === 'DELETE') {
+      const bytes = await fs.readFile(path.join(f.root, '1970-01-01', `${sessionID}.md`), 'utf8');
+      assert.match(bytes, /agf.monitor-legacy.v1/); assert.doesNotMatch(bytes, /SYNTHETIC_TASK|PRIVATE/);
+      assert.equal(JSON.parse(bytes.match(/<!-- (.*) -->/)[1]).taskID, ids[index % 3]);
+      deleted.add(sessionID); deletes++; return { status: 204, body: null };
+    }
+    if (match[2]?.startsWith('/message')) {
+      const rows = structuredClone(f.messages); rows[0].text = index % 5 === 0 ? 'UNRECOGNIZED_HISTORICAL' : tasks[index % 3].execution.prompt;
+      return { status: 200, body: { data: rows, cursor: { previous: null, next: null } } };
+    }
+    if (match[2] === '/inbox') return { status: 200, body: [] };
+    return { status: deleted.has(sessionID) ? 404 : 200, body: session };
+  });
+  let input = { known: ['ses_eedbd0409ffeOPv2DOxqVRc1iZ'], receipts: {}, after: null, plan: false };
+  for (let tick = 0; tick < 25; tick++) {
+    // Simulate the Python-owned durable classification barrier before the destructive phase.
+    const classification = await maintenance({ ...input, plan: true }, { ...f.options, request, listTasks: async () => ({ tasks }) });
+    input.known = [...new Set([...input.known, ...classification.proven])];
+    const result = await maintenance(input, { ...f.options, request, listTasks: async () => ({ tasks }) });
+    assert.ok(result.candidates.length + result.retained <= 8);
+    assert.doesNotMatch(JSON.stringify(result), /SYNTHETIC_TASK|PRIVATE/);
+    input = { ...input, after: result.after, known: [...new Set([...input.known, ...result.proven])] };
+  }
+  assert.equal(inspected.size, 195); assert.equal(deletes, 156); assert.equal(deleted.size, 156);
+  assert.ok(pages >= 100 && pages <= 150); // Both phases complete inventory, no offset skips.
+  assert.equal(input.known.length, 157);
+}));
+
+for (const fault of ['repeat', 'cap', 'duplicate']) {
+  test(`incomplete native inventory ${fault} aborts before any archive/delete`, () => fixture(async f => {
+    const options = legacyOptions(f), send = options.request;
+    let page = 0;
+    options.request = async (e, m) => {
+      if (e.startsWith('/api/session?') && !e.includes('parentID=')) {
+        page++;
+        return { status: 200, body: { data: fault === 'duplicate' ? [f.session, f.session] : [], cursor: { previous: null, next: fault === 'repeat' ? 'same' : String(page) } } };
+      }
+      return send(e, m);
+    };
+    await assert.rejects(maintenance({ ...f.input, receipts: {} }, options), /INVENTORY_PARTIAL/);
+    assert.ok(page <= 8); assert.deepEqual(await fs.readdir(f.root), []);
+  }));
+}
+
+test('operational task lastSessionIds are probed but missing scheduled kind never gains composite authority', () => fixture(async f => {
+  const tasks = [legacyDefinition(null),
+    { ...legacyDefinition('ses_oldone'), id: '55d5f2b9-3ea8-4223-91fe-7cffdc71bcef', name: 'Monitor operativo de agentes — progreso y loops', execution: { prompt: 'SYNTHETIC_OLD_ONE' } },
+    { ...legacyDefinition('ses_oldtwo'), id: 'ce0092b5-5552-4d14-a695-592ff7b48d96', name: 'Monitor operativo de agentes — persistente', execution: { prompt: 'SYNTHETIC_OLD_TWO' } }];
+  const read = new Set();
+  const request = wire(async (e, m) => {
+    if (e.startsWith('/api/session?') && !e.includes('parentID=')) return { status: 200, body: { data: [], cursor: { previous: null, next: null } } };
+    if (/^\/api\/session\/ses_old(one|two)$/.test(e)) {
+      const id = e.split('/').at(-1); read.add(id);
+      return { status: 200, body: { ...f.session, id, metadata: {}, title: 'Old task' } };
+    }
+    return f.request(e.replace(/ses_old(one|two)/, f.id), m);
+  });
+  const r = await maintenance({ known: [], receipts: {}, after: null, plan: false }, { ...f.options, request, listTasks: async () => ({ tasks }) });
+  assert.deepEqual([...read].sort(), ['ses_oldone', 'ses_oldtwo']);
+  assert.equal(r.retained, 2); assert.equal(r.eligible, 0); assert.deepEqual(r.proven, []);
+  assert.deepEqual(await fs.readdir(f.root), []);
+}));
+
+test('fresh legacy metadata changes cannot reuse an earlier attestation', () => fixture(async f => {
+  const options = legacyOptions(f), send = options.request; let reads = 0;
+  f.session.metadata.openchamber.assist = { recap: 'PRIVATE_RECAP', suggestion: '', forMessageID: 'msg_final', generatedAt: 3100 };
+  options.request = async (e, m) => {
+    if (e === `/api/session/${f.id}` && ++reads === 2) f.session.metadata.openchamber.assist.recap = 'PRIVATE_CHANGED';
+    return send(e, m);
+  };
+  const result = await maintenance({ ...f.input, receipts: {} }, options);
+  assert.equal(result.deleted, 0); assert.equal(result.retainedSessions[0].code, 'SNAPSHOT_CHANGED');
+  assert.doesNotMatch(await fs.readFile(path.join(f.root, '1970-01-01', `${f.id}.md`), 'utf8'), /PRIVATE/);
+}));
+
+test('unique message cursors hitting page cap never silently skip history', () => fixture(async f => {
+  let pages = 0;
+  const request = wire(async (e, m) => e.includes('/message?')
+    ? { status: 200, body: { data: [], cursor: { previous: null, next: `opaque-${++pages}` } } } : f.request(e, m));
+  assert.equal((await maintenance(f.input, { ...f.options, request })).eligible, 0);
+  assert.equal(pages, 8); assert.deepEqual(await fs.readdir(f.root), []);
+}));
+
+test('newly discovered composite proof is classification-only until present in the authorized cursor snapshot', () => fixture(async f => {
+  const options = legacyOptions(f);
+  const input = { known: [], receipts: {}, after: null, plan: false };
+  const first = await maintenance(input, options);
+  assert.deepEqual(first.proven, [f.id]); assert.equal(first.eligible, 1); assert.equal(first.deleted, 0);
+  assert.deepEqual(await fs.readdir(f.root), []);
+  assert.equal(f.calls.filter(c => c[1] === 'DELETE').length, 0);
+  // In production authorize verifies the Python-fsynced cursor, not a mere candidate ID.
+  const second = await maintenance({ ...input, known: first.proven }, options);
+  assert.equal(second.deleted, 1);
+  const again = await maintenance({ ...input, known: first.proven }, options);
+  assert.equal(again.reconciled, 1); assert.deepEqual(again.proven, [f.id]);
+  assert.equal(f.calls.filter(c => c[1] === 'DELETE').length, 1);
 }));
