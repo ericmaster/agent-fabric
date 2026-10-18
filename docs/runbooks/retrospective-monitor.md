@@ -30,21 +30,22 @@ old complete snapshot with empty output on failure. The helper never writes
 reports/jobs/spools or its previous snapshot. The scheduler owns any eventual
 atomic snapshot replacement. No config/credential/socket/provider is needed.
 
-## Zero-token one-shot gate — NOT activated
+## Zero-token one-shot gate — hourly; cleanup opt-in not activated
 
 The LLM task `d2785bca-a95c-4252-ab72-7e89a1b5e941` must remain disabled permanently.
-A later separately reviewed local timer may poll every five minutes, independently
-of OpenChamber's LLM scheduler. Do not install or activate it from this runbook.
-Proposed command (explicit immutable reviewed R required):
+The owned timer is hourly, independent of OpenChamber's LLM scheduler. Preserve
+`OnActiveSec=1h` and `OnUnitActiveSec=1h`; do not restore five-minute polling.
+This source change does not install/restart/activate anything. Example existing
+gate invocation (explicit immutable reviewed R required):
 
 ```sh
 timeout -k 5s 90s python3 "$R/scripts/retrospective-monitor.py" \
   --state-dir /home/ericmaster/.local/state/agent-fabric/openchamber-retrospective \
-  --gate-dir /home/ericmaster/.local/state/agent-fabric/monitoring/agf1-openchamber41629/gate-v1
+  --gate-dir /home/ericmaster/.local/state/agent-fabric/monitoring/agf1-openchamber41629/gate-v2
 ```
 
-The supervisor creates that dedicated directory with mode0700 (no symlinks),
-then first runs WITHOUT --dispatch: existing work becomes a baseline, subsequent
+For a new fixture the supervisor creates a dedicated directory with mode0700
+(no symlinks), then first runs WITHOUT --dispatch: existing work becomes a baseline, subsequent
 new or changed jobs/spools become one pending work condition. Pass exact verified
 monitor IDs via --known-monitor-session; never infer IDs from names/titles.
 Gate writes only gate-v1.json/lock inside this directory; unknown files conflict.
@@ -57,7 +58,8 @@ task-enabled=false verification, and explicit dispatch/timer authority. Only the
 append --dispatch (official default target --project-dir /home/ericmaster/nimbler-ops,
 --port4098, the task ID above). No custom REST/auth/secret loader is involved.
 --openchamber selects the reviewed first-party executable; tests substitute a fake.
-Quiet and baseline ticks invoke no CLI at all. Nonquiet dispatch first verifies
+Quiet and baseline ticks invoke no scheduler CLI at all. Opt-in cleanup adds
+bounded first-party HTTP maintenance even on quiet ticks. Nonquiet dispatch first verifies
 the task is paused through official schedule list, then uses official schedule run
 --dir /home/ericmaster/nimbler-ops --task d2785bca-a95c-4252-ab72-7e89a1b5e941 --port4098 --json.
 The CLI, not this script, owns authentication. Each call has a 30s/1MiB cap;
@@ -104,13 +106,111 @@ are opened; orphan report names are counted with content coverage unknown. Total
 use stat-only spools with spool_gap_rows=null; spool-only overflow content is unknown.
 and alert baselines explicitly change basis. For a separately authorized historical
 audit use --full-history; do not raise global read budgets or scan all retained blobs
-every five minutes. No helper/gate change deploys the pending Go decoder.
+on periodic gate ticks. No helper/gate change deploys the pending Go decoder.
+
+## Final-output archive and completed monitor deletion — OFF by default
+
+Owning task: `d2785bca-a95c-4252-ab72-7e89a1b5e941` only. Public contract/source
+evidence: `../../.artifacts-manager/agf1-monitor-cleanup-official-api-contract.md`.
+The installed native API supports DELETE `/api/session/ID`,204; absence of a CLI
+delete action is not a blocker. The helper reuses OpenChamber2.3.3's existing
+first-party CLI HTTP authentication, never a custom credential getter. User authority
+permits global queue data **in memory only** for pending-work exclusion: it is
+projected immediately to session ID/count/sending flags, never stored/logged/shown.
+
+After independent review, a supervisor may run this read-only preflight using a
+new immutable release containing BOTH Python and sibling Node adapter files:
+
+```sh
+timeout -k 5s 60s python3 "$RELEASE/retrospective-monitor.py" \
+  --state-dir /home/ericmaster/.local/state/agent-fabric/openchamber-retrospective \
+  --gate-dir /home/ericmaster/.local/state/agent-fabric/monitoring/agf1-openchamber41629/gate-v2 \
+  --cleanup-plan
+```
+
+RELEASE is the supervisor's exact approved immutable directory, not ambient discovery.
+Plan mode requires existing private cursor/lock, never creates or changes them,
+exports nothing and deletes nothing. It returns at most eight proven IDs/final IDs/
+completion/version hashes. Repeating a plan does not persist rotation; counts are
+that bounded batch, not a full backlog or zero-pending claim. `known` is classification
+only, including manually supplied --known-monitor-session IDs. Only the separate
+`cleanup_receipts` records authorize deletion; no legacy known ID is automatically
+promoted. Verified fresh schedule run + post-list acknowledgement records future
+receipts. Other monitor tasks require their own equally exact authority.
+
+For the legacy session CURRENTLY named by this exact paused task's lastSessionId,
+the supervisor can first perform an explicit LIST-only ownership refresh (after
+review; not run by implementation):
+
+```sh
+timeout -k 5s 40s python3 "$RELEASE/retrospective-monitor.py" \
+  --state-dir /home/ericmaster/.local/state/agent-fabric/openchamber-retrospective \
+  --gate-dir /home/ericmaster/.local/state/agent-fabric/monitoring/agf1-openchamber41629/gate-v2 \
+  --record-cleanup-receipt "$EXACT_FIRST_PARTY_LAST_SESSION_ID"
+```
+
+The exact ID must come from the configured task's first-party metadata, not a title.
+This reads schedule list once, requires paused/nonrunning/nonqueued task and exact
+lastSessionId equality, and saves a body-free task/project/control-origin/native-
+origin/source-hash receipt. It does NOT dispatch/archive/delete. A different known
+ID is rejected. Past sessions no longer named by that task need retained authoritative
+task execution receipts; native metadata.kind=scheduled is not task attribution.
+The supplied installed contract does not establish a historical execution-list
+endpoint, so report these older IDs as unproven rather than guessing/importing them.
+
+Activation is supervisor-only after fresh GPT-6.1 medium review: preserve paused LLM
+cron, native origin41629, service and prompt fields, and append `--cleanup` to the
+existing gate invocation. Use a NEW immutable directory with both files; never
+overwrite the current release. Keep timer cadence (minimal fragment):
+
+```ini
+[Timer]
+OnActiveSec=1h
+OnUnitActiveSec=1h
+```
+
+`--cleanup` is outside the model and adds no model calls. It runs on quiet ticks
+before normal work selection; scheduler `cli_calls` excludes maintenance HTTP.
+Output: `$R/.artifacts-manager/monitor-output/YYYY-MM-DD/SESSION.md` (private0700/
+0600, final visible text only). Never commit actual reports. A done capture job,
+native terminal completion, no children/continuations/native inbox and no pending/
+sending OpenChamber queue work are all required. Failed/unknown outputs remain.
+Native wire shapes are decoded per operation: get/active/inbox are `{data:...}`;
+session/message pages remain `{data:[],cursor}`; OpenChamber health/queue remain
+flat. Invalid/error/partial envelopes retain history. File and ancestor durability
+are separate: every descendant directory entry below the trusted R checkout is
+parent-fsynced, including existing entries left by interrupted creation, before
+archive publication/deletion. Archive fsync/rename/no-overwrite/readback/hash checks precede the one DELETE and
+absence readback. Keep `.attempt.json`/`.deleted.json` and gate known IDs forever
+within the existing bounded cache; deletion never causes monitor feedback.
+
+Summary-only outstanding findings are the returned `retainedSessions` IDs/static
+codes, eligible/deleted/ambiguous counts and archive locators, not unrelated user
+queue text or raw tool/error bodies. `USER_QUEUE_PENDING` means preserve and tell
+the user that work is pending; never clear/take the queue to enable cleanup.
+Ambiguous attempts reconcile GET-only on later ticks; do not blindly retry DELETE.
+If a crash happened before its first DELETE, this conservative state still needs
+supervisor reconciliation. Snapshot changes/conflicts keep original output/history.
+
+Latency: next eligible **hourly** maintenance after capture settles, plus bounded
+eight-ID rotation and runtime/timer delay, not immediate or strict <=1h. Native
+DELETE has no CAS and cascades children; a new child/user continuation arriving
+after the fresh checks remains an explicitly disclosed race, never an atomic claim.
+No authenticated real preflight/export/delete/UI acceptance was run by implementation.
+
+Checks: `python3 -m unittest discover -s tests -p test_retrospective_monitor.py`
+and `node --test tests/test_monitor_cleanup.mjs`, fixtures only. Rollback future
+cleanup by removing ONLY `--cleanup` while retaining the new reviewed helper:
+its optional `cleanup_after` / `cleanup_receipts` fields are not accepted by the old immutable
+gate. Preserve cursor/known IDs/claims/audits/outputs and hourly cadence. Do not
+restore an old cursor or reenable the LLM cron to roll back cleanup.
 
 ## Replacement prompt block (supervisor applies after independent acceptance)
 
 Replace only the existing ad hoc retrospective counter/alert computation block
-for the approved 15-minute OpenChamber task; keep its service checks, identity,
-schedule and read-only restrictions unchanged:
+for the approved paused OpenChamber task; keep its service checks, identity,
+enabled=false, model and read-only restrictions unchanged. Only the hourly
+zero-token gate may dispatch it on real new work:
 
 > Run the reviewed `scripts/retrospective-monitor.py` using the explicit approved
 > retrospective STATE and prior metadata snapshot. Pass the supervisor's
@@ -136,7 +236,7 @@ schedule and read-only restrictions unchanged:
 >
 > Notify only NEW warning/health condition fingerprints or meaningful changed
 > health conditions. Retain ONGOING conditions in the summary, without repeating
-> the same historical warning as new every 15 minutes. Show RESOLVED as no longer
+> the same historical warning as new on every invocation. Show RESOLVED as no longer
 > observed, not repaired. Historical/outside_interval collection gaps are
 > informational; current/unknown scope is unresolved. Unidentified legacy groups
 > are not verified unique incidents. Do not turn skipped/unavailable interpretation

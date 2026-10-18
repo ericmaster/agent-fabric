@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Spec: docs/specs/retrospective-monitor.md
-"""Sanitized retrospective inventory and opt-in local zero-token preflight."""
+"""Read-only inventory, zero-token gate and explicit completed-monitor cleanup opt-in."""
 import argparse
 import fcntl
 from collections import Counter
@@ -541,6 +541,31 @@ def official_cli(args, action):
         process.stdout.close()
 
 
+def cleanup_monitor(args, cursor):
+    # Spec: docs/specs/retrospective-monitor.md — explicit receipts → first-party maintenance, no dispatch
+    if cursor['inflight']:
+        return dict(warnings=['CLEANUP_DEFERRED_DISPATCH_AMBIGUOUS'])
+    check(args.project_dir == '/home/ericmaster/nimbler-ops' and args.port == 4098
+          and args.task == 'd2785bca-a95c-4252-ab72-7e89a1b5e941', 'cleanup_binding_mismatch')
+    payload = dict(known=cursor['known'], receipts=cursor.get('cleanup_receipts', {}),
+                   after=cursor.get('cleanup_after'), plan=args.cleanup_plan)
+    try:
+        completed = subprocess.run(['node', str(Path(__file__).resolve().with_name('retrospective-monitor-cleanup.mjs'))],
+                                   input=json.dumps(payload).encode(), stdout=subprocess.PIPE,
+                                   stderr=subprocess.DEVNULL, timeout=50, check=False)
+        check(completed.returncode == 0 and len(completed.stdout) <= 65536, 'cleanup_unavailable')
+        result = json.loads(completed.stdout, object_pairs_hook=unique_object, parse_float=finite_number)
+        check(isinstance(result, dict) and 'after' in result, 'cleanup_unavailable')
+        if result['after'] is not None:
+            session_id(result['after'])
+            check(result['after'] in cursor['known'], 'cleanup_unavailable')
+        if not args.cleanup_plan:
+            cursor['cleanup_after'] = result['after']
+        return result
+    except (ValueError, subprocess.TimeoutExpired, OSError):
+        raise Invalid('cleanup_unavailable') from None
+
+
 def gate(args):
     # Spec: docs/specs/retrospective-monitor.md — public entry → lock → scan → claim → official CLI
     check(Path(args.gate_dir) != Path(args.state_dir) and Path(args.state_dir) not in Path(args.gate_dir).parents,
@@ -549,7 +574,8 @@ def gate(args):
         info = os.fstat(fd)
         check(info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o700, 'unsafe_gate_directory')
         check(set(os.listdir(fd)) <= {'gate-v1.json', 'gate-v1.lock'}, 'gate_directory_conflict')
-        lock = os.open('gate-v1.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600, dir_fd=fd)
+        lock = os.open('gate-v1.lock', (os.O_RDONLY if args.cleanup_plan else os.O_RDWR | os.O_CREAT)
+                       | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600, dir_fd=fd)
         try:
             info = os.fstat(lock)
             check(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid()
@@ -557,9 +583,11 @@ def gate(args):
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                return dict(schema='agf.retrospective-gate.v1', complete=True, decision='locked', cli_calls=0)
+                return dict(schema='agf.retrospective-gate.v1', complete=not args.cleanup_plan, decision='locked', cli_calls=0)
             try:
                 result = gate_locked(args, fd)
+                if args.cleanup_plan:
+                    return result
                 os.lseek(lock, 0, os.SEEK_SET)
                 if os.read(lock, 65):
                     result.update(health_changed=True, gate_state_recovered=True)
@@ -567,6 +595,8 @@ def gate(args):
                     os.fsync(lock)
                 return result
             except (Invalid, OSError, ValueError, KeyError, TypeError, AttributeError):
+                if args.cleanup_plan:
+                    return dict(complete=False, decision='cleanup_plan_unverified', errors=[dict(code='cleanup_plan_unverified')])
                 # A corrupt cursor must not be overwritten or page on every tick.
                 fingerprint = hashed('gate_state_unreadable')
                 os.lseek(lock, 0, os.SEEK_SET)
@@ -606,6 +636,30 @@ def task_receipt(args, document):
     if last is not None:
         session_id(last)
     return last, state.get('lastStatus')
+
+
+def deletion_receipt(args, session, status, kind):
+    # Spec: docs/specs/retrospective-monitor.md — reduced exact first-party source, never classification IDs
+    check(args.task == 'd2785bca-a95c-4252-ab72-7e89a1b5e941' and args.port == 4098
+          and args.project_dir == '/home/ericmaster/nimbler-ops', 'cleanup_binding_mismatch')
+    session_id(session)
+    check(kind in {'schedule.run+list', 'schedule.list.backlog'} and status in
+          {None, 'idle', 'running', 'queued', 'success', 'error', 'skipped'}, 'cleanup_receipt_invalid')
+    check(kind != 'schedule.list.backlog' or status not in {'running', 'queued'}, 'cleanup_receipt_busy')
+    source = dict(kind=kind, task_id=args.task, session_id=session, directory=args.project_dir,
+                  origin='http://127.0.0.1:4098', enabled=False, last_status=status,
+                  run_session_id=session if kind == 'schedule.run+list' else None)
+    return dict(schema=1, producer_origin='http://127.0.0.1:41629', source=source,
+                source_sha256=hashed('cleanup_receipt', source))
+
+
+def remember_deletion_receipt(args, cursor, session, status, kind):
+    # Spec: docs/specs/retrospective-monitor.md via verified run/list or explicit backlog receipt
+    if (args.task, args.project_dir, args.port) != ('d2785bca-a95c-4252-ab72-7e89a1b5e941', '/home/ericmaster/nimbler-ops', 4098):
+        return
+    receipts = cursor.setdefault('cleanup_receipts', {})
+    check(len(receipts) < FILES or session in receipts, 'cleanup_receipt_limit')
+    receipts.setdefault(session, deletion_receipt(args, session, status, kind))
 
 
 def work_rows(value):
@@ -716,7 +770,7 @@ def gate_locked(args, fd):
     binding = hashed('gate_binding', args.project_dir, args.port, args.task)
     cursor = dict(schema='agf.retrospective-gate.v1', format=2, binding=binding, baseline=None,
                   pending={}, inflight=False, claim=None, known=[], health=None, conditions={}, scan=None)
-    allowed_keys = set(cursor) | {'failed_jobs', 'dispatch_error'}
+    allowed_keys = set(cursor) | {'failed_jobs', 'dispatch_error', 'cleanup_after', 'cleanup_receipts'}
     if 'gate-v1.json' in os.listdir(fd):
         info = os.stat('gate-v1.json', dir_fd=fd, follow_symlinks=False)
         check(stat.S_IMODE(info.st_mode) == 0o600 and info.st_nlink == 1, 'unsafe_cursor')
@@ -759,6 +813,33 @@ def gate_locked(args, fd):
                 session_id(session)
             if cursor['claim']['before'] is not None:
                 session_id(cursor['claim']['before'])
+    if cursor.get('cleanup_after') is not None:
+        session_id(cursor['cleanup_after'])
+        check(cursor['cleanup_after'] in cursor['known'], 'invalid_cursor')
+    receipts = cursor.get('cleanup_receipts', {})
+    check(isinstance(receipts, dict) and len(receipts) <= FILES, 'invalid_cursor')
+    for session, receipt in receipts.items():
+        check(session in cursor['known'] and isinstance(receipt, dict) and isinstance(receipt.get('source'), dict), 'invalid_cursor')
+        source = receipt['source']
+        check(receipt == deletion_receipt(args, session, source.get('last_status'), source.get('kind')), 'invalid_cursor')
+    if args.record_cleanup_receipt:
+        check('gate-v1.json' in os.listdir(fd) and not cursor['inflight'], 'cleanup_receipt_unverified')
+        session, status = task_receipt(args, official_cli(args, 'list'))
+        check(session == args.record_cleanup_receipt, 'cleanup_receipt_session_mismatch')
+        remember_deletion_receipt(args, cursor, session, status, 'schedule.list.backlog')
+        cursor['known'] = sorted(set(cursor['known']) | {session})
+        check(len(cursor['known']) <= FILES, 'monitor_id_limit')
+        save_gate(fd, cursor)
+        return dict(complete=True, decision='cleanup_receipt_recorded', session_id=session, cli_calls=1)
+    cleanup = None
+    if args.cleanup or args.cleanup_plan:
+        try:
+            check('gate-v1.json' in os.listdir(fd), 'cleanup_cursor_missing')
+            cleanup = cleanup_monitor(args, cursor)
+        except (Invalid, OSError):
+            cleanup = dict(warnings=['CLEANUP_UNAVAILABLE'])
+        if args.cleanup_plan:
+            return dict(complete='after' in cleanup, decision='cleanup_plan', cleanup=cleanup)
     known = set(args.known_monitor_session) | set(cursor['known'])
     rows, finished, processed, scan_health, failed_jobs, scan_decision = scan_gate(args, cursor, reader)
     cursor['pending'] = workload(cursor['pending'], known)
@@ -787,6 +868,7 @@ def gate_locked(args, fd):
         session_id(last)
         check(last != cursor['claim']['before'] and last not in cursor['claim']['known'], 'receipt_not_fresh')
         known.add(last)
+        remember_deletion_receipt(args, cursor, last, status, 'schedule.list.backlog')
         for key, row in cursor['claim']['work'].items():
             if cursor['pending'].get(key) == row:
                 del cursor['pending'][key]
@@ -823,9 +905,10 @@ def gate_locked(args, fd):
                     returned, _ = task_receipt(args, {'tasks': [response['task']]})
                     check(returned == session, 'receipt_session_mismatch')
                 calls += 1
-                after, _ = task_receipt(args, official_cli(args, 'list'))
+                after, post_status = task_receipt(args, official_cli(args, 'list'))
                 check(after == session, 'receipt_session_mismatch')
                 known.add(session)
+                remember_deletion_receipt(args, cursor, session, post_status, 'schedule.run+list')
                 check(len(known) <= FILES, 'monitor_id_limit')
                 cursor.update(known=sorted(known), pending={}, inflight=False, claim=None)
                 decision = 'dispatched'
@@ -850,6 +933,7 @@ def gate_locked(args, fd):
     cursor['health'] = fingerprint
     save_gate(fd, cursor)
     return dict(schema=cursor['schema'], complete=complete, decision=decision, cli_calls=calls,
+                **({'cleanup': cleanup} if cleanup is not None else {}),
                 health_changed=changed, health_fingerprint=fingerprint, health_codes=codes,
                 health_conditions=len(health), errors=reader.errors, error_count=reader.error_count,
                 files_processed=processed, coverage_cycle='finished' if finished else 'in_progress',
@@ -864,7 +948,7 @@ class SafeParser(argparse.ArgumentParser):
 
 
 def main():
-    # Spec: docs/specs/retrospective-monitor.md — read only; stdout is sole sink
+    # Spec: docs/specs/retrospective-monitor.md — inventory is read-only; gate/cleanup require explicit flags
     parser = SafeParser(description=__doc__)
     parser.add_argument('--state-dir', required=True)
     parser.add_argument('--previous')
@@ -874,6 +958,10 @@ def main():
     mode.add_argument('--latest', action='store_true')
     mode.add_argument('--full-history', action='store_true')
     parser.add_argument('--gate-dir')
+    cleanup = parser.add_mutually_exclusive_group()
+    cleanup.add_argument('--cleanup', action='store_true')
+    cleanup.add_argument('--cleanup-plan', action='store_true')
+    cleanup.add_argument('--record-cleanup-receipt')
     parser.add_argument('--dispatch', action='store_true')
     parser.add_argument('--reconcile-claim')
     parser.add_argument('--reconcile-session')
@@ -891,6 +979,11 @@ def main():
         args.service_pid = pid
         check(1 <= args.port <= 65535 and Path(args.project_dir).is_absolute(), 'invalid_arguments')
         check(not args.dispatch or args.gate_dir, 'invalid_arguments')
+        check(not (args.cleanup or args.cleanup_plan) or args.gate_dir, 'invalid_arguments')
+        check(not args.cleanup_plan or not (args.dispatch or args.reconcile_claim), 'invalid_arguments')
+        if args.record_cleanup_receipt:
+            session_id(args.record_cleanup_receipt)
+            check(args.gate_dir and not (args.dispatch or args.reconcile_claim), 'invalid_arguments')
         check(bool(args.reconcile_claim) == bool(args.reconcile_session), 'invalid_arguments')
         if args.reconcile_claim:
             sha(args.reconcile_claim)

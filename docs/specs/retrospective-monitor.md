@@ -5,6 +5,129 @@ Owner: `scripts/retrospective-monitor.py`. Tests:
 This is a Linux/Python-standard-library presentation helper and opt-in local
 preflight, not a daemon, provider client, repair gate or capture filter.
 
+## Completed monitor output cleanup — source-only opt-in
+
+Owner also: `scripts/retrospective-monitor-cleanup.mjs`; tests:
+`node --test tests/test_monitor_cleanup.mjs`. No plugin/Go collector changes.
+The current owned gate timer is **hourly**, `OnActiveSec=1h` and
+`OnUnitActiveSec=1h`, not five minutes. Preserve this cadence and paused native LLM
+cron in any future release. No unit/prompt/immutable release is changed here.
+
+`--cleanup` enables maintenance under the existing gate lock, before wakeup
+selection, including quiet ticks. Default behavior is unchanged. Cleanup never
+dispatches a model or changes known-ID classification. `--cleanup-plan` uses an
+existing cursor/lock read-only and never writes cursor/output/audit, exports,
+dispatches or deletes. It cannot combine with --dispatch/reconciliation.
+Both require the exact task `d2785bca-a95c-4252-ab72-7e89a1b5e941`, project
+`/home/ericmaster/nimbler-ops`, UI4098 and managed native41629. Only the private
+format2 cursor's separate `cleanup_receipts` qualify; `known` is classification
+ONLY and is never migrated into deletion proof. Command-line known IDs alone,
+titles or scheduled-kind metadata alone cannot grant deletion authority. The Node
+entry independently verifies the canonical gate-v2 private cursor binding. No
+other monitor task is authorized. Exclude the explicit supervisor control session.
+
+Each deletion receipt is schema1, expected producer_origin41629, and a body-free
+source receipt binding task_id/session_id/directory/control origin4098/enabled=false/
+last_status, with kind `schedule.run+list` plus matching run_session_id, or kind
+`schedule.list.backlog` with null run_session_id. source_sha256 is SHA256 of canonical
+JSON `["cleanup_receipt", source]`. This is integrity checking inside the private
+owned cursor, not cryptographic authentication against its UNIX owner. Only the
+verified fresh run/post-list flow creates run receipts. `--record-cleanup-receipt ID`
+is a separate, explicit first-party LIST-only ownership refresh: require the exact
+paused task's current lastSessionId=ID and nonrunning/nonqueued state, then durably
+save the reduced source receipt. It cannot dispatch/export/delete and cannot combine
+with other mutation/plan modes. This enables verified current legacy backlog without
+promoting manual known IDs. Historical IDs no longer named by that task need retained
+authoritative task execution receipts, not kind/title matching; no historical
+execution-list endpoint is established by the supplied installed contract.
+
+Wire decoding is operation-specific: native session.get/active/inbox200 responses
+are EXACT `{data: record/map/array}` envelopes (native2.0.30 session protocol289/
+276/609); unwrap only these routes after shape validation. Active map values must
+be `{type:"running"}`. Native session.list and message.list remain `{data:[],cursor}`
+(session184-190; message71-77); reject errors/partial/unknown envelope fields and
+malformed cursor. OpenChamber health and global queue stay their own flat schemas.
+DELETE204 remains empty, not an envelope/boolean. Tests traverse the public HTTP
+transport with recorded-shape fixtures, not only already-decoded internal mocks.
+
+Reuse installed OpenChamber2.3.3 `bin/lib/cli-http.js` requestJson for first-party
+authentication/proxy behavior; no new credential getter, route, dependency, backend
+start or runtime-store mutation. Fixed loopback4098, no redirect,4s/request,
+1MiB/response,30s maintenance budget,45s adapter/50s parent timeout. The separate
+stdin payload cap is1MiB: it must cover all1024 supported receipts sent before
+eight-ID batch selection. IDs are `ses_` +1..64 ASCII alphanumerics (max68 bytes);
+known/receipt counts each max1024. Receipt task/project/directory/origin/kind fields
+are the exact pinned strings above, not arbitrary paths; source hashes are64 hex
+characters, schema=1, enabled=false, and status is the closed enum (max7 characters).
+The largest Python-default-JSON supported payload (1024 max-length run receipts,
+max-length known IDs/after, longest status, plan=false) is697465 bytes, below1048576.
+Only stdin is adjusted; response, cursor-file, output, scan and eight-ID batch caps
+are unchanged. Read and byte-check each stdin chunk before parsing; reject oversized
+or malformed input. The transport regression pipes real Python serialization through
+the production Node reader/authority/maintenance with fixture-only jobs, proving
+successive eight-ID ticks advance at the full cache ceiling without HTTP or exports.
+First-party
+authentication may answer an initial401 with its normal login/challenge replay;
+no transport-error/DELETE retries are added. DELETE `/api/session/ID` succeeds
+with204/no body, never boolean. A fresh health receipt must identify ready41629.
+
+Require a matching canonical capture jobs/ID.json (owned0600, nofollow), status=done,
+producer41629, freshly checked before deletion. Reject unowned/foreign roots,
+non-scheduled or extra/linked metadata, forks/parents/subpaths/reverts/archived,
+children, active execution, native inbox, manual continuations/multiple user messages,
+failed/interrupted sessions, unsupported history, incomplete or absent visible final.
+Read whole native message pagination (max8 pages of100), detect repeated cursor/
+truncation; order is supplied on the FIRST page only (native cursors carry it).
+Require terminal succeeded idle after a completed assistant finish=stop.
+
+Explicit user authority permits GET `/api/message-queue` solely for pending-work
+exclusion. Immediately project its complete bounded response to sessionID/count/
+sending flags and discard all prompt/content/attachment/context bodies. No global
+queue text is saved, logged, hashed, shown, or included in diagnostics. Unknown,
+duplicate, malformed, partial or oversized queue snapshots fail closed. Any pending
+or sending work retains that session, even when native idle/inbox/history look done.
+Check this queue before archive and freshly immediately before DELETE. It is a
+separate queue: native idle alone is insufficient and session.deleted clears it.
+
+Only final visible assistant TEXT goes to the output file, never whole history,
+user/tool/reasoning/synthetic/hidden bodies. Unknown text visibility flags retain
+the session. Metadata records task/session/project/producer/final ID, completion,
+source generation and hashes. Full snapshot hashes detect changed history/identity/
+completion on fresh read; bodies remain ephemeral. Possible secret-header/key
+patterns in final text retain the session rather than exporting them.
+
+Output root: R `.artifacts-manager/monitor-output/YYYY-MM-DD/SESSION.md`, owned
+directories0700/files0600, untracked. Refuse symlink ancestors, unsafe ownership/
+modes/nonregular/multiple-link files, existing conflicts and all write/fsync errors.
+For creation, validate ancestors from the declared durable checkout anchor R, and
+fsync EACH parent entry while walking every descendant (including existing entries
+left by a prior interrupted mkdir), before descending/archiving. This includes R
+when .artifacts-manager is created and the artifact root when date directories are
+created. Any mkdir/parent-fsync failure prevents deletion. Publish private temp -> file fsync -> rename within unique private staging -> atomic
+no-overwrite hardlink to final -> unlink staging -> directory fsync -> reopen and
+verify exact bytes/hash. The hardlink prevents rename-overwrite of an existing file.
+Matching immutable output may be reused; unrelated output is never overwritten.
+Persist an immutable `.attempt.json` audit BEFORE a fresh second snapshot and the
+single DELETE; reverify the archive before deletion.204 requires exact GET404
+absence readback before `.deleted.json` tombstone. Timeout/crash/error is ambiguous:
+later ticks perform GET-only reconciliation using verified archive+attempt proof,
+never blindly repeat DELETE. A crash before DELETE can therefore conservatively
+require supervisor recovery. Keep archives/audits and the gate known-ID cache.
+
+Process at most8 sorted IDs/tick with durable cleanup continuation; advance past
+blocked candidates, preserve bounded progress on budget exhaustion. Plan-only
+does not advance the cursor. Cleanup warnings/retained IDs are safe metadata,
+never workload or LLM-wakeup input; scheduler cli_calls excludes maintenance HTTP.
+Legacy backlog without exact receipts remains retained, not silently reclassified.
+Native API has no CAS and deletion cascades children: fresh checks cannot eliminate
+a user continuation/new child arriving in the final check/delete window. Existing
+children always block. This residual race is disclosed, not an atomic guarantee.
+Latency is next eligible **hourly** tick after capture settles, plus bounded rotation
+and runtime delay, not an immediate completion callback or strict one-hour promise.
+Actual backlog counts, authenticated transport, export/delete and UI acceptance are
+deferred to supervisor activation after independent review. Roll back only source
+or future cleanup opt-in, never live state/output/ownership evidence/user work.
+
 ## Inputs and safety
 
 Explicit `--state-dir` contains reports/jobs/spool; optional observer-errors may

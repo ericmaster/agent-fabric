@@ -3,11 +3,13 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 CLI = Path(__file__).resolve().parents[1] / 'scripts/retrospective-monitor.py'
 
@@ -95,6 +97,127 @@ class MonitorTests(unittest.TestCase):
         (self.state / 'jobs' / 'ses_monitor.json').unlink()
         self.assertTrue(self.gate(*args)['health_changed'])
 
+    def cleanup_fixture(self):
+        # Spec: docs/specs/retrospective-monitor.md — fake adapter only, never live authentication/API.
+        self.gate('--known-monitor-session', 'ses_monitor')
+        self.put('ses_monitor.json', dict(schema=1, session_id='ses_monitor', status='done'), 'jobs')
+        binary = self.root / 'bin'
+        binary.mkdir()
+        node = binary / 'node'
+        node.write_text('#!' + sys.executable + '\nimport json,sys\n'
+                        'p=json.load(sys.stdin)\nassert p["known"] == ["ses_monitor"]\nassert p["receipts"] == {}\n'
+                        'print(json.dumps(dict(after="ses_monitor", plan=p["plan"], deleted=1)))\n')
+        node.chmod(0o700)
+        return binary
+
+    def test_cleanup_quiet_optin_retains_known_ids_and_never_wakes_model(self):
+        binary = self.cleanup_fixture()
+        with patch.dict(os.environ, PATH=str(binary) + ':' + os.environ['PATH']):
+            result = self.gate('--cleanup')
+            self.assertEqual(result['cleanup']['deleted'], 1)
+            self.assertEqual(result['decision'], 'quiet')
+            (self.state / 'jobs' / 'ses_monitor.json').unlink()
+            result = self.gate('--cleanup')
+            self.assertEqual(result['decision'], 'quiet')
+            self.assertEqual(result['cli_calls'], 0)
+            cursor = json.loads((self.root / 'gate' / 'gate-v1.json').read_text())
+            self.assertEqual(cursor['known'], ['ses_monitor'])
+            self.assertEqual(cursor['cleanup_after'], 'ses_monitor')
+
+    def test_cleanup_plan_readonly_and_task_binding_failclosed(self):
+        binary = self.cleanup_fixture()
+        gate = self.root / 'gate'
+        before = {p.name: p.read_bytes() for p in gate.iterdir()}
+        with patch.dict(os.environ, PATH=str(binary) + ':' + os.environ['PATH']):
+            result = self.gate('--cleanup-plan')
+            self.assertTrue(result['cleanup']['plan'])
+            self.assertEqual(before, {p.name: p.read_bytes() for p in gate.iterdir()})
+            self.gate('--cleanup-plan', '--task', 'other-task', ok=False)
+            self.assertEqual(before, {p.name: p.read_bytes() for p in gate.iterdir()})
+
+    def test_full_cleanup_cache_transport_progress_with_maximum_length_ids(self):
+        # Spec: docs/specs/retrospective-monitor.md — actual Python→Node stdin, fixture authority only.
+        real_node = shutil.which('node')
+        self.assertIsNotNone(real_node)
+        with tempfile.TemporaryDirectory(prefix='.cleanup-cache-', dir=CLI.parents[1] / 'tests') as temp:
+            self.root, self.state = Path(temp), Path(temp) / 'state'
+            for family in ('reports', 'jobs', 'spool'):
+                (self.state / family).mkdir(parents=True)
+            self.gate()
+            cursor_path = self.root / 'gate' / 'gate-v1.json'
+            cursor = json.loads(cursor_path.read_text())
+            known = ['ses_' + 'R' * 60 + f'{i:04x}' for i in range(1024)]
+            self.assertTrue(all(len(session) == 68 for session in known))
+            receipts = {}
+            for session in known:
+                source = dict(directory='/home/ericmaster/nimbler-ops', enabled=False,
+                              kind='schedule.run+list', last_status='running',
+                              origin='http://127.0.0.1:4098', run_session_id=session,
+                              session_id=session, task_id='d2785bca-a95c-4252-ab72-7e89a1b5e941')
+                receipts[session] = dict(schema=1, producer_origin='http://127.0.0.1:41629',
+                    source=source, source_sha256=hashlib.sha256(json.dumps(
+                        ['cleanup_receipt', source], sort_keys=True, separators=(',', ':')).encode()).hexdigest())
+            maximum_payload = json.dumps(dict(known=known, receipts=receipts, after=known[-1], plan=False)).encode()
+            self.assertEqual(len(maximum_payload), 697465)
+            self.assertGreater(len(maximum_payload), 128 * 1024)
+            self.assertLess(len(maximum_payload), 1024 * 1024)
+            cursor.update(known=known, cleanup_receipts=receipts)
+            cursor_path.write_text(json.dumps(cursor, sort_keys=True))
+            module = CLI.with_name('retrospective-monitor-cleanup.mjs').as_uri()
+            script = (f'import {{readInput, authorize, maintenance}} from {json.dumps(module)};\n'
+                      'const input = await readInput(process.stdin);\n'
+                      f'await authorize(input, {json.dumps(str(cursor_path.parent))});\n'
+                      'const result = await maintenance(input, {\n'
+                      f' root: {json.dumps(str(self.root / "output"))},\n'
+                      ' jobReady: async () => false,\n'
+                      ' request: async () => { throw new Error("fixture must not call HTTP"); }\n'
+                      '});\nprocess.stdout.write(JSON.stringify(result));\n')
+            binary = self.root / 'bin'
+            binary.mkdir()
+            node = binary / 'node'
+            node.write_text('#!' + sys.executable + '\nimport os\n'
+                            f'os.execv({real_node!r}, [{real_node!r}, "--input-type=module", "-e", {script!r}])\n')
+            node.chmod(0o700)
+            with patch.dict(os.environ, PATH=str(binary) + ':' + os.environ['PATH']):
+                for start in (0, 8):
+                    result = self.gate('--cleanup')
+                    cleanup = result['cleanup']
+                    self.assertIn('after', cleanup)
+                    self.assertEqual(cleanup['after'], known[start + 7])
+                    self.assertEqual([row['sessionID'] for row in cleanup['retainedSessions']], known[start:start + 8])
+                    self.assertTrue(all(row['code'] == 'CAPTURE_UNSETTLED' for row in cleanup['retainedSessions']))
+                    self.assertEqual(cleanup['retained'], 8)
+                    self.assertEqual(cleanup['deleted'], 0)
+                    self.assertEqual(result['cli_calls'], 0)
+                    saved = json.loads(cursor_path.read_text())
+                    self.assertEqual(saved['cleanup_after'], known[start + 7])
+                    self.assertEqual(len(saved['cleanup_receipts']), 1024)
+                saved['cleanup_after'] = known[-1]
+                cursor_path.write_text(json.dumps(saved, sort_keys=True))
+                wrapped = self.gate('--cleanup')['cleanup']
+                self.assertEqual(wrapped['after'], known[7])
+                self.assertEqual([row['sessionID'] for row in wrapped['retainedSessions']], known[:8])
+                self.assertEqual(wrapped['deleted'], 0)
+            self.assertFalse((self.root / 'output').exists())
+
+    def test_cleanup_plan_refuses_symlink_cursor_without_writes(self):
+        self.cleanup_fixture()
+        cursor = self.root / 'gate' / 'gate-v1.json'
+        elsewhere = self.root / 'cursor'
+        cursor.rename(elsewhere)
+        cursor.symlink_to(elsewhere)
+        body = elsewhere.read_bytes()
+        self.gate('--cleanup-plan', ok=False)
+        self.assertEqual(elsewhere.read_bytes(), body)
+
+    def test_hourly_timer_contract_does_not_reintroduce_five_minute_polling(self):
+        # Spec: docs/specs/retrospective-monitor.md — source fixture, never touches installed units.
+        for name in ('docs/specs/retrospective-monitor.md', 'docs/runbooks/retrospective-monitor.md'):
+            text = (CLI.parents[1] / name).read_text()
+            self.assertIn('OnActiveSec=1h', text)
+            self.assertIn('OnUnitActiveSec=1h', text)
+            self.assertNotIn('OnUnitActiveSec=5min', text)
+
     def test_latest_does_not_read_large_history(self):
         for i in range(9):
             with (self.state / 'reports' / f'old{i}.json').open('wb') as f:
@@ -147,7 +270,43 @@ class MonitorTests(unittest.TestCase):
         cursor = self.root / 'gate' / 'gate-v1.json'
         self.assertEqual(cursor.stat().st_mode & 0o777, 0o600)
         self.assertNotIn('CANARY', cursor.read_text())
-        self.assertTrue({'ses_created1', 'ses_created2'} <= set(json.loads(cursor.read_text())['known']))
+        saved = json.loads(cursor.read_text())
+        self.assertTrue({'ses_created1', 'ses_created2'} <= set(saved['known']))
+        self.assertEqual(set(saved['cleanup_receipts']), {'ses_created1', 'ses_created2'})
+        self.assertNotIn('ses_monitor', saved['cleanup_receipts'])
+        for session, receipt in saved['cleanup_receipts'].items():
+            source = receipt['source']
+            self.assertEqual(source['task_id'], 'd2785bca-a95c-4252-ab72-7e89a1b5e941')
+            self.assertEqual(source['run_session_id'], session)
+            self.assertEqual(source['kind'], 'schedule.run+list')
+            self.assertEqual(receipt['source_sha256'], hashlib.sha256(json.dumps(
+                ['cleanup_receipt', source], sort_keys=True, separators=(',', ':')).encode()).hexdigest())
+
+    def test_legacy_known_ids_need_explicit_first_party_backlog_receipt(self):
+        cli, log = self.fake_cli_contract(previous='ses_monitor')
+        self.gate('--known-monitor-session', 'ses_foreign')
+        cursor = self.root / 'gate' / 'gate-v1.json'
+        self.assertFalse(json.loads(cursor.read_text()).get('cleanup_receipts'))
+        self.gate('--openchamber', cli, '--record-cleanup-receipt', 'ses_foreign', ok=False)
+        self.assertFalse(json.loads(cursor.read_text()).get('cleanup_receipts'))
+        result = self.gate('--openchamber', cli, '--record-cleanup-receipt', 'ses_monitor')
+        self.assertEqual(result['decision'], 'cleanup_receipt_recorded')
+        saved = json.loads(cursor.read_text())
+        self.assertEqual(set(saved['cleanup_receipts']), {'ses_monitor'})
+        self.assertEqual(saved['cleanup_receipts']['ses_monitor']['source']['kind'], 'schedule.list.backlog')
+        self.assertEqual([json.loads(row)[:2] for row in log.read_text().splitlines()], [['schedule', 'list']] * 2)
+
+    def test_corrupt_receipt_is_retained_not_promoted_from_classification(self):
+        cli, _ = self.fake_cli_contract(previous='ses_monitor')
+        self.gate('--known-monitor-session', 'ses_monitor')
+        self.gate('--openchamber', cli, '--record-cleanup-receipt', 'ses_monitor')
+        cursor = self.root / 'gate' / 'gate-v1.json'
+        saved = json.loads(cursor.read_text())
+        saved['cleanup_receipts']['ses_monitor']['source']['task_id'] = 'other-task'
+        cursor.write_text(json.dumps(saved))
+        before = cursor.read_bytes()
+        self.gate('--cleanup-plan', ok=False)
+        self.assertEqual(cursor.read_bytes(), before)
 
     def test_ambiguous_cli_failure_never_retries_even_new_work(self):
         cli, log = self.fake_cli(fail=True)
