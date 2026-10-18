@@ -2,14 +2,14 @@
 
 Owner: `scripts/retrospective-monitor.py`. Tests:
 `python3 -m unittest discover -s tests -p test_retrospective_monitor.py`.
-This is a Linux/Python-standard-library read-only presentation helper, not a
-daemon, provider client, repair gate, capture filter or scheduling framework.
+This is a Linux/Python-standard-library presentation helper and opt-in local
+preflight, not a daemon, provider client, repair gate or capture filter.
 
 ## Inputs and safety
 
 Explicit `--state-dir` contains reports/jobs/spool; optional observer-errors may
 be absent. No ambient config discovery, environment/credential/service probing,
-network, writes, or subprocesses. `--previous` optionally reads a prior helper
+network, writes, or subprocesses in inventory mode. `--previous` optionally reads a prior helper
 snapshot; `--service-pid` is only an externally observed integer, not verification.
 Repeated `--known-monitor-session` supplies exact first-party verified native
 session IDs. No title/tool/prompt-based classification or learning-origin spoofing.
@@ -116,6 +116,103 @@ drift. The helper cannot verify processes, service health, executable digests or
 deployment. Existing separate service checks remain the scheduler's responsibility.
 
 ## Rollout boundary
+
+### Zero-token gate (inactive until separately authorized)
+
+Repair contract: cursor format2 stores session-keyed input versions in both baseline
+and pending provenance. Old opaque pending hashes cannot migrate automatically.
+Exact first-party receipt IDs reclassify pending entries before any run; remove only
+proven monitor entries, never mixed real work. A run acknowledgement requires a
+fresh session distinct from pre-run lastSessionId and all known monitor receipts,
+consistent optional returned task/directory binding, and a subsequent official list
+receipt binding the exact paused task to that same ID. This proves a scheduler
+receipt, not delivery, task success or prompt completion. Persist claim before calls;
+contradictory/nonzero/malformed responses retain the claim and pending provenance.
+
+Gate scans sort at most4096 directory entries per family, process at most1024 JSON
+files per family per tick and persist metadata-hash next-key/coverage-cycle state. Complete
+baseline reconciliation occurs only after every family finishes the cycle and its
+directory inode/mtime/ctime epoch is rechecked. Directory mutation restarts the cycle,
+retaining pending work and the last complete baseline. Content mutation in an already
+sampled prefix is detected in the next cycle; coverage is sampled, not an atomic
+filesystem snapshot. Partial cycles are explicitly incomplete and never dispatch or
+resolve health. Stable stores of1025..4096 entries make bounded eventual progress,
+independent of iterator ordering. Beyond the existing4096-entry safety ceiling the
+gate remains visibly partial; supervised retention/partitioning is required, never
+silent prefix success. Per-tick JSON read bytes retain the64MiB cap. Cursor state
+remains bounded by that directory ceiling and the existing8MiB cursor-file cap.
+
+Health is computed AFTER dispatch/reconciliation transitions. An inflight claim
+always exposes structured DISPATCH_AMBIGUOUS / RECONCILIATION_REQUIRED health, with
+one edge at failure, ongoing identical state on later polls, and one recovery edge
+on explicit authoritative reconciliation. No new work or binding change resets it.
+Manual `--reconcile-claim SHA --reconcile-session ID` (without --dispatch) requires
+the exact persisted claim token and a paused, nonrunning first-party task receipt
+for a fresh ID. The supervisor must independently establish that receipt belongs to
+the claim. It acknowledges only unchanged claimed provenance, preserving subsequent
+work, caches the exact ID and clears that one claim once. It does not dispatch.
+No not-created assertion, blind reset, automatic retry or unverified deletion is
+provided. If creation cannot be established, retain the claim for external recovery.
+
+`--gate-dir ABSOLUTE` selects a local one-shot gate, not the inventory CLI.
+The directory must already exist, belong to the effective user, have mode 0700,
+and contain only this gate's `gate-v1.json` and `gate-v1.lock` files. Files are
+owner-only, nonsymlink regular files; cursor replacement is atomic. A nonblocking
+fcntl lock serializes scan, claim and dispatch. First complete observation baselines
+old work without dispatch. Failed scans never advance the last complete baseline.
+Only prospective new/changed jobs and spool stat identities wake workload, including
+continued activity in existing sessions. Report-only changes and observer errors
+never wake workload. Exact known monitor IDs exclude their jobs/spools from work;
+their failed jobs and observer errors remain local health conditions. No title
+classification or capture exemption exists. Spool contents are never opened by the
+gate; its coverage is explicitly stat-only, not JSON/content validation.
+
+Bounded metadata scans use existing per-tick entry/file/byte caps with the gate's
+persisted coverage continuation above (inventory CLI remains a bounded single scan).
+Jobs are parsed through
+the safe reader; spool/report directory entries are stat-only, with owner/regular
+file/symlink checks. Unknown filenames, oversized inputs, missing directories and
+entry caps produce partial scans, never healthy empty inventories. Health alerts
+emit only on fingerprint transitions, including recovery. An optional externally
+verified `--service-pid` is checked for local process existence, not binary identity.
+No service argument means service health is unchecked. Health never launches a model.
+
+Without `--dispatch`, real work remains pending with zero CLI calls. With explicit
+activation, the gate uses ONLY `openchamber schedule list/run --dir ... --port ...
+--json`; it requires the exact task disabled, and defers coalesced pending provenance
+while task state is running/queued. Exact lastSessionId from this first-party
+task receipt and independently bound fresh run sessionId are cached before releasing
+the lock. Only a fresh post-run task receipt acknowledges pending work.
+Before a run the gate persists an inflight claim. Any failure, malformed response,
+timeout or interrupted run leaves a durable ambiguous claim: no automatic retry,
+even for subsequent work, until supervisor reconciliation. This conservative circuit
+breaker intentionally favors no duplicate tokens over availability. List failures
+trip the same circuit; no credentials are discovered or printed. CLI output is
+bounded, memory-only and discarded; errors expose static codes only. The authoritative
+full diagnostic is the private cursor, never raw credential-bearing CLI stderr.
+
+`--latest` inventory reads jobs first and only their authoritative report_path
+within the store's reports directory (owner/regular/nofollow enforced). Unreferenced
+report names are counted as `unreferenced_reports`, content coverage unknown, not
+silently included. Totals describe latest job-referenced reports, NOT all history or
+all HTTP calls. Explicit `--full-history` preserves historical inventory behavior;
+the legacy no-flag CLI remains compatible. Scheduled invocation must use --latest.
+Latest mode also uses stat-only spool inventory, never parses retained spool bodies;
+spool_gap_rows is null (unknown), not invented zero. Spool-only overflow content
+requires a separately authorized full audit or first-party collector diagnostics.
+Gate output never runs inventory or reads retained report/provider bodies on quiet
+polls. Snapshot/cursor metadata is outside the input store, preventing feedback.
+
+All gate changes are source-only. No timer, task enable/disable, actual dispatch,
+service restart, production capture change or credential bridge is authorized by
+implementation. Rollback removes only reviewed source changes and, after activation,
+the separately owned gate files; never runtime jobs/spools/reports.
+An unreadable/corrupt cursor is preserved, never reset. Its single static health
+fingerprint is recorded in the already-owned lock file to suppress repeated alerts.
+Inventory basis changes rebaseline alert comparisons; they never falsely resolve
+unreferenced history. Unknown orphan report contents remain an explicit coverage
+limitation. Stat-only spool coverage cannot diagnose syntactically corrupt content;
+the collector's job/observer failures remain the metadata health authority.
 
 No existing runtime snapshot/job/report is overwritten by the helper. The scheduler
 may redirect stdout to its separately owned snapshot only after independent review

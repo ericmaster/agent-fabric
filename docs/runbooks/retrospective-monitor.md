@@ -11,7 +11,7 @@ Use an absolute verified checkout/script and explicit absolute state path:
 
 ```sh
 timeout -k 10s 120s python3 "$R/scripts/retrospective-monitor.py" \
-  --state-dir "$STATE" --previous "$PRIOR"
+  --state-dir "$STATE" --previous "$PRIOR" --latest
 ```
 
 `R` is the reviewed source checkout. `STATE` is the existing retrospective store.
@@ -29,6 +29,82 @@ a bounded partial/error JSON. Capture stdout even on exit 1; do not replace an
 old complete snapshot with empty output on failure. The helper never writes
 reports/jobs/spools or its previous snapshot. The scheduler owns any eventual
 atomic snapshot replacement. No config/credential/socket/provider is needed.
+
+## Zero-token one-shot gate — NOT activated
+
+The LLM task `d2785bca-a95c-4252-ab72-7e89a1b5e941` must remain disabled permanently.
+A later separately reviewed local timer may poll every five minutes, independently
+of OpenChamber's LLM scheduler. Do not install or activate it from this runbook.
+Proposed command (explicit immutable reviewed R required):
+
+```sh
+timeout -k 5s 90s python3 "$R/scripts/retrospective-monitor.py" \
+  --state-dir /home/ericmaster/.local/state/agent-fabric/openchamber-retrospective \
+  --gate-dir /home/ericmaster/.local/state/agent-fabric/monitoring/agf1-openchamber41629/gate-v1
+```
+
+The supervisor creates that dedicated directory with mode0700 (no symlinks),
+then first runs WITHOUT --dispatch: existing work becomes a baseline, subsequent
+new or changed jobs/spools become one pending work condition. Pass exact verified
+monitor IDs via --known-monitor-session; never infer IDs from names/titles.
+Gate writes only gate-v1.json/lock inside this directory; unknown files conflict.
+Never put the gate directory in the input store. Reports, snapshots and observer
+capture diagnostics alone do not wake workload. Spool/report bodies are not opened
+on gate polls; job JSON is bounded and sanitized, with stat-only spool coverage.
+
+Activation requires fresh independent review, first-party CLI authentication and
+task-enabled=false verification, and explicit dispatch/timer authority. Only then
+append --dispatch (official default target --project-dir /home/ericmaster/nimbler-ops,
+--port4098, the task ID above). No custom REST/auth/secret loader is involved.
+--openchamber selects the reviewed first-party executable; tests substitute a fake.
+Quiet and baseline ticks invoke no CLI at all. Nonquiet dispatch first verifies
+the task is paused through official schedule list, then uses official schedule run
+--dir /home/ericmaster/nimbler-ops --task d2785bca-a95c-4252-ab72-7e89a1b5e941 --port4098 --json.
+The CLI, not this script, owns authentication. Each call has a 30s/1MiB cap;
+timeout/invalid output/error after possible session creation permanently trips the
+inflight circuit. The gate never retries that claim automatically, even for new work.
+The gate requires a new session ID (not pre-run/known IDs), consistent returned task
+binding if present, and a subsequent official list receipt for the same exact paused
+task/session before acknowledgement. This is not proof of task/prompt completion.
+Newly verified monitor IDs reclassify pending provenance BEFORE run: monitor-only
+deltas clear without launching; mixed real work remains pending and can dispatch.
+Supervisor reconciliation must independently verify that a fresh task receipt belongs
+to the persisted claim; never blindly clear it. Then, without --dispatch, use the same
+gate/state/CLI target arguments plus `--reconcile-claim <exact-claim-token>` and
+`--reconcile-session <verified-new-ID>`. This performs list only, checks paused and
+nonrunning state/freshness, acknowledges only unchanged claimed inputs, preserves
+later work and clears that exact claim once. A wrong token cannot change the cursor.
+There is no automatic not-created reset: if creation cannot be established, preserve
+the cursor and escalate for external reconciliation. Do not delete/reset budgets or
+change target/model to bypass an inflight claim. Cursor format2 pins target binding;
+old opaque-pending cursors fail closed rather than silently losing work.
+While first-party task state is running, pending workload coalesces without run calls.
+
+Gate scans use bounded1024-file pages/family and hash-sorted continuation inside the
+existing4096-directory-entry ceiling. `decision=scanning` / `coverage_cycle=in_progress`
+is partial coverage, not healthy emptiness. Baseline/health resolution waits for a
+finished error-free cycle; iterator order cannot starve late entries. A directory
+inode/mtime/ctime epoch change restarts that cycle while preserving the last complete
+baseline and pending evidence. Prefix content changes are revisited next cycle.
+This is eventual sampled coverage, not an atomic snapshot. Stores beyond4096 entries
+remain explicitly partial and need supervisor-owned retention/partitioning, not an
+increased read cap. Ordinary inventories still use the single-scan limits.
+
+Local visibility is sanitized stdout (intended oneshot journal) and the private
+gate-v1.json diagnostic locator. health_changed announces a single health transition,
+including recovery; continuing conditions remain visible without repeated alerts.
+Health never causes an LLM dispatch. No dashboard/Mattermost integration is claimed;
+a future supervisor must choose whether local journal visibility suffices. Service
+health is unchecked without an externally verified --service-pid, and PID existence
+is not process identity or HTTP readiness. A timer must not keep a stale fixed PID.
+An unreadable cursor is preserved and alerts once using its owned lock file.
+
+Scheduled inventory uses --latest, not --full-history: only job-referenced reports
+are opened; orphan report names are counted with content coverage unknown. Totals
+use stat-only spools with spool_gap_rows=null; spool-only overflow content is unknown.
+and alert baselines explicitly change basis. For a separately authorized historical
+audit use --full-history; do not raise global read budgets or scan all retained blobs
+every five minutes. No helper/gate change deploys the pending Go decoder.
 
 ## Replacement prompt block (supervisor applies after independent acceptance)
 

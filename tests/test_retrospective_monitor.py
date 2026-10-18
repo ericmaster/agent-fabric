@@ -1,10 +1,12 @@
 # Spec: docs/specs/retrospective-monitor.md
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 CLI = Path(__file__).resolve().parents[1] / 'scripts/retrospective-monitor.py'
@@ -64,6 +66,320 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(m['signals_unique'], 71)
         self.assertEqual(m['incomplete_report_versions'], 1)
         self.assertEqual(m['latest_incomplete_sessions'], 1)
+
+    def gate(self, *args, ok=True):
+        # Spec: docs/specs/retrospective-monitor.md — public zero-token gate
+        gate = self.root / 'gate'
+        gate.mkdir(mode=0o700, exist_ok=True)
+        return self.run_cli('--gate-dir', gate, *args, ok=ok)
+
+    def test_gate_baseline_quiet_and_continued_work(self):
+        self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='done'), 'jobs')
+        self.assertEqual(self.gate()['decision'], 'baseline')
+        self.assertEqual(self.gate()['decision'], 'quiet')
+        self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='pending'), 'jobs')
+        self.assertEqual(self.gate()['decision'], 'pending')
+        self.assertEqual(self.gate()['decision'], 'pending')
+        self.put('report.json', report())
+        self.assertEqual(self.gate()['decision'], 'pending')
+        self.assertEqual(self.gate()['cli_calls'], 0)
+
+    def test_gate_monitor_only_and_health_transition(self):
+        args = ('--known-monitor-session', 'ses_monitor')
+        self.gate(*args)
+        self.put('ses_monitor.json', dict(schema=1, session_id='ses_monitor', status='done'), 'jobs')
+        self.assertEqual(self.gate(*args)['decision'], 'quiet')
+        self.put('ses_monitor.json', dict(schema=1, session_id='ses_monitor', status='failed'), 'jobs')
+        self.assertTrue(self.gate(*args)['health_changed'])
+        self.assertFalse(self.gate(*args)['health_changed'])
+        (self.state / 'jobs' / 'ses_monitor.json').unlink()
+        self.assertTrue(self.gate(*args)['health_changed'])
+
+    def test_latest_does_not_read_large_history(self):
+        for i in range(9):
+            with (self.state / 'reports' / f'old{i}.json').open('wb') as f:
+                f.truncate(8 * 1024**2)
+            with (self.state / 'spool' / f'ses_old{i}.json').open('wb') as f:
+                f.truncate(8 * 1024**2)
+        self.put('current.json', report())
+        self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='done',
+            report_path=str(self.state / 'reports' / 'current.json')), 'jobs')
+        result = self.run_cli('--latest')
+        self.assertEqual(result['workload']['report_versions'], 1)
+        self.assertEqual(result['unreferenced_reports'], 9)
+        self.assertLess(result['read_bytes'], 8192)
+        self.assertEqual(result['workload']['spools'], 9)
+        self.assertIsNone(result['workload']['spool_gap_rows'])
+        self.assertEqual(result['spool_coverage'], 'stat_only')
+
+    def test_gate_partial_alert_and_recovery(self):
+        self.gate()
+        (self.state / 'jobs' / 'ses_bad.json').write_text('CANARY')
+        first = self.gate(ok=False)
+        self.assertTrue(first['health_changed'])
+        self.assertFalse(self.gate(ok=False)['health_changed'])
+        (self.state / 'jobs' / 'ses_bad.json').unlink()
+        self.assertTrue(self.gate()['health_changed'])
+        self.assertEqual(self.gate()['decision'], 'quiet')
+
+    def fake_cli(self, fail=False, busy=False, delay=0):
+        # Spec: docs/specs/retrospective-monitor.md — never invokes installed CLI/auth/providers
+        return self.fake_cli_contract('nonzero' if fail else 'fresh', busy=busy, delay=delay)
+
+    def test_fake_official_dispatch_new_and_existing_session_and_self_exclusion(self):
+        cli, log = self.fake_cli()
+        args = ('--dispatch', '--openchamber', cli)
+        self.assertEqual(self.gate(*args)['decision'], 'baseline')
+        self.assertFalse(log.exists())
+        self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='pending'), 'jobs')
+        self.assertEqual(self.gate(*args)['decision'], 'dispatched')
+        self.assertEqual(self.gate(*args)['decision'], 'quiet')
+        self.put('ses_created1.json', dict(schema=1, session_id='ses_created1', status='done'), 'jobs')
+        self.put('ses_created1.json', {'private': 'CANARY'}, 'spool')
+        self.put('new-monitor-report.json', report('ses_created1'))
+        self.assertEqual(self.gate(*args)['decision'], 'quiet')
+        self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='done'), 'jobs')
+        self.assertEqual(self.gate(*args)['decision'], 'dispatched')
+        commands = [json.loads(line) for line in log.read_text().splitlines()]
+        self.assertEqual([c[:2] for c in commands], [['schedule', 'list'], ['schedule', 'run'], ['schedule', 'list']] * 2)
+        self.assertEqual(commands[1][2:], ['--dir', '/home/ericmaster/nimbler-ops', '--port', '4098',
+            '--json', '--task', 'd2785bca-a95c-4252-ab72-7e89a1b5e941'])
+        cursor = self.root / 'gate' / 'gate-v1.json'
+        self.assertEqual(cursor.stat().st_mode & 0o777, 0o600)
+        self.assertNotIn('CANARY', cursor.read_text())
+        self.assertTrue({'ses_created1', 'ses_created2'} <= set(json.loads(cursor.read_text())['known']))
+
+    def test_ambiguous_cli_failure_never_retries_even_new_work(self):
+        cli, log = self.fake_cli(fail=True)
+        args = ('--dispatch', '--openchamber', cli)
+        self.gate(*args)
+        self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='done'), 'jobs')
+        self.assertEqual(self.gate(*args)['decision'], 'ambiguous_dispatch')
+        self.assertEqual(self.gate(*args)['cli_calls'], 0)
+        self.put('ses_new.json', dict(schema=1, session_id='ses_new', status='done'), 'jobs')
+        self.assertEqual(self.gate(*args)['decision'], 'ambiguous_dispatch')
+        self.assertEqual(len(log.read_text().splitlines()), 2)
+
+    def test_busy_work_coalesces_and_is_dispatched_once(self):
+        cli, log = self.fake_cli(busy=True)
+        args = ('--dispatch', '--openchamber', cli)
+        self.gate(*args)
+        self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='pending'), 'jobs')
+        self.assertEqual(self.gate(*args)['decision'], 'busy_pending')
+        self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='done'), 'jobs')
+        self.assertEqual(self.gate(*args)['decision'], 'busy_pending')
+        self.fake_cli()
+        self.assertEqual(self.gate(*args)['decision'], 'dispatched')
+        self.assertEqual(self.gate(*args)['decision'], 'quiet')
+        self.assertEqual(sum(json.loads(line)[1] == 'run' for line in log.read_text().splitlines()), 1)
+
+    def test_concurrent_public_gate_lock(self):
+        cli, log = self.fake_cli(delay=1)
+        args = ('--dispatch', '--openchamber', cli)
+        self.gate(*args)
+        self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='done'), 'jobs')
+        process = subprocess.Popen([sys.executable, str(CLI), '--state-dir', str(self.state),
+            '--gate-dir', str(self.root / 'gate'), *map(str, args)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                if log.exists() and len(log.read_text().splitlines()) == 2:
+                    break
+                time.sleep(.01)
+            self.assertEqual(self.gate(*args)['decision'], 'locked')
+            stdout, stderr = process.communicate(timeout=10)
+            self.assertEqual(process.returncode, 0, stderr)
+            self.assertEqual(json.loads(stdout)['decision'], 'dispatched')
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=5)
+        self.assertEqual(self.gate(*args)['decision'], 'quiet')
+        self.assertEqual(len(log.read_text().splitlines()), 3)
+
+    def test_service_transitions_and_corrupt_cursor_are_local_once(self):
+        down = ('--service-pid', 2**63 - 1)
+        self.assertTrue(self.gate(*down)['health_changed'])
+        self.assertFalse(self.gate(*down)['health_changed'])
+        self.assertTrue(self.gate('--service-pid', os.getpid())['health_changed'])
+        cursor = self.root / 'gate' / 'gate-v1.json'
+        valid = cursor.read_text()
+        cursor.write_text('CANARY-private-corrupt')
+        self.assertTrue(self.gate(ok=False)['health_changed'])
+        self.assertFalse(self.gate(ok=False)['health_changed'])
+        self.assertEqual(cursor.read_text(), 'CANARY-private-corrupt')
+        cursor.write_text(json.dumps(dict(schema='agf.retrospective-gate.v1', known=[], inflight=False)))
+        self.assertFalse(self.gate(ok=False)['health_changed'])
+        cursor.write_text(valid)
+        self.assertTrue(self.gate()['gate_state_recovered'])
+        cursor.write_text('CANARY-private-corrupt')
+        self.assertTrue(self.gate(ok=False)['health_changed'])
+
+    def test_gate_symlink_huge_and_unknown_entries_are_partial(self):
+        self.gate()
+        outside = self.root / 'outside'
+        outside.write_text('CANARY')
+        (self.state / 'spool' / 'ses_link.json').symlink_to(outside)
+        with (self.state / 'spool' / 'ses_huge.json').open('wb') as f:
+            f.truncate(8 * 1024**2 + 1)
+        self.put('unknown.json', dict(schema=1, session_id='ses_other', status='done'), 'jobs')
+        result = self.gate(ok=False)
+        self.assertTrue(result['health_changed'])
+        self.assertEqual(result['decision'], 'partial')
+        self.assertFalse(self.gate(ok=False)['health_changed'])
+
+    def test_latest_previous_inventory_is_migration_baseline(self):
+        self.put('orphan.json', report())
+        result = self.run_cli('--latest', '--previous', self.previous(self.run_cli()))
+        self.assertEqual(result['comparison'], 'basis_baseline')
+        self.assertEqual(result['edges']['resolved'], [])
+
+    def test_receipt_reuse_and_task_mismatch_do_not_acknowledge(self):
+        for mode in ('reused', 'mismatch', 'malformed', 'nonzero', 'postmismatch', 'directory'):
+            with self.subTest(mode=mode):
+                self.fake_cli_contract(mode)
+                args = ('--dispatch', '--openchamber', self.root / 'fake-openchamber')
+                gate = self.root / 'gate'
+                if gate.exists():
+                    for p in gate.iterdir():
+                        p.unlink()
+                self.gate(*args)
+                self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='done', version=mode), 'jobs')
+                result = self.gate(*args)
+                self.assertEqual(result['decision'], 'ambiguous_dispatch')
+                self.assertTrue(result['health_changed'])
+                self.assertIn('DISPATCH_AMBIGUOUS', result['health_codes'])
+                cursor = json.loads((gate / 'gate-v1.json').read_text())
+                self.assertTrue(cursor['pending'])
+                self.assertTrue(cursor['inflight'])
+                self.assertFalse(self.gate(*args)['health_changed'])
+                count = len((self.root / 'calls.jsonl').read_text().splitlines())
+                self.put('ses_more.json', dict(schema=1, session_id='ses_more', status='done', mode=mode), 'jobs')
+                self.assertEqual(self.gate(*args)['decision'], 'ambiguous_dispatch')
+                self.assertEqual(len((self.root / 'calls.jsonl').read_text().splitlines()), count)
+
+    def fake_cli_contract(self, mode='fresh', previous='ses_monitor', busy=False, delay=0):
+        # Spec: docs/specs/retrospective-monitor.md — shared first-party receipt store, no real CLI
+        cli, log = self.root / 'fake-openchamber', self.root / 'calls.jsonl'
+        store = self.root / 'official-task.json'
+        if not store.exists():
+            store.write_text(json.dumps(dict(id='d2785bca-a95c-4252-ab72-7e89a1b5e941', enabled=False,
+                state=dict(lastStatus='success', lastSessionId=previous), sequence=0)))
+        task = json.loads(store.read_text())
+        task['state']['lastStatus'] = 'running' if busy else 'success'
+        store.write_text(json.dumps(task))
+        cli.write_text('#!' + sys.executable + '\n' +
+            '# Spec: docs/specs/retrospective-monitor.md via MonitorTests\n' +
+            'import json,sys,time\n' +
+            f'path={str(store)!r}\n' +
+            f'with open({str(log)!r},"a") as f: f.write(json.dumps(sys.argv[1:])+"\\n")\n' +
+            'with open(path) as f: task=json.load(f)\n' +
+            'if sys.argv[2]=="list":\n' +
+            f' if {mode!r}=="postmismatch" and task["sequence"]: task["state"]["lastSessionId"]="ses_unrelated"\n' +
+            ' print(json.dumps({"tasks":[task]}))\n' +
+            'else:\n' +
+            f' time.sleep({delay})\n' +
+            ' task["sequence"]+=1\n' +
+            f' sid=task["state"]["lastSessionId"] if {mode!r}=="reused" else "ses_created"+str(task["sequence"])\n' +
+            ' task["state"]={"lastStatus":"success","lastSessionId":sid}\n' +
+            ' with open(path,"w") as f: json.dump(task,f)\n' +
+            f' if {mode!r}=="nonzero": print("CANARY",file=sys.stderr);sys.exit(1)\n' +
+            f' if {mode!r}=="malformed": print("CANARY");sys.exit(0)\n' +
+            f' if {mode!r}=="mismatch": task["id"]="wrong-task"\n' +
+            f' if {mode!r}=="directory": task["directory"]="/wrong-directory"\n' +
+            ' response={"sessionId":sid,"task":task}\n' +
+            f' if {mode!r}=="without-task": del response["task"]\n' +
+            ' print(json.dumps(response))\n')
+        cli.chmod(0o700)
+        return cli, log
+
+    def test_authoritative_monitor_reclassification_preserves_mixed_work(self):
+        cli, log = self.fake_cli_contract(previous='ses_monitor')
+        args = ('--dispatch', '--openchamber', cli)
+        self.gate(*args)
+        self.put('ses_monitor.json', dict(schema=1, session_id='ses_monitor', status='done'), 'jobs')
+        self.put('ses_monitor.json', {'private': 'CANARY'}, 'spool')
+        self.assertEqual(self.gate(*args)['decision'], 'quiet')
+        self.assertEqual(sum(json.loads(x)[1]=='run' for x in log.read_text().splitlines()), 0)
+        self.put('ses_monitor.json', dict(schema=1, session_id='ses_monitor', status='failed'), 'jobs')
+        self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='done'), 'jobs')
+        self.assertEqual(self.gate(*args)['decision'], 'dispatched')
+        self.assertEqual(sum(json.loads(x)[1]=='run' for x in log.read_text().splitlines()), 1)
+        self.assertEqual(self.gate(*args)['decision'], 'quiet')
+
+    def test_bounded_scan_continuation_and_prefix_revisit(self):
+        # Reverse creation order must not define coverage order.
+        for i in reversed(range(1026)):
+            self.put(f'ses_work{i:04}.json', dict(schema=1, session_id=f'ses_work{i:04}', status='done'), 'jobs')
+        first = self.gate(ok=False)
+        self.assertFalse(first['complete'])
+        self.assertEqual(first['decision'], 'scanning')
+        self.assertLessEqual(first['files_processed']['jobs'], 1024)
+        scan = json.loads((self.root / 'gate' / 'gate-v1.json').read_text())['scan']
+        expected = sorted(digest(json.dumps(['source', f'jobs/ses_work{i:04}.json'], separators=(',', ':')))
+                          for i in range(1026))[:1024]
+        self.assertEqual(set(scan['rows']), set(expected))
+        self.assertEqual(self.gate()['decision'], 'baseline')
+        self.put('ses_work1025.json', dict(schema=1, session_id='ses_work1025', status='pending'), 'jobs')
+        self.gate(ok=False)
+        self.assertEqual(self.gate()['decision'], 'pending')
+        self.gate(ok=False)
+        self.put('ses_work0000.json', dict(schema=1, session_id='ses_work0000', status='pending'), 'jobs')
+        self.gate()
+        self.gate(ok=False)
+        self.gate()
+        cursor = json.loads((self.root / 'gate' / 'gate-v1.json').read_text())
+        self.assertEqual(len(cursor['pending']), 2)
+
+    def test_scan_directory_mutation_restarts_without_losing_work(self):
+        for i in range(1026):
+            self.put(f'ses_work{i:04}.json', dict(schema=1, session_id=f'ses_work{i:04}', status='done'), 'jobs')
+        self.gate(ok=False)
+        self.gate()
+        self.put('ses_work0000.json', dict(schema=1, session_id='ses_work0000', status='pending'), 'jobs')
+        self.gate(ok=False)
+        self.put('ses_added.json', dict(schema=1, session_id='ses_added', status='done'), 'jobs')
+        (self.state / 'jobs' / 'ses_work1025.json').unlink()
+        self.assertEqual(self.gate(ok=False)['decision'], 'scan_restarted')
+        self.gate(ok=False)
+        result = self.gate()
+        self.assertEqual(result['decision'], 'pending')
+        cursor = json.loads((self.root / 'gate' / 'gate-v1.json').read_text())
+        self.assertTrue({'ses_work0000', 'ses_added'} <= {r['session'] for r in cursor['pending'].values()})
+
+    def test_missing_run_task_uses_post_list_binding_and_reconcile_is_guarded(self):
+        cli, _ = self.fake_cli_contract('without-task')
+        self.gate('--dispatch', '--openchamber', cli)
+        self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='done'), 'jobs')
+        self.assertEqual(self.gate('--dispatch', '--openchamber', cli)['decision'], 'dispatched')
+        cli, _ = self.fake_cli_contract('nonzero')
+        self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='pending'), 'jobs')
+        self.gate('--dispatch', '--openchamber', cli)
+        path = self.root / 'gate' / 'gate-v1.json'
+        previous = path.read_bytes()
+        self.gate('--openchamber', cli, '--reconcile-claim', '0' * 64,
+                  '--reconcile-session', 'ses_created2', ok=False)
+        self.assertEqual(path.read_bytes(), previous)
+
+    def test_dispatch_health_transition_and_authoritative_reconciliation(self):
+        cli, log = self.fake_cli_contract('nonzero')
+        args = ('--dispatch', '--openchamber', cli)
+        self.gate(*args)
+        self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='pending'), 'jobs')
+        failed = self.gate(*args)
+        self.assertTrue(failed['health_changed'])
+        self.assertIn('RECONCILIATION_REQUIRED', failed['health_codes'])
+        self.assertFalse(self.gate(*args)['health_changed'])
+        cursor = json.loads((self.root / 'gate' / 'gate-v1.json').read_text())
+        token = cursor['claim']['token']
+        self.put('ses_work.json', dict(schema=1, session_id='ses_work', status='done'), 'jobs')
+        self.assertEqual(self.gate(*args)['decision'], 'ambiguous_dispatch')
+        recovered = self.gate('--openchamber', cli, '--reconcile-claim', token, '--reconcile-session', 'ses_created1')
+        self.assertEqual(recovered['decision'], 'reconciled')
+        self.assertTrue(recovered['health_changed'])
+        self.assertNotIn('DISPATCH_AMBIGUOUS', recovered['health_codes'])
+        self.assertEqual(self.gate()['decision'], 'pending')
+        self.assertFalse(self.gate()['health_changed'])
 
     def test_row_labels_never_infer_requests_or_semantics(self):
         r = report(rows=3)
