@@ -33,18 +33,19 @@ type LessonEvidence struct {
 	RecordIDs []string `json:"record_ids"`
 }
 type LessonCandidate struct {
-	SchemaVersion    int            `json:"schema_version"`
-	Operation        string         `json:"operation"`
-	LessonID         string         `json:"lesson_id"`
-	ExpectedRevision int            `json:"expected_revision"`
-	Project          string         `json:"project"`
-	Scope            string         `json:"scope"`
-	Version          string         `json:"version"`
-	Consumer         string         `json:"consumer"`
-	Advice           string         `json:"advice"`
-	Producer         string         `json:"producer"`
-	OriginSession    string         `json:"origin_session"`
-	Evidence         LessonEvidence `json:"evidence"`
+	SchemaVersion    int               `json:"schema_version"`
+	Operation        string            `json:"operation"`
+	LessonID         string            `json:"lesson_id"`
+	ExpectedRevision int               `json:"expected_revision"`
+	Project          string            `json:"project"`
+	Scope            string            `json:"scope"`
+	Version          string            `json:"version"`
+	Consumer         string            `json:"consumer"`
+	Advice           string            `json:"advice"`
+	Producer         string            `json:"producer"`
+	OriginSession    string            `json:"origin_session"`
+	Evidence         LessonEvidence    `json:"evidence"`
+	Reflection       *LessonReflection `json:"reflection,omitempty"`
 }
 type LessonAcceptance struct {
 	CandidateSHA256 string `json:"candidate_sha256"`
@@ -58,7 +59,8 @@ type LessonEnvelope struct {
 	Acceptance        LessonAcceptance `json:"acceptance"`
 }
 type lessonRecord struct {
-	Envelope LessonEnvelope `json:"envelope"`
+	Envelope      LessonEnvelope `json:"envelope"`
+	NativeReceipt string         `json:"native_receipt,omitempty"`
 	// Bytes are base64, preserving the exact digest even with JSON whitespace.
 	Evidence []byte `json:"evidence"`
 }
@@ -252,6 +254,10 @@ func validateRawLessonEvidence(trace *Trace, interval *Normalized, depth int) er
 
 // validateLessonRecord checks signatures AND actual trace bytes, never prose attestations.
 func validateLessonRecord(r lessonRecord, trust *LessonTrust) error {
+	return validateLessonRecordWithAuthority(r, trust, false)
+}
+
+func validateLessonRecordWithAuthority(r lessonRecord, trust *LessonTrust, native bool) error {
 	c, a := r.Envelope.Candidate, r.Envelope.Acceptance
 	if c.SchemaVersion != 1 || !filepath.IsAbs(c.Project) || filepath.Clean(c.Project) != c.Project || c.Project == "/" || c.Scope == "" || c.Version == "" || (c.Consumer != "executor" && c.Consumer != "corrector") || !journalID(c.OriginSession) || c.ExpectedRevision < 0 || len(c.Advice) > 4096 || !lessonTextSafe(c) {
 		return errors.New("invalid or unsafe lesson candidate")
@@ -283,7 +289,7 @@ func validateLessonRecord(r lessonRecord, trust *LessonTrust) error {
 	vk, _ := base64.StdEncoding.DecodeString(v.PublicKey)
 	ps, _ := base64.StdEncoding.DecodeString(r.Envelope.ProposalSignature)
 	vs, _ := base64.StdEncoding.DecodeString(a.Signature)
-	if !pok || !vok || p.Role != "producer" || v.Role != "reviewer" || p.Project != c.Project || v.Project != c.Project || c.Producer == a.Reviewer || bytes.Equal(pk, vk) || !a.Approved || a.CandidateSHA256 != digest || !ed25519.Verify(pk, []byte("agf-lesson-proposal:v1\n"+digest), ps) || !ed25519.Verify(vk, []byte("agf-lesson-acceptance:v1\n"+digest+"\n"+a.Reviewer+"\ntrue"), vs) {
+	if !native && (!pok || !vok || p.Role != "producer" || v.Role != "reviewer" || p.Project != c.Project || v.Project != c.Project || c.Producer == a.Reviewer || bytes.Equal(pk, vk) || !a.Approved || a.CandidateSHA256 != digest || !ed25519.Verify(pk, []byte("agf-lesson-proposal:v1\n"+digest), ps) || !ed25519.Verify(vk, []byte("agf-lesson-acceptance:v1\n"+digest+"\n"+a.Reviewer+"\ntrue"), vs)) {
 		return errors.New("lesson lacks independently authenticated digest-bound acceptance")
 	}
 	if len(r.Evidence) == 0 || len(r.Evidence) > 64<<10 || !validSignalHash(c.Evidence.SHA256) || sha256hex(r.Evidence) != c.Evidence.SHA256 || !filepath.IsAbs(c.Evidence.Path) || len(c.Evidence.RecordIDs) == 0 || len(c.Evidence.RecordIDs) > 20 || !lessonTextSafe(json.RawMessage(r.Evidence)) {
@@ -347,6 +353,9 @@ func validateLessonRecord(r lessonRecord, trust *LessonTrust) error {
 		if count != 0 {
 			return errors.New("unsafe lesson evidence requires redaction")
 		}
+	}
+	if err := validateLessonReflection(c, n, native); err != nil {
+		return err
 	}
 	return nil
 }
@@ -459,7 +468,7 @@ func (s *Store) loadLessons(trust *LessonTrust) (*lessonSnapshot, map[string]Les
 	}
 	seen := map[string]bool{}
 	for _, record := range snapshot.Records {
-		if err := validateLessonRecord(record, trust); err != nil {
+		if err := s.validateStoredLessonRecord(record, trust); err != nil {
 			return nil, nil, err
 		}
 		id := lessonDigest(record.Envelope.Candidate)
@@ -480,6 +489,10 @@ func (s *Store) loadLessons(trust *LessonTrust) (*lessonSnapshot, map[string]Les
 
 // ApplyLesson validates an explicit bounded proposal; it never generates content.
 func (s *Store) ApplyLesson(envelope LessonEnvelope, trust *LessonTrust, bindingPath string) (*LessonResult, error) {
+	return s.applyLesson(envelope, trust, bindingPath, "")
+}
+
+func (s *Store) applyLesson(envelope LessonEnvelope, trust *LessonTrust, bindingPath, nativeReceipt string) (*LessonResult, error) {
 	if err := ValidateLessonDirectory(s.Dir); err != nil {
 		return nil, err
 	}
@@ -519,7 +532,8 @@ func (s *Store) ApplyLesson(envelope LessonEnvelope, trust *LessonTrust, binding
 		if lessonDigest(prior.Envelope.Candidate) == id {
 			// Do not let an invalid new signature masquerade as a valid retry.
 			prior.Envelope = envelope
-			if err := validateLessonRecord(prior, trust); err != nil {
+			prior.NativeReceipt = nativeReceipt
+			if err := s.validateStoredLessonRecord(prior, trust); err != nil {
 				return nil, err
 			}
 			return &LessonResult{DeltaID: id, Status: "duplicate"}, nil
@@ -529,8 +543,8 @@ func (s *Store) ApplyLesson(envelope LessonEnvelope, trust *LessonTrust, binding
 	if err != nil {
 		return nil, err
 	}
-	record := lessonRecord{Envelope: envelope, Evidence: evidence}
-	if err := validateLessonRecord(record, trust); err != nil {
+	record := lessonRecord{Envelope: envelope, Evidence: evidence, NativeReceipt: nativeReceipt}
+	if err := s.validateStoredLessonRecord(record, trust); err != nil {
 		return nil, err
 	}
 	var trace Trace

@@ -459,9 +459,9 @@ stay read-only and require explicit re-analysis, never blind redispatch.
 ### Reusable lessons (learning consolidation phase 2)
 
 AGF owns a private, versioned `lessons.json` in the existing retrospective Store.
-This is a bounded proposal-ingestion seam, not a generator: GLiDE selection,
-runtime profiles, permissions, observation and dispatch remain unchanged.
-No legacy state is read. Contrastive enrichment remains deferred.
+Offline signed ingestion and explicit native generation share admission/recall.
+GLiDE selection, runtime profiles, permissions, observation and existing repair
+dispatch remain unchanged. No legacy state is read.
 
 `agf retrospective lessons apply --state-dir ABS --trust ABS --input ABS`
 accepts one strict JSON envelope: `candidate`, base64 `proposal_signature`, and
@@ -485,7 +485,8 @@ both must belong to the candidate project. Producer signs
 An approved boolean or reviewer name alone is never authority. This authenticates
 the operator-enrolled reviewer key, not the reviewer's reasoning or a live model.
 Protect trust enrollment and private keys outside model-controlled input roots.
-This seam does not claim autonomous native generation/review acceptance.
+This offline seam does not attest native execution. Native generation below uses
+actual host-verified role execution instead, never signatures on arbitrary prose.
 
 Before accepting any operation, read the exact bounded regular non-symlink
 evidence file, verify SHA256, strictly decode trace v1, normalize completeness,
@@ -517,9 +518,73 @@ closed and preserve existing bytes. Only missing state means empty.
 only active exact-applicability lessons, sorted by stable ID, at most 20 (default
 10). Output marks `advisory:true`; advice cannot grant task/DoD/permission authority.
 `... lessons status --state-dir ABS --trust ABS` returns active/retired/delta counts.
-Both validate persisted signatures, evidence bytes and state structure; neither
+Both validate persisted signed/native authority, evidence bytes and state structure; neither
 creates state, reads ambient config, invokes a provider, nor installs anything.
 Exit 1 denotes invalid inputs/state or a refused mutation; exit 0 returns JSON.
+
+#### Native lesson generation and contrasts (phase 4)
+
+`lessons generate --config ABS --trust ABS --input ABS` is explicit opt-in, not
+automatic drain generation. The existing global enabled switch and scoped disable
+marker apply. Config supplies the existing `message` transport, dispatch server,
+explicit configured dispatch model, canonical roots, state directory and installed
+independent reviewer (not learning-corrector/qa-runner). There are no CLI
+model/provider/permission overrides. Trust remains required for the mixed store's
+offline records; native authority does not enroll keys or sign model output.
+
+Input is an unsigned LessonCandidate identity/evidence template: operation noop,
+empty producer/lesson ID/advice, revision zero, no reflection. Operator-selected
+project/scope/version/consumer/origin and evidence path/hash cannot drift. Its
+record IDs are a bounded allowlist. Complete safe trace validation precedes network;
+no deterministic signal means no native request. Existing origin suppression,
+exposure suppression, configured binding exclusions and known descendants gate
+generation before creating roots and again before admission. Read/status remain
+deterministic and require no provider.
+
+Reuse the native SessionClient/stage/completion guards: parentless learning-origin
+roots, read-back directory, at-most-once attempted create/prompt reconciliation,
+bounded wait and effective actual role/model/error/completion history. The
+learning-corrector returns one strict candidate JSON (add or noop); Go binds its
+producer to the actual root. A different root executing the configured reviewer
+must return strict `{approved,candidate_sha256,reason}` bound to the canonical
+candidate digest. Author approval, HTTP delivery, idle, wrong role/model, provider
+failure, incomplete history or rejected/mismatched verdict never activate advice.
+Typed JSON rejects duplicate/unknown fields, including self-declared confidence.
+Finals are capped at 64 KiB. Unsafe finals are refused without retaining their
+secret/injected bytes. No source repair, QA role, skill/hook/policy write, global
+promotion, provider change or external-effect replay occurs in this workflow.
+
+Candidate `reflection` separates `facts` (record ID + SHA256), `change`,
+`contrasts` (before/after citations), `outcome` (helped, hurt, no observed effect,
+confounded) and explicit `limits`. Citation SHA256 covers Go's JSON of the
+normalized observed Record; the generation packet supplies exact records/digests,
+not a request to invent or recompute hashes. Every citation must resolve inside
+the accepted task interval and candidate allowlist. Active native advice needs
+at least two nonoverlapping natural contrasts of the same input substitution:
+adjacent terminal paired calls, same tool, nonempty unchanged prerequisite
+fingerprint and unchanged observed source refs. Helped requires error→nonerror;
+hurt the reverse; no observed effect equal error states. These are status
+observations, not task acceptance or causal benefit. Semantic confounders and
+advice relevance still require independent review. Single contrast, selected
+winner, multiple observed changes or confidence cannot prove benefit;
+confounded/uncertain conclusions must abstain (noop, never active).
+
+The private Store receipt retains attempted stage identities, configured model,
+typed results/rejection and completed-review authority. Exact safe trace bytes,
+including negative/discarded observations, use existing durable `preimages/`
+retention (`<incident>/lesson-evidence`), separate from prunable reports; retaining
+these bytes never promotes code. The lesson snapshot references the host-owned
+completed receipt plus exact evidence bytes. Reads revalidate this authority,
+candidate/verdict digest/independence and evidence; missing/corrupt authority fails
+closed. Public signed apply cannot supply a native receipt or bypass signatures.
+Pending stages reuse the recorded profile and roots without blind retries.
+Native generation is add/noop only; signed refine/retire remain available.
+Existing v1 signed records without reflection retain their authenticated offline
+contract; supplied reflections are checked, not silently grandfathered.
+
+`TestLessonGenerationCLI` runs real CLI processes/transport/admission/recall with
+protocol-mocked native roles. It proves wiring and negative gates, not live role
+execution, independent provider review or phase6 native two-task E2E acceptance.
 
 #### Contextual delivery (phase 3)
 

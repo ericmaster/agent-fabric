@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -21,6 +22,9 @@ func runRetrospectiveLessons(args []string) error {
 	sub := args[0]
 	if sub == "context" {
 		return runLessonContext(args[1:])
+	}
+	if sub == "generate" {
+		return runLessonGenerate(args[1:])
 	}
 	if sub != "apply" && sub != "read" && sub != "status" {
 		return errors.New("unknown lessons command")
@@ -88,6 +92,55 @@ func runRetrospectiveLessons(args []string) error {
 	case "status":
 		result, err = store.LessonStatus(&trust)
 	}
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(result)
+}
+
+// Native generation uses only the existing configured dispatch profile; there
+// are deliberately no CLI model/provider/permission overrides.
+func runLessonGenerate(args []string) error {
+	fs := flag.NewFlagSet("lessons generate", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var configPath, trustPath, input string
+	fs.StringVar(&configPath, "config", "", "explicit retrospective configuration")
+	fs.StringVar(&trustPath, "trust", "", "existing lesson trust file")
+	fs.StringVar(&input, "input", "", "unsigned noop identity/evidence template")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 || !filepath.IsAbs(configPath) {
+		return errors.New("generation requires explicit absolute --config")
+	}
+	enabled, err := retrospective.Enabled("")
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return retrospective.ErrDisabled
+	}
+	cfg, err := retrospective.LoadConfig(configPath)
+	if err != nil {
+		return err
+	}
+	body, err := retrospective.ReadLessonFile(trustPath, 64<<10)
+	if err != nil {
+		return err
+	}
+	var trust retrospective.LessonTrust
+	if err := retrospective.DecodeLessonJSON(body, &trust); err != nil {
+		return err
+	}
+	body, err = retrospective.ReadLessonFile(input, 64<<10)
+	if err != nil {
+		return err
+	}
+	var request retrospective.LessonCandidate
+	if err := retrospective.DecodeLessonJSON(body, &request); err != nil {
+		return err
+	}
+	result, err := retrospective.GenerateLesson(context.Background(), cfg, &trust, request, os.Getenv("AGF_LESSONS_CONTEXT"))
 	if err != nil {
 		return err
 	}

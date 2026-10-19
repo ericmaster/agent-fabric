@@ -58,6 +58,7 @@ type Receipt struct {
 	PromptAttempted         bool            `json:"prompt_attempted,omitempty"`
 	PromptConfirmed         bool            `json:"prompt_confirmed,omitempty"`
 	NativeCompleted         bool            `json:"native_completed,omitempty"`
+	NativeModel             string          `json:"native_model,omitempty"`
 	CorrectorResult         string          `json:"corrector_result,omitempty"`
 	ReviewerRootID          string          `json:"reviewer_root_id,omitempty"`
 	ReviewerCreateAttempted bool            `json:"reviewer_create_attempted,omitempty"`

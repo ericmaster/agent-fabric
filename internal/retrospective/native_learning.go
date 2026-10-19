@@ -171,6 +171,9 @@ func nativePacket(opts DispatchOptions, receipt *Receipt, report *Report, object
 // Spec: docs/specs/task-retrospective.md via finishNativeLearning
 func nativeStage(ctx context.Context, opts DispatchOptions, store *Store, receipt *Receipt, report *Report, marker, role, kind, prompt string, client *HTTPSessionClient) (string, error) {
 	id, created, posted := &receipt.ReviewerRootID, &receipt.ReviewerCreateAttempted, &receipt.ReviewerPromptAttempted
+	if kind == "generate" {
+		id, created, posted = &receipt.RootID, &receipt.CreateAttempted, &receipt.PromptAttempted
+	}
 	if kind == "qa" {
 		id, created, posted = &receipt.QARootID, &receipt.QACreateAttempted, &receipt.QAPromptAttempted
 	}

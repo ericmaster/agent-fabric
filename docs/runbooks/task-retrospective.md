@@ -283,6 +283,34 @@ Synthetic-key real-CLI lifecycle, concurrency, write-fault, restart and rejectio
 fixtures (not native/provider acceptance):
 `go test -count=1 -v ./cmd/agent-fabric -run '^TestLessonCLI$'`.
 
+### Explicit native lesson generation
+
+Use only an already authorized native v2 target with existing configured
+`dispatch_endpoint:message`, `dispatch_model`, reviewer, canonical roots and
+private state directory. No model override, installation or shared restart is
+needed. Enablement and scoped opt-out still apply. Supply an unsigned noop
+identity/evidence template, not a proposed lesson or signed envelope; schema and
+contrast rules: spec, **Native lesson generation and contrasts**.
+
+```bash
+agf retrospective lessons generate --config /absolute/operator/retrospective.json --trust /absolute/operator/trust.json --input /absolute/evidence/identity-template.json
+```
+
+This executes learning-corrector and a separate configured native reviewer through
+the existing transport. Independent completion and exact digest acceptance precede
+the shared store/recall path. No signal makes no request; insufficient/confounded
+evidence must yield noop or an explicit refusal, never active advice. Keep pending
+receipts and their durable `preimages/<incident>/lesson-evidence` bytes for recovery;
+do not relabel a rejected/unfinished role as completed. Retry reuses recorded
+stages/profile and does not blindly repost. Generation currently supports add/noop;
+use the authenticated offline seam for refine/retire.
+
+`go test -count=1 -v ./cmd/agent-fabric -run '^TestLessonGenerationCLI$'` exercises
+real CLI/transport/store with protocol-mocked role finals, not live provider QA.
+Actual native capture→generation→review→later-task consumption remains a separate
+phase6 acceptance check. Signed offline records still need enrolled public keys;
+native generation adds no key/trust framework and never signs arbitrary prose.
+
 ### Optional native contextual recall / portable fallback
 
 For an already authorized, pinned OpenCode v2 installation only (see binding
