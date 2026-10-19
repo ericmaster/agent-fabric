@@ -460,6 +460,7 @@ test('complete 195-candidate paginated wire discovery rotates bounded batches ac
   const request = wire(async (e, method) => {
     if (e.startsWith('/api/session?') && !e.includes('parentID=')) {
       const q = new URL(e, 'http://fixture').searchParams, offset = Number(q.get('cursor') || 0);
+      assert.equal(q.get('directory'), '/home/ericmaster/nimbler-ops', 'every discovery page must explicitly scope the native list');
       const records = [...sessions, ...unrelated].filter(s => !deleted.has(s.id)); pages++;
       return { status: 200, body: { data: records.slice(offset, offset + 100), cursor: { previous: null, next: offset + 100 < records.length ? String(offset + 100) : null } } };
     }

@@ -87,7 +87,7 @@ async function discover(request, tasks) {
   const found = new Set(tasks.map(t => t.lastSessionId).filter(Boolean)), seen = new Set(), cursors = new Set(); let cursor;
   await producer(request);
   for (let page = 0; page < 8; page++) {
-    const query = new URLSearchParams({ limit: '100', ...(cursor ? { cursor } : {}) });
+    const query = new URLSearchParams({ directory: PROJECT, limit: '100', ...(cursor ? { cursor } : {}) });
     const r = await request(`/api/session?${query}`);
     check(r.status === 200 && Array.isArray(r.body?.data) && r.body.data.length <= 100 && record(r.body.cursor), 'INVENTORY_PARTIAL');
     for (const s of r.body.data) {

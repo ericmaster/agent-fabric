@@ -41,6 +41,8 @@ are NOT recognized by this release. Conflicting identical prompt definitions ret
 
 Complete project native inventory (8 pages x100, unique IDs and cursor safeguards)
 discovers scheduled-kind exact-title candidates beyond the classification cache.
+Every discovery page explicitly supplies the `directory` query parameter; the
+directory header alone does not scope the installed session-list API.
 Titles must equal exact task name + creation minute formatted in the task timezone
 (host default if unspecified), using the installed yyyy-MM-dd HH:mm contract.
 Explicit task lastSessionIds are also inspected, never automatically authorized.
