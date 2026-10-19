@@ -324,6 +324,19 @@ test('legacy composite discovery binds native user.text, not assistant text or c
   assert.match(archive, /agf.monitor-legacy.v1/); assert.doesNotMatch(archive, /PRIVATE_USER/);
 }));
 
+test('latest scheduled monitor is cleaned without waiting behind eight older classification IDs', () => fixture(async f => {
+  const older = Array.from({ length: 8 }, (_, i) => `ses_a${i}`);
+  const input = { known: older, receipts: {}, after: null, plan: true };
+  const options = legacyOptions(f);
+  const plan = await maintenance(input, options);
+  assert.equal(plan.candidates[0].sessionID, f.id);
+  assert.deepEqual(plan.proven, [f.id]);
+  const result = await maintenance({ ...input, known: [...older, ...plan.proven], plan: false }, options);
+  assert.equal(result.deleted, 1);
+  assert.equal(f.calls.filter(c => c[1] === 'DELETE').length, 1);
+  assert.ok(result.retained <= 7);
+}));
+
 test('review durability: every newly created ancestor entry is parent-fsynced before DELETE', () => fixture(async f => {
   const root = path.join(f.root, '.artifacts-manager', 'monitor-output');
   const synced = new Set(), open = fs.open, mkdir = fs.mkdir, created = [];

@@ -56,8 +56,11 @@ Titles must equal exact task name + creation minute formatted in the task timezo
 Explicit task lastSessionIds are also inspected, never automatically authorized.
 An incomplete inventory aborts the maintenance batch, not a silent prefix success.
 Union with cached IDs is capped1024; durable cleanup_after rotates eight IDs even
-past failed candidates. It is independent of classification membership. Only fully
-verified identities returned by maintenance join known; manual known IDs alone
+past failed candidates. It is independent of classification membership.
+The current AGF task lastSessionId has priority within that same eight-ID batch,
+so its completed output does not wait behind historical deletion tombstones;
+all identity, classification, archive and pending-work gates still apply.
+Only fully verified identities returned by maintenance join known; manual known IDs alone
 never acquire deletion authority. Discovery/retention never wakes an LLM.
 
 ### Classification must survive deletion and adapter crashes

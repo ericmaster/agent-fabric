@@ -334,7 +334,11 @@ export async function maintenance(input, { root = ROOT, request, write = publish
   check(known.length <= 1024, 'INVENTORY_LIMIT');
   const result = { deleted: 0, reconciled: 0, eligible: 0, retained: 0, ambiguous: 0, after: input.after, candidates: [], retainedSessions: [], outputDirectory: root, proven: [], inventory: known.length };
   const remaining = known.filter(x => !input.after || x > input.after);
-  for (const sessionID of (remaining.length ? remaining : known).slice(0, 8)) {
+  let batch = (remaining.length ? remaining : known).slice(0, 8);
+  // Spec: docs/specs/retrospective-monitor.md — fresh monitor output must not wait behind old tombstones.
+  const latest = tasks?.find(t => t.id === TASK)?.lastSessionId;
+  if (latest && !batch.includes(latest)) batch = [latest, ...batch.slice(0, 7)];
+  for (const sessionID of batch) {
     if (Date.now() >= deadline) break;
     result.after = sessionID;
     try {
