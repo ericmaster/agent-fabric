@@ -70,6 +70,8 @@ go build -o agent-fabric ./cmd/agent-fabric
 - **Discretionary QA:** Recommended, not mandatory; loop-supervisor decides run/skip/reuse/defer. QA-only execution blockers go upward without freezing implementation; unrun checks never become PASS. Setup changes belong to implementation roles under existing authority. Spec: `docs/specs/agent-fabric.md` (Discretionary QA Contract).
 - **Delivery & Recovery:** Supervisors own integration, authorized deployment, verification and clean closure. Soft exhaustion triggers evidence-backed bounded recovery under standing task authority, not repeated permission requests; preserve history and explicit hard caps. Prefer a single-writer current checkout after dirty-work triage; isolate concurrent writers or when mandated. Never discard/commit foreign work. Contract: `docs/specs/agent-fabric.md` (Delivery ownership and checkout closure; Native asynchronous orchestration).
 
+- **Reusable lessons:** Explicit `retrospective lessons apply/read/status` uses the existing private Store, signed proposal + independently enrolled Ed25519 reviewer acceptance, verified complete trace bytes, revision guards and bounded deterministic project/scope/version/consumer retrieval. No generator, adapter injection, legacy reads or model/config changes. Trust enrollment is operator authority, not proposal input. Contract/runbook: `docs/specs/task-retrospective.md` and `docs/runbooks/task-retrospective.md` (Reusable lessons). Real disposable CLI fixtures: `go test -count=1 -v ./cmd/agent-fabric -run '^TestLessonCLI$'`; synthetic signing identities do not prove live review.
+
 ## Testing
 
 - Unit tests in `internal/agent`, `internal/adapter`, `internal/manifest`, `internal/retrospective`, and `cmd/agent-fabric`.

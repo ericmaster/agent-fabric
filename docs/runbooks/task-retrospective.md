@@ -243,6 +243,46 @@ Receipts keep the report locator, the visible root id, and the UI URL.
 Reports/traces under `reports/` and `traces/` are retained 30 days; finding
 rows until the source hash changes.
 
+## Explicit reusable lesson lifecycle (offline seam)
+
+No installation, service, provider request or legacy import is needed. Explicit
+signed ingestion/read/status is not automatic generation or context injection.
+Observer/global enable behavior is unchanged; `lessons apply` is an explicit
+operator mutation, not a background capture path.
+
+Provision operator-controlled trust JSON outside candidate-controlled roots:
+schema 1, `identities` mapping producer/reviewer IDs to `role`, base64 Ed25519
+`public_key`, exact absolute `project`. Keep private keys out of AGF state,
+repository, packets and logs. Distinct roles backed by one key are rejected.
+Trust enrollment comes from the operator, never the proposal. Revoking a key
+fails closed for its persisted lessons; retain old public-key enrollment when
+old accepted lessons must remain readable.
+
+Candidate/evidence schemas, digest serialization and domain-separated signature
+messages: `docs/specs/task-retrospective.md`, Reusable lessons. The independent
+signer inspects the candidate and complete cited trace, then signs its exact
+digest. Prose PASS, a caller-provided role, or a different signed candidate is
+insufficient. Cryptographic identity does not prove review quality or native
+model execution.
+
+```bash
+agf retrospective lessons apply --state-dir /absolute/private/retrospective --trust /absolute/operator/trust.json --input /absolute/evidence/proposal.json
+agf retrospective lessons read --state-dir /absolute/private/retrospective --trust /absolute/operator/trust.json --project /absolute/project --scope catalog-task --version exact-source-revision --consumer executor --limit 10
+agf retrospective lessons status --state-dir /absolute/private/retrospective --trust /absolute/operator/trust.json
+```
+
+Use `consumer corrector` separately for improvement evidence; neither consumer
+grants task/DoD/permission authority. Read/status need no enablement/config,
+create no state, and never call a model. Refine/retire requires the current
+revision; retired IDs cannot revive. Full capacity rejects writes, without
+eviction, promotion or historical import. Preserve corrupt `lessons.json` for
+diagnosis; never replace it with an empty document. The snapshot retains signed
+envelopes and exact evidence bytes, surviving removal of disposable inputs.
+
+Synthetic-key real-CLI lifecycle, concurrency, write-fault, restart and rejection
+fixtures (not native/provider acceptance):
+`go test -count=1 -v ./cmd/agent-fabric -run '^TestLessonCLI$'`.
+
 ## Recovery
 
 - **Read-only monitor presentation:** use the reviewed metadata helper and

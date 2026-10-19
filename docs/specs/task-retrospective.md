@@ -456,6 +456,71 @@ stay read-only and require explicit re-analysis, never blind redispatch.
 
 ## CLI
 
+### Reusable lessons (learning consolidation phase 2)
+
+AGF owns a private, versioned `lessons.json` in the existing retrospective Store.
+This is a bounded proposal-ingestion seam, not a generator: GLiDE selection,
+runtime profiles, permissions, observation and dispatch remain unchanged.
+No legacy state is read. Adapter injection and contrastive enrichment are deferred.
+
+`agf retrospective lessons apply --state-dir ABS --trust ABS --input ABS`
+accepts one strict JSON envelope: `candidate`, base64 `proposal_signature`, and
+`acceptance` (`candidate_sha256`, `reviewer`, `approved`, base64 `signature`).
+The candidate has `schema_version:1`, `operation:add|refine|retire|noop`, stable
+`lesson_id`, `expected_revision`, `project` (absolute execution root), `scope`,
+`version` (exact compatibility identity), `consumer:executor|corrector`, advisory
+`advice`, `producer`, `origin_session`, and `evidence` (`path`, `sha256`,
+nonempty `record_ids`). Add requires revision zero; refine/retire require the
+current positive revision and exact applicability identity. Noop has no lesson
+ID, revision or advice. Retire has no advice. Refine cannot revive a retired ID.
+Candidate SHA256 over Go's canonical typed JSON is also the validated delta ID.
+
+Trust is explicit operator authority, never candidate/transcript input: `--trust`
+is a strict JSON document with schema_version 1 and `identities` mapping IDs to
+`role:producer|reviewer`, base64 Ed25519 `public_key`, and exact `project`.
+Independent acceptance requires distinct identities AND distinct public keys;
+both must belong to the candidate project. Producer signs
+`agf-lesson-proposal:v1\n` + candidate digest. Reviewer signs
+`agf-lesson-acceptance:v1\n` + candidate digest + `\n` + reviewer ID + `\ntrue`.
+An approved boolean or reviewer name alone is never authority. This authenticates
+the operator-enrolled reviewer key, not the reviewer's reasoning or a live model.
+Protect trust enrollment and private keys outside model-controlled input roots.
+This seam does not claim autonomous native generation/review acceptance.
+
+Before accepting any operation, read the exact bounded regular non-symlink
+evidence file, verify SHA256, strictly decode trace v1, normalize completeness,
+check exact execution root/source revision/origin session, verify cited observed
+record IDs in the task interval, and run existing deterministic coverage/redaction
+checks without a provider. Unsafe/redacted/secret-file/incomplete evidence is
+rejected, not silently repaired. Candidate/trust metadata also passes existing
+redaction and prompt-injection guards. Learning origins and synthetic evidence
+cannot become new human task provenance. Store-origin suppression is checked.
+Privacy checks visit every raw message/call, including duplicate IDs and all
+descendants, before normalization can discard records; raw bytes are retained
+only when every occurrence is safe. Material `input_omitted` in the accepted
+task interval rejects the evidence even when the call is uncited or outside a
+signal neighborhood. Only an explicit host task end bounds that interval's tail;
+historical/outside-host-interval omitted input does not block a later task.
+
+One named Store lock serializes read/compare/write mutation. One private atomic
+snapshot contains signed delta records and exact validated trace bytes; replay
+derives current lessons and dedup receipts without temporary input files.
+Caps: 256 stable lesson IDs, 1024 delta receipts, 64 KiB per trace, 16 MiB snapshot;
+full storage rejects writes rather than evicting dedup/retirement authority.
+Same delta is idempotent; same applicability/advice/evidence under a new signed
+proposal is a duplicate, never a revision/win promotion. Conflicts, unknown
+schemas, bad signatures, corruption, missing evidence and failed writes fail
+closed and preserve existing bytes. Only missing state means empty.
+
+`agf retrospective lessons read --state-dir ABS --trust ABS --project ABS
+--scope NAME --version NAME --consumer executor|corrector [--limit N]` returns
+only active exact-applicability lessons, sorted by stable ID, at most 20 (default
+10). Output marks `advisory:true`; advice cannot grant task/DoD/permission authority.
+`... lessons status --state-dir ABS --trust ABS` returns active/retired/delta counts.
+Both validate persisted signatures, evidence bytes and state structure; neither
+creates state, reads ambient config, invokes a provider, nor installs anything.
+Exit 1 denotes invalid inputs/state or a refused mutation; exit 0 returns JSON.
+
 ```
 agf retrospective analyze --input trace.json --output report.json [--config task-retrospective.config.json]
 ```

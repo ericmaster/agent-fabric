@@ -24,6 +24,8 @@ func runRetrospective(args []string) error {
 	sub := args[0]
 	args = args[1:]
 	switch sub {
+	case "lessons":
+		return runRetrospectiveLessons(args)
 	case "analyze":
 		return runRetrospectiveAnalyze(args)
 	case "dispatch":
@@ -39,7 +41,7 @@ func runRetrospective(args []string) error {
 	case "drain":
 		return runRetrospectiveDrain(args)
 	default:
-		fmt.Fprintln(os.Stderr, "retrospective supports: analyze, dispatch, status, enable, disable, ingest, drain")
+		fmt.Fprintln(os.Stderr, "retrospective supports: analyze, dispatch, status, enable, disable, ingest, drain, lessons")
 		return fmt.Errorf("unknown retrospective command %q", sub)
 	}
 }
