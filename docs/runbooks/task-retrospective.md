@@ -283,6 +283,57 @@ Synthetic-key real-CLI lifecycle, concurrency, write-fault, restart and rejectio
 fixtures (not native/provider acceptance):
 `go test -count=1 -v ./cmd/agent-fabric -run '^TestLessonCLI$'`.
 
+### Optional native contextual recall / portable fallback
+
+For an already authorized, pinned OpenCode v2 installation only (see binding
+prerequisites above), point `AGF_LESSONS_CONTEXT` at operator-controlled absolute
+JSON outside task-controlled input. This is a per-session opt-in, not automatic
+task classification. Example (replace all placeholders with exact identities):
+
+```json
+{
+  "schema_version": 1,
+  "state_dir": "/absolute/private/retrospective",
+  "trust": "/absolute/operator/trust.json",
+  "sessions": {
+    "native-session-id": {
+      "project": "/absolute/project",
+      "scope": "catalog-task",
+      "version": "exact-source-revision",
+      "consumer": "executor"
+    }
+  },
+  "excluded_sessions": ["native-monitor-root-id"]
+}
+```
+
+Global `retrospective.enabled` and the existing scoped disable marker still gate
+delivery. Unset `AGF_LESSONS_CONTEXT` to disable only recall on next plugin setup;
+remove a session binding to disable that session immediately. No installation or
+shared runtime mutation is part of these instructions. Monitor roots must be
+listed explicitly; learning/corrector origin markers/store rows are also excluded,
+with complete native ancestor checks for descendants. Missing binding entry or
+memory leaves the normal task unchanged. Corrupt/invalid state produces a private
+diagnostic and no added context, preserving the bad bytes for recovery.
+The same explicitly configured binding also gates `lessons apply`: its store must
+match `--state-dir`; excluded roots/known descendants cannot create lesson deltas,
+even with valid signatures, no delivery receipt, no session query entry or delivery
+disabled. Invalid bindings reject admission rather than bypassing exclusions.
+Keep the operator binding available to ingestion as well as native delivery.
+
+The native request-local `context` hook adds at most three accepted lessons/8 KiB
+as nonhuman advisory data. Human prompt, original task/provenance and `load-task`
+JSON are unchanged. Digest-bound acknowledgement writes latest per-session
+`lesson-deliveries/<id>.json`: receipt proves hook append, not usefulness or model
+success. `npm test --prefix hooks/retrospective` runs real disposable Go CLI
+ingestion -> registered v2 hook consumption across two synthetic tasks plus
+exclusion/failure controls. No real native server/model or autonomous generation/
+review is exercised; a named target and separate live acceptance remain required.
+
+Other targets and correctors use `lessons read` above explicitly. Keep the returned
+advisory block separate from human task authority; this fallback never invokes a
+model and does not claim automatic capture, injection or delivery receipts.
+
 ## Recovery
 
 - **Read-only monitor presentation:** use the reviewed metadata helper and

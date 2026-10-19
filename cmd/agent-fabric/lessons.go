@@ -12,12 +12,16 @@ import (
 	"github.com/ericmaster/agent-fabric/internal/retrospective"
 )
 
-// runRetrospectiveLessons uses only explicit operator paths; no ambient config.
+// runRetrospectiveLessons uses explicit paths; a configured host context binding
+// also carries operator exclusion authority into admission (never proposal input).
 func runRetrospectiveLessons(args []string) error {
 	if len(args) == 0 {
-		return errors.New("lessons requires apply, read or status")
+		return errors.New("lessons requires apply, read, status or context")
 	}
 	sub := args[0]
+	if sub == "context" {
+		return runLessonContext(args[1:])
+	}
 	if sub != "apply" && sub != "read" && sub != "status" {
 		return errors.New("unknown lessons command")
 	}
@@ -73,7 +77,7 @@ func runRetrospectiveLessons(args []string) error {
 		if err != nil {
 			return err
 		}
-		result, err = store.ApplyLesson(envelope, &trust)
+		result, err = store.ApplyLesson(envelope, &trust, os.Getenv("AGF_LESSONS_CONTEXT"))
 	case "read":
 		var lessons []retrospective.Lesson
 		lessons, err = store.ReadLessons(&trust, project, scope, version, consumer, limit)
@@ -84,6 +88,37 @@ func runRetrospectiveLessons(args []string) error {
 	case "status":
 		result, err = store.LessonStatus(&trust)
 	}
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(result)
+}
+
+// runLessonContext keeps native delivery protocol out of load-task/human input.
+func runLessonContext(args []string) error {
+	fs := flag.NewFlagSet("lessons context", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var binding, ack string
+	fs.StringVar(&binding, "binding", "", "explicit operator context binding")
+	fs.StringVar(&ack, "ack", "", "digest of block appended by context hook")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return errors.New("unexpected context arguments")
+	}
+	body, err := io.ReadAll(io.LimitReader(os.Stdin, (64<<10)+1))
+	if err != nil {
+		return err
+	}
+	if len(body) > 64<<10 {
+		return errors.New("lesson context request too large")
+	}
+	var request retrospective.LessonContextRequest
+	if err := retrospective.DecodeLessonJSON(body, &request); err != nil {
+		return err
+	}
+	result, err := retrospective.ContextLessons(binding, request, ack)
 	if err != nil {
 		return err
 	}

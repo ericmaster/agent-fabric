@@ -22,6 +22,7 @@ import (
 // TestLessonCLI uses an actual disposable CLI, real file bytes and synthetic
 // signing identities. It is not evidence of native/model generation or review.
 func TestLessonCLI(t *testing.T) {
+	t.Setenv("AGF_LESSONS_CONTEXT", "")
 	root := t.TempDir()
 	bin := filepath.Join(root, "agf")
 	build := exec.Command("go", "build", "-o", bin, ".")
@@ -103,6 +104,211 @@ func TestLessonCLI(t *testing.T) {
 	if out := read("catalog-task", "v1", "executor"); !strings.Contains(out, `"advisory":true`) || !strings.Contains(out, `"revision":1`) {
 		t.Fatal(out)
 	}
+	t.Run("context-protocol-and-receipt", func(t *testing.T) {
+		settings := filepath.Join(root, "context-settings.json")
+		bindingPath := filepath.Join(root, "context-binding.json")
+		write(settings, map[string]any{"retrospective": map[string]bool{"enabled": true}})
+		binding := retrospective.LessonBinding{SchemaVersion: 1, StateDir: state, Trust: trustPath, Sessions: map[string]retrospective.LessonQuery{"task-b": {Project: project, Scope: "catalog-task", Version: "v1", Consumer: "executor"}}, ExcludedSessions: []string{"monitor"}}
+		write(bindingPath, binding)
+		request := retrospective.LessonContextRequest{SessionID: "task-b", Project: project, Sessions: map[string]*retrospective.SpoolSession{"task-b": {Directory: project}}}
+		context := func(wantOK bool, ack string) retrospective.LessonContext {
+			t.Helper()
+			args := []string{"retrospective", "lessons", "context", "--binding", bindingPath}
+			if ack != "" {
+				args = append(args, "--ack", ack)
+			}
+			cmd := exec.Command(bin, args...)
+			cmd.Env = append(os.Environ(), "AGF_CONFIG="+settings, "FASTINO_API_KEY=", "AGF_RETROSPECTIVE_CONFIG=/nonexistent/must-not-read")
+			body, _ := json.Marshal(request)
+			cmd.Stdin = strings.NewReader(string(body))
+			out, err := cmd.CombinedOutput()
+			t.Logf("COMMAND %q STDIN %s\nEXIT_OK=%t\n%s", cmd.Args, body, err == nil, out)
+			if (err == nil) != wantOK {
+				t.Fatalf("wanted OK=%t got %v %s", wantOK, err, out)
+			}
+			var result retrospective.LessonContext
+			if wantOK {
+				if err := json.Unmarshal(out, &result); err != nil {
+					t.Fatal(err)
+				}
+			}
+			return result
+		}
+		got := context(true, "")
+		if len(got.Lessons) != 1 || !strings.Contains(got.Block, "NONHUMAN ADVISORY ONLY") || got.SHA256 != hash([]byte(got.Block)) {
+			t.Fatal(got)
+		}
+		receiptPath := filepath.Join(state, "lesson-deliveries/task-b.json")
+		if _, err := os.Stat(receiptPath); !os.IsNotExist(err) {
+			t.Fatal("prepare wrote receipt")
+		}
+		context(false, strings.Repeat("0", 64))
+		if _, err := os.Stat(receiptPath); !os.IsNotExist(err) {
+			t.Fatal("wrong ack wrote receipt")
+		}
+		context(true, got.SHA256)
+		before, err := os.ReadFile(receiptPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		context(false, strings.Repeat("0", 64))
+		after, _ := os.ReadFile(receiptPath)
+		if string(before) != string(after) {
+			t.Fatal("failed ack changed receipt")
+		}
+		// Complete ancestry is mandatory, even for an excluded chain.
+		request.Sessions["task-b"].ParentID = "unknown"
+		context(false, "")
+		request.Sessions["unknown"] = &retrospective.SpoolSession{Directory: project, ParentID: "task-b"}
+		context(false, "")
+		delete(request.Sessions, "unknown")
+		request.Sessions["task-b"].ParentID = "monitor"
+		request.Sessions["monitor"] = &retrospective.SpoolSession{Directory: project}
+		if got := context(true, ""); got.Block != "" {
+			t.Fatal("monitor descendant received memory")
+		}
+		request.Sessions["task-b"].ParentID = ""
+		delete(request.Sessions, "monitor")
+		// Receipt is advisory-loop suppression, not evidence for fresh learning.
+		bad := candidate
+		bad.OriginSession = "task-b"
+		bad.LessonID = "recycled-experience"
+		if out := apply(bad, false); !strings.Contains(out, "injected experience origin is suppressed") {
+			t.Fatal(out)
+		}
+		if err := os.MkdirAll(filepath.Join(state, "spool"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		write(filepath.Join(state, "spool/task-child.json"), retrospective.Spool{Schema: 1, SessionID: "task-child", Sessions: map[string]*retrospective.SpoolSession{"task-child": {ParentID: "task-b"}, "task-b": {}}})
+		bad.OriginSession = "task-child"
+		if out := apply(bad, false); !strings.Contains(out, "injected experience origin is suppressed") {
+			t.Fatal(out)
+		}
+		t.Run("bounded-block", func(t *testing.T) {
+			snapshotPath := filepath.Join(state, "lessons.json")
+			original, err := os.ReadFile(snapshotPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if err := os.WriteFile(snapshotPath, original, 0600); err != nil {
+					t.Error(err)
+				}
+			}()
+			for _, id := range []string{"context-a", "context-b", "context-c", "context-d"} {
+				c := candidate
+				c.LessonID = id
+				c.Advice = "Distinct bounded advisory " + id
+				apply(c, true)
+			}
+			if got := context(true, ""); len(got.Lessons) != 3 || len(got.Block) > 8192 {
+				t.Fatal(got)
+			}
+			for _, id := range []string{"a-large", "b-large"} {
+				c := candidate
+				c.LessonID = id
+				c.Advice = strings.Repeat(id, 570)
+				apply(c, true)
+			}
+			if got := context(true, ""); len(got.Block) > 8192 || len(got.Lessons) != 1 {
+				t.Fatal(got)
+			}
+		})
+		t.Run("explicit-excluded-origin-admission", func(t *testing.T) {
+			// Real CLI/signatures/complete traces: exclusions must gate admission,
+			// not merely retrieval, without requiring a prior delivery or marker.
+			snapshotPath := filepath.Join(state, "lessons.json")
+			original, err := os.ReadFile(snapshotPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := os.WriteFile(snapshotPath, original, 0600); err != nil {
+					t.Error(err)
+				}
+			})
+			for _, tc := range []struct {
+				id, parent string
+				allowed    bool
+			}{
+				{"monitor", "", false}, {"monitor-child", "monitor", false}, {"ordinary-exclusion-control", "", true},
+			} {
+				t.Run(tc.id, func(t *testing.T) {
+					query := retrospective.LessonQuery{Project: project, Scope: "catalog-task", Version: "v1", Consumer: "executor"}
+					binding.Sessions[tc.id] = query
+					write(bindingPath, binding)
+					sessions := map[string]*retrospective.SpoolSession{tc.id: {Directory: project, ParentID: tc.parent}}
+					if tc.parent != "" {
+						sessions[tc.parent] = &retrospective.SpoolSession{Directory: project}
+					}
+					write(filepath.Join(state, "spool", tc.id+".json"), retrospective.Spool{Schema: 1, SessionID: tc.id, Sessions: sessions})
+					var trace map[string]any
+					if err := json.Unmarshal(evidence, &trace); err != nil {
+						t.Fatal(err)
+					}
+					identities := trace["identities"].(map[string]any)
+					identities["session_id"], identities["root_session_id"] = tc.id, tc.id
+					tracePath := filepath.Join(root, tc.id+"-trace.json")
+					write(tracePath, trace)
+					body, err := os.ReadFile(tracePath)
+					if err != nil {
+						t.Fatal(err)
+					}
+					c := candidate
+					c.OriginSession, c.LessonID = tc.id, tc.id+"-lesson"
+					c.Advice = "Read the declared catalog for " + tc.id + "."
+					c.Evidence = retrospective.LessonEvidence{Path: tracePath, SHA256: hash(body), RecordIDs: []string{"read"}}
+					proposalPath := filepath.Join(root, tc.id+"-proposal.json")
+					write(proposalPath, sign(c))
+					invoke := func(args []string, input any) ([]byte, error) {
+						cmd := exec.Command(bin, append([]string{"retrospective", "lessons"}, args...)...)
+						cmd.Env = append(os.Environ(), "AGF_CONFIG="+settings, "AGF_LESSONS_CONTEXT="+bindingPath, "FASTINO_API_KEY=", "AGF_RETROSPECTIVE_CONFIG=/nonexistent/must-not-read")
+						var stdin []byte
+						if input != nil {
+							stdin, _ = json.Marshal(input)
+							cmd.Stdin = strings.NewReader(string(stdin))
+						}
+						out, err := cmd.CombinedOutput()
+						t.Logf("COMMAND %q AGF_LESSONS_CONTEXT=%s STDIN %s\nEXIT_OK=%t\n%s", cmd.Args, bindingPath, stdin, err == nil, out)
+						return out, err
+					}
+					before, _ := os.ReadFile(snapshotPath)
+					out, err := invoke([]string{"apply", "--state-dir", state, "--trust", trustPath, "--input", proposalPath}, nil)
+					if tc.allowed {
+						if err != nil || !strings.Contains(string(out), `"status":"add"`) {
+							t.Fatalf("ordinary admission: %v %s", err, out)
+						}
+					} else {
+						if err == nil || !strings.Contains(string(out), "explicitly excluded lesson origin") {
+							t.Errorf("excluded signed origin admitted: %v %s", err, out)
+						}
+						after, _ := os.ReadFile(snapshotPath)
+						if string(before) != string(after) {
+							t.Error("excluded admission wrote a lesson delta")
+						}
+						out, err := invoke([]string{"context", "--binding", bindingPath}, retrospective.LessonContextRequest{SessionID: tc.id, Project: project, Sessions: sessions})
+						if err != nil || !strings.Contains(string(out), `"block":""`) {
+							t.Fatalf("excluded context: %v %s", err, out)
+						}
+						// Exclusion authority does not depend on a context call,
+						// query binding or enabled native delivery.
+						write(settings, map[string]any{"retrospective": map[string]bool{"enabled": false}})
+						delete(binding.Sessions, tc.id)
+						write(bindingPath, binding)
+						out, err = invoke([]string{"apply", "--state-dir", state, "--trust", trustPath, "--input", proposalPath}, nil)
+						if err == nil || !strings.Contains(string(out), "explicitly excluded lesson origin") {
+							t.Errorf("disabled/unbound excluded admission: %v %s", err, out)
+						}
+						after, _ = os.ReadFile(snapshotPath)
+						if string(before) != string(after) {
+							t.Error("disabled/unbound exclusion wrote a delta")
+						}
+						write(settings, map[string]any{"retrospective": map[string]bool{"enabled": true}})
+					}
+				})
+			}
+		})
+	})
 	for _, q := range [][3]string{{"other", "v1", "executor"}, {"catalog-task", "v2", "executor"}, {"catalog-task", "v1", "corrector"}} {
 		if out := read(q[0], q[1], q[2]); !strings.Contains(out, `"lessons":[]`) {
 			t.Fatal(out)

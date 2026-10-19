@@ -461,7 +461,7 @@ stay read-only and require explicit re-analysis, never blind redispatch.
 AGF owns a private, versioned `lessons.json` in the existing retrospective Store.
 This is a bounded proposal-ingestion seam, not a generator: GLiDE selection,
 runtime profiles, permissions, observation and dispatch remain unchanged.
-No legacy state is read. Adapter injection and contrastive enrichment are deferred.
+No legacy state is read. Contrastive enrichment remains deferred.
 
 `agf retrospective lessons apply --state-dir ABS --trust ABS --input ABS`
 accepts one strict JSON envelope: `candidate`, base64 `proposal_signature`, and
@@ -520,6 +520,58 @@ only active exact-applicability lessons, sorted by stable ID, at most 20 (defaul
 Both validate persisted signatures, evidence bytes and state structure; neither
 creates state, reads ambient config, invokes a provider, nor installs anything.
 Exit 1 denotes invalid inputs/state or a refused mutation; exit 0 returns JSON.
+
+#### Contextual delivery (phase 3)
+
+The native OpenCode v2 plugin optionally uses the verified `session.hook("context")`
+API, appending one nonhuman advisory SystemPart, never changing human prompts,
+durable transcript, model/options/permissions, or `load-task` JSON. Opt-in requires
+the existing global `retrospective.enabled` AND an explicit `AGF_LESSONS_CONTEXT`
+absolute binding file. Unset binding, disabled global/scoped switch, absent session
+binding, or empty memory leaves ordinary tasks unchanged. Other harnesses use the
+explicit `lessons read` command above: keep its output separate from human intent
+and task authority; no automatic integration is promised.
+
+Binding v1 is strict JSON: `schema_version:1`, `state_dir`, `trust` (absolute),
+`sessions` mapping exact native session IDs to `{project,scope,version,consumer}`,
+and `excluded_sessions` (array of monitor/learning root IDs). Native delivery is
+executor-only; corrector recall remains explicit. Operator controls binding and
+trust, not transcript text; no prompt parsing or inferred applicability. Monitor
+roots must be explicitly excluded; learning/corrector roots additionally retain
+the existing learning-origin marker/store suppression. Both apply to descendants.
+When `AGF_LESSONS_CONTEXT` is explicitly configured, `lessons apply` loads that
+same strict operator binding and requires its `state_dir` to match the admission
+store. The shared origin-admission check rejects excluded IDs and their known
+spool ancestors, including every evidence descendant, before any lesson delta
+(even an idempotent retry). This applies independently of delivery enablement,
+session query entries or prior context calls/receipts. Malformed, unreadable or
+wrong-store bindings fail closed; exclusions never come from proposal input.
+Without a configured binding, existing explicit offline admission is unchanged.
+
+`lessons context --binding ABS [--ack SHA256]` receives a strict bounded stdin
+object `{session_id,project,sessions}`; sessions maps the complete current native
+ancestry to `{parent_id,title,directory}`. Unknown/cyclic/overlong ancestry is an
+explicit error, not permission to retrieve. All directories must equal project.
+Store-origin rows, learning marker titles, excluded IDs, and scoped opt-out prevent
+delivery. All selection, suppression, formatting and receipt validation live in
+Go. Output is `{block,sha256,lessons}` with at most three `{id,revision}` references
+and an 8 KiB block, selected by the existing exact project/scope/version/consumer
+reader. It never calls a model. Missing state is empty; corrupt state/trust is a
+diagnostic, preserved byte-for-byte, not an empty success.
+
+The hook fetches current native ancestry (max 32), with bounded time/output for
+CLI calls, appends the block, then acknowledges its digest. Ack reselects against
+current state and refuses mismatches; a failure removes the appended part before
+returning and reports a private diagnostic without failing ordinary generation.
+Ack atomically writes one bounded latest `lesson-deliveries/<session>.json` receipt
+with session, exact applicability, IDs/revisions and block digest. The receipt means
+the hook appended context, not successful model consumption or causal benefit.
+It is not a native/provider acceptance claim. Context is request-local, so capture
+never sees it as human/synthetic provenance; existing synthetic-evidence rejection
+continues to prevent advisory input from originating independent lessons.
+Additionally, ingestion rejects origins with delivery receipts and their known
+descendants: conservative task-level abstention prevents recycling invisible
+request-local advice as fresh experience. Own-origin lessons are not delivered.
 
 ```
 agf retrospective analyze --input trace.json --output report.json [--config task-retrospective.config.json]

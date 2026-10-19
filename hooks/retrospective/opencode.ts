@@ -220,6 +220,36 @@ async function probeBinding(cli: string): Promise<{ compatible: boolean; childPI
   });
 }
 
+/** Bounded thin context protocol; selection/receipts belong to the Go core. */
+async function lessonContext(cli: string, binding: string, request: unknown, ack?: string): Promise<{ block: string; sha256: string }> {
+  return new Promise((resolve, reject) => {
+    let stdout = "", stderr = "", settled = false;
+    const child = spawn(cli, ["retrospective", "lessons", "context", "--binding", binding, ...(ack ? ["--ack", ack] : [])], { stdio: ["pipe", "pipe", "pipe"] });
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      if (error) { reject(error); return; }
+      try {
+        const result = JSON.parse(stdout);
+        if (typeof result.block !== "string" || Buffer.byteLength(result.block) > 8192 || typeof result.sha256 !== "string" || (result.block && createHash("sha256").update(result.block).digest("hex") !== result.sha256)) throw Error("invalid lesson context response");
+        resolve(result);
+      } catch { reject(Error("invalid lesson context response")); }
+    };
+    const timer = setTimeout(() => { child.kill("SIGKILL"); finish(Error("lesson context timeout")); }, HEALTH_TIMEOUT_MS);
+    const collect = (kind: "stdout" | "stderr", chunk: Buffer) => {
+      if (settled) return;
+      if (kind === "stdout") stdout += chunk.toString(); else stderr += chunk.toString();
+      if (Buffer.byteLength(stdout) + Buffer.byteLength(stderr) > 32 * 1024) { child.kill("SIGKILL"); finish(Error("lesson context output bound")); }
+    };
+    child.stdout.on("data", (chunk) => collect("stdout", chunk));
+    child.stderr.on("data", (chunk) => collect("stderr", chunk));
+    child.on("error", () => finish(Error("lesson context spawn failed")));
+    child.on("close", (code) => finish(code === 0 ? undefined : Error(stderr || "lesson context command failed")));
+    child.stdin.on("error", () => finish(Error("lesson context stdin failed")));
+    child.stdin.end(JSON.stringify(request));
+  });
+}
+
 /** spawnIngest pipes the envelope through stdin; argv stays static. */
 const spawnIngest: RunIngest = (envelope, cli, metadata) =>
   new Promise<number>((resolve) => {
@@ -683,6 +713,41 @@ export default {
 	  try { adapter.observe(event.sessionID, { kind: "source", session_id: event.sessionID, path: file, sha256: createHash("sha256").update(readFileSync(file)).digest("hex") }); }
 	  catch { adapter.observe(event.sessionID, { kind: "source_gap", session_id: event.sessionID, path: file, detail: "native at-use read provenance unavailable" }); }
 	});
+    // Request-local context is not a durable human/synthetic message. Never
+    // derive applicability from prompt prose or edit native model/options.
+    const contextBinding = process.env.AGF_LESSONS_CONTEXT;
+    const recall = contextBinding ? await ctx.session.hook("context", async (event) => {
+      if (disposed || bindingRefused || !adapter.isStaging()) return;
+      let appended: { type: "text"; text: string } | undefined;
+      try {
+        if (bindingFingerprint(cli) !== fingerprint) { bindingRefused = true; throw Error("explicit lesson CLI binding changed"); }
+        if (!Array.isArray(event.system)) throw Error("native context system capability unavailable");
+        const sessions: Record<string, { parent_id?: string; title: string; directory: string }> = {};
+        let current: string | undefined = event.sessionID;
+        const deadline = Date.now() + HEALTH_TIMEOUT_MS;
+        while (current) {
+          if (Object.keys(sessions).length >= 32 || sessions[current] || Date.now() >= deadline) throw Error("lesson context ancestry bound");
+          const row = await ctx.session.get({ sessionID: current as typeof event.sessionID }, { signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())) });
+          if (row.id !== current) throw Error("lesson context native identity mismatch");
+          sessions[current] = { parent_id: row.parentID, title: row.title ?? "", directory: row.location.directory };
+          current = row.parentID;
+        }
+        const request = { session_id: event.sessionID, project: ctx.location.directory, sessions };
+        const result = await lessonContext(cli, contextBinding, request);
+        if (!result.block) return;
+        appended = { type: "text", text: result.block };
+        event.system.push(appended);
+        if (bindingFingerprint(cli) !== fingerprint) { bindingRefused = true; throw Error("explicit lesson CLI binding changed before acknowledgement"); }
+        const receipt = await lessonContext(cli, contextBinding, request, result.sha256);
+        if (receipt.sha256 !== result.sha256) throw Error("lesson context acknowledgement unavailable");
+      } catch (error) {
+        if (appended) { const index = event.system.indexOf(appended); if (index >= 0) event.system.splice(index, 1); }
+        reportIngestFailure(1, error instanceof Error ? error.message : "lesson context failed", "Advisory delivery refused; ordinary generation continues unchanged. Existing state preserved; no prompt or environment retained.");
+      }
+    }).catch(() => {
+      reportIngestFailure(1, "native context hook unavailable", "Advisory registration refused; existing observation and ordinary tasks continue. Use explicit portable lessons read fallback.");
+      return undefined;
+    }) : undefined;
     const abort = new AbortController();
     const tools = new Map<string, { name?: string; input?: string }>();
     const consume = (async () => {
@@ -699,7 +764,7 @@ export default {
         }
       }
     })().catch(() => { if (!abort.signal.aborted) console.error("AGF retrospective: native event subscription failed; collection incomplete"); });
-    return async () => { abort.abort(); await intake.dispose(); await provenance.dispose(); await consume; disposed = true; };
+    return async () => { abort.abort(); await intake.dispose(); await provenance.dispose(); await recall?.dispose(); await consume; disposed = true; };
   },
 };
 

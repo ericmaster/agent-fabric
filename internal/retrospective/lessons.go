@@ -356,7 +356,7 @@ func lessonSameScope(a, b LessonCandidate) bool {
 }
 
 // lessonOriginAllowed reuses capture suppression, retaining errors as blockers.
-func (s *Store) lessonOriginAllowed(id string) error {
+func (s *Store) lessonOriginAllowed(id string, excluded map[string]bool) error {
 	spool, err := loadSpool(s, id)
 	if err != nil {
 		return err
@@ -370,6 +370,18 @@ func (s *Store) lessonOriginAllowed(id string) error {
 			return errors.New("unverifiable lesson origin ancestry")
 		}
 		seen[parent] = true
+		if excluded[parent] {
+			return errors.New("explicitly excluded lesson origin is suppressed")
+		}
+		// Request-local advisory text is not a transcript event. Its durable
+		// exposure receipt prevents it (and descendants) becoming fresh learning.
+		_, deliveryErr := os.Lstat(filepath.Join(s.Dir, "lesson-deliveries", parent+".json"))
+		if deliveryErr == nil {
+			return errors.New("injected experience origin is suppressed")
+		}
+		if !errors.Is(deliveryErr, os.ErrNotExist) {
+			return deliveryErr
+		}
 		_, err := os.Lstat(filepath.Join(s.Dir, "origins", parent))
 		if err == nil {
 			return errors.New("learning origin is suppressed")
@@ -467,9 +479,23 @@ func (s *Store) loadLessons(trust *LessonTrust) (*lessonSnapshot, map[string]Les
 }
 
 // ApplyLesson validates an explicit bounded proposal; it never generates content.
-func (s *Store) ApplyLesson(envelope LessonEnvelope, trust *LessonTrust) (*LessonResult, error) {
+func (s *Store) ApplyLesson(envelope LessonEnvelope, trust *LessonTrust, bindingPath string) (*LessonResult, error) {
 	if err := ValidateLessonDirectory(s.Dir); err != nil {
 		return nil, err
+	}
+	var excluded map[string]bool
+	if bindingPath != "" {
+		binding, err := readLessonBinding(bindingPath)
+		if err != nil {
+			return nil, err
+		}
+		if binding.StateDir != s.Dir {
+			return nil, errors.New("lesson admission binding state mismatch")
+		}
+		excluded = map[string]bool{}
+		for _, id := range binding.ExcludedSessions {
+			excluded[id] = true
+		}
 	}
 	unlock, err := s.LockAt("lessons.lock")
 	if err != nil {
@@ -484,7 +510,7 @@ func (s *Store) ApplyLesson(envelope LessonEnvelope, trust *LessonTrust) (*Lesso
 	if !journalID(c.OriginSession) {
 		return nil, errors.New("invalid lesson origin")
 	}
-	if err := s.lessonOriginAllowed(c.OriginSession); err != nil {
+	if err := s.lessonOriginAllowed(c.OriginSession, excluded); err != nil {
 		return nil, err
 	}
 	// Same committed delta is restart-idempotent even after disposable inputs vanish.
@@ -513,7 +539,7 @@ func (s *Store) ApplyLesson(envelope LessonEnvelope, trust *LessonTrust) (*Lesso
 	}
 	var checkOrigins func(*Trace) error
 	checkOrigins = func(t *Trace) error {
-		if err := s.lessonOriginAllowed(t.Identities.SessionID); err != nil {
+		if err := s.lessonOriginAllowed(t.Identities.SessionID, excluded); err != nil {
 			return err
 		}
 		for _, child := range t.Descendants {
