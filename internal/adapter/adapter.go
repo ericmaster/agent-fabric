@@ -57,6 +57,8 @@ func Render(target string, d agent.Definition, m Mapping, project bool) (string,
 			prefix = ".claude"
 		case "codex":
 			prefix = ".codex"
+		case "pi":
+			prefix = ".pi"
 		}
 	}
 	switch target {
@@ -71,9 +73,36 @@ func Render(target string, d agent.Definition, m Mapping, project bool) (string,
 	case "codex":
 		body, err := toml(d, p)
 		return body, filepath.Join(prefix, "agents", d.ID+".toml"), warn, err
+	case "pi":
+		warn = append(warn, "requires Pi's subagent example extension; permissions, visibility and isolation are not native security boundaries")
+		return piMarkdown(d, p), filepath.Join(prefix, "agents", d.ID+".md"), warn, nil
 	default:
 		return "", "", nil, fmt.Errorf("unsupported adapter %q", target)
 	}
+}
+
+// piMarkdown targets Pi's official subagent example, not OpenCode frontmatter.
+// Spec: docs/specs/agent-fabric.md — Pi
+func piMarkdown(d agent.Definition, p Profile) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "---\nname: %q\ndescription: %q\n", d.ID, d.Description)
+	if p.Model != "inherit" {
+		model := p.Model
+		if p.Effort != "" {
+			model += ":" + p.Effort
+		}
+		fmt.Fprintf(&b, "model: %q\n", model)
+	}
+	// Restricted roles get a builtin read-only allowlist. This is not an OS sandbox.
+	tools := "read, grep, find, ls, bash, edit, write, subagent"
+	if permissions(d, p)["edit"] == "deny" {
+		tools = "read, grep, find, ls"
+	}
+	fmt.Fprintf(&b, "tools: %s\n---\n%s", tools, d.Body)
+	if !strings.HasSuffix(d.Body, "\n") {
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 func markdown(d agent.Definition, p Profile, includeTools bool) string {

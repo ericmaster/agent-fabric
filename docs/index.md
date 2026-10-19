@@ -39,4 +39,5 @@ document's home is ambiguous, and apply the frontmatter from §4.
 
 ## Runbooks
 
+- [`runbooks/pi.md`](runbooks/pi.md) — Pi subagent runtime, Fabric agents/hooks, and PiChamber setup.
 - [`runbooks/task-retrospective.md`](runbooks/task-retrospective.md) — Opt-in OpenCode observation loop: setup, disable, status, recovery.

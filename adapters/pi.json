@@ -1,0 +1,13 @@
+{
+  "target": "pi",
+  "profiles": {
+    "readonly": { "model": "inherit", "permissions": { "edit": "deny" } },
+    "worker": { "model": "inherit" },
+    "reviewer": { "model": "inherit", "permissions": { "edit": "deny" } },
+    "supervisor": { "model": "inherit" },
+    "planner": { "model": "inherit" },
+    "qa": { "model": "inherit" },
+    "recursive": { "model": "inherit" },
+    "solver": { "model": "inherit", "permissions": { "edit": "deny" } }
+  }
+}

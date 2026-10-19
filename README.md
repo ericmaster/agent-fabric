@@ -1,7 +1,7 @@
 # Agent Fabric
 
-Agent Fabric installs eleven portable agents into OpenCode, Kilo, Antigravity CLI,
-Codex, and Claude Code. It copies generated files and records ownership in a
+Agent Fabric installs twelve portable agents into OpenCode, Kilo, Antigravity CLI,
+Codex, Claude Code, and Pi. It copies generated files and records ownership in a
 manifest so upgrades do not overwrite user edits.
 
 ## Requirements
@@ -62,6 +62,9 @@ Global installation is the default. Use `--project` for files inside a specific
 repository. Generated paths are the native agent directories for each target.
 For Antigravity CLI, these are `~/.gemini/config/agents/<agent-id>/agent.md`
 globally and `.agents/agents/<agent-id>/agent.md` per project.
+
+Pi requires its optional subagent extension; follow [Pi setup](docs/runbooks/pi.md)
+before installing with `--tools pi`.
 
 ```sh
 agf install --all --tools opencode,kilo --yes

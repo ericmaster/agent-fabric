@@ -25,7 +25,7 @@ import (
 	"github.com/ericmaster/agent-fabric/internal/manifest"
 )
 
-var targets = []string{"opencode", "kilo", "agy", "codex", "claude"}
+var targets = []string{"opencode", "kilo", "agy", "codex", "claude", "pi"}
 var version = "dev"
 
 const (
@@ -642,6 +642,11 @@ func targetBase(o options, target string) (string, error) {
 		return filepath.Join(home, ".codex"), nil
 	case "claude":
 		return filepath.Join(home, ".claude"), nil
+	case "pi":
+		if dir := os.Getenv("PI_CODING_AGENT_DIR"); dir != "" {
+			return filepath.Abs(dir)
+		}
+		return filepath.Join(home, ".pi", "agent"), nil
 	}
 	return "", fmt.Errorf("unknown target %s", target)
 }
@@ -964,6 +969,8 @@ func expectedManagedPath(o options, file manifest.File) (string, error) {
 			prefix = ".claude"
 		case "codex":
 			prefix = ".codex"
+		case "pi":
+			prefix = ".pi"
 		}
 	}
 	path := filepath.Join(prefix, "agents", file.Agent+".md")

@@ -1,7 +1,7 @@
 # Agent Fabric — Agent Guide
 
 Agent Fabric provides portable, provider-neutral agent definitions and adapters that compile
-canonical workflows into native configurations for OpenCode, Kilo, Antigravity CLI, Codex, and Claude Code.
+canonical workflows into native configurations for OpenCode, Kilo, Antigravity CLI, Codex, Claude Code, and Pi.
 
 > [!IMPORTANT]
 > **AGENTS.md CRITICAL RULES:**
@@ -53,6 +53,7 @@ go build -o agent-fabric ./cmd/agent-fabric
 - **Canonical Definitions as SSOT:** Canonical agent workflows live exclusively in `agents/<id>.md` and contain full portable behavior, permissions, and declarative hook placeholders. Spec: `docs/specs/agent-fabric.md`.
 - **Self-Locating Delegation:** Fresh-context handoffs use the fail-closed Delegation Packet contract defined normatively in `docs/specs/agent-fabric.md`; hooks only enrich or validate it.
 - **Harness-Isolated Rendering:** Adapters (`adapters/<target>.json` + `internal/adapter/`) map abstract profiles (`planner`, `worker`, `reviewer`, `supervisor`) to harness-specific models and tool syntax without contaminating canonical bodies.
+- **Pi:** Optional upstream subagent extension, inherited active model, body-resolved hooks; no native sandbox/continuation or retrospective capture. Setup: `docs/runbooks/pi.md`.
 - **OpenCode 2:** Native ordered permissions (`bash`→`shell`, `task`→`subagent`), `model#variant`, `hidden`; portable hooks render as explicit body commands, not plugin frontmatter. Compatibility/rollout: `docs/runbooks/opencode2-supervision.md`.
 - **Deterministic Hook Resolution:** Install and sync resolve portable hooks (`load-task`, `pre-plan`, `classify`, `label`, `decompose`, `post-plan`, `record-ledger`, `pre-deploy`, `post-deploy`) once from `~/.agent-hooks/`.
 - **Atomic Manifest Ownership:** Project and global installs maintain `.agent-fabric-manifest.json`. Modified user files are preserved during sync unless `--force` is specified.
