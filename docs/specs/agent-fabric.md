@@ -64,6 +64,26 @@ the native `name` field. When an adapter destination changes, installation remov
 only the previous manifest-owned file whose hash is unchanged, preserving modified
 or non-regular prior files as unmanaged artifacts.
 
+### Pi
+
+`--tools pi` renders Markdown for Pi's official optional `subagent` example
+extension: global `${PI_CODING_AGENT_DIR:-~/.pi/agent}/agents/<id>.md`, project
+`<project>/.pi/agents/<id>.md`. Install/sync/doctor/uninstall use the same manifest
+ownership checks as other adapters. The extension itself is host-installed, not
+vendored or silently fetched by Fabric; see [Pi setup](../runbooks/pi.md).
+Only `name`, `description`, `model`, and comma-separated `tools` are emitted.
+Bundled profiles use the explicit mapping sentinel `model: inherit`, omitting the
+native model field so the child inherits the active parent model and thinking.
+An explicit profile model override uses Pi's `provider/model:effort` syntax.
+Resolved portable hook commands remain in the body, not fictitious native hook
+registrations. Roles denying edit get `read,grep,find,ls`; other roles also get
+`bash,edit,write,subagent`. Read-only roles cannot run shell hooks themselves;
+the dispatcher must supply required hook evidence or report the capability gap.
+Pi tools do not enforce filesystem isolation, resource permissions, or visibility;
+rendering records this limitation and the extension dependency as an omission,
+so `--strict` refuses installation rather than claiming sandbox equivalence.
+Retrospective capture remains OpenCode-only.
+
 Hub sources must be local directories, local `.tar.gz` archives, or HTTPS. GitHub
 repository/tree/tag URLs are converted to archive URLs; HTTPS Git URLs are
 shallow-cloned with prompts disabled. Archive downloads have redirect,
