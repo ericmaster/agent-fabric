@@ -1393,6 +1393,17 @@ send a bounded evidence preview plus the authoritative locator. A preview never
 replaces required causal reads. Serialized native prompts over the configured
 request byte cap are refused before HTTP delivery, including oversized candidates.
 
+Native review and lesson-generation host packets carry the top-level versioned
+`review_protocol:agf.native-digest-review.v1`. Only that exact host field selects
+the canonical code-reviewer's `{approved,candidate_sha256,reason}` output contract;
+markers in candidate/report prose have no authority. Without it, the general
+reviewer's existing verdict/contract/static-analysis/findings JSON remains unchanged.
+Serialization changes no quality, evidence, independence, protected-scope or gap
+check. Missing VCS/input/digest evidence yields `approved:false` with grounded
+blockers; approval must bind the exact supplied digest and never certifies unrun
+checks. Host typed decoding, actual role/model/completion and digest gates remain
+unchanged for instruction repair and lesson admission.
+
 Episode identity hashes session, opening input identities and observed idle ID
 (staged sequence only when no idle ID exists). The job's `episode_digests` deduplicates unchanged processed input,
 without advancing `accepted_after_seq` or inventing task success. An incomplete
@@ -1414,6 +1425,23 @@ This path never calls a repair sink. Implementation of executable/hook fixes use
 ordinary scoped change authority. Missing capabilities retain `queued`; ambiguous
 attempts retain `pending` without automatic root retries. Learning-origin binding
 suppresses capture of diagnosis/review roots and descendants, preventing recursion.
+
+Before dispatch, the host observes the diagnosed implementation root's current
+Git HEAD using owned, bounded, symlink-refusing local metadata reads. Exact roots
+with loose/detached HEAD and owned worktree gitdir/commondir are supported; packed-only
+refs, missing metadata or unavailable ownership checks abstain. No Git process,
+config, ancestor search or caller-supplied version is used. The report's
+`Trace.Identities.SourceRevision` and packet `source_revision_role` identify this
+diagnosed implementation observation, **not** the failed task's original version,
+clean-tree state or task success. With configured dispatch but no observed revision,
+the incident stays pending with a VCS blocker and creates no native roots.
+
+The pipeline packet scopes review to advisory diagnosis and the proposed regression
+check, never instruction-repair acceptance. Missing old-instruction replacement/hash
+or original-task acceptance is not a gap for this no-repair scope; missing diagnosed
+revision or required diagnostic evidence still blocks. Generic reviewer JSON cannot
+be treated as typed acceptance, and a wrong candidate digest cannot become suggested
+advice. Focused checks: `TestNativeDigestReviewRoleAndPackets` and `TestPipelineProtocol`.
 
 ### Drain jobs and lifecycle
 

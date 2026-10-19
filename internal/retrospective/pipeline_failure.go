@@ -7,9 +7,118 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 )
+
+// pipelineSourceRevision observes only the declared implementation root's current
+// loose/detached HEAD. It is not original-task provenance or a clean-tree claim.
+// Reuse bounded, symlink-refusing local reads; no Git process/config or discovery.
+// Unsupported ownership metadata/layouts (including packed-only refs) abstain.
+func pipelineSourceRevision(root string) string {
+	owned := func(path string) bool {
+		info, err := os.Lstat(path)
+		if err != nil || info.Mode()&os.ModeSymlink != 0 || os.Geteuid() < 0 {
+			return false
+		}
+		// FileInfo.Sys is platform-specific. Reflect only the UID; platforms
+		// without an observable UID fail closed rather than pretending ownership.
+		value := reflect.ValueOf(info.Sys())
+		if value.Kind() == reflect.Pointer {
+			value = value.Elem()
+		}
+		if value.Kind() != reflect.Struct {
+			return false
+		}
+		uid := value.FieldByName("Uid")
+		return uid.IsValid() && uid.CanUint() && uid.Uint() == uint64(os.Geteuid())
+	}
+	read := func(path string) (string, error) {
+		if !owned(path) {
+			return "", ErrUnsafe
+		}
+		before, err := os.Lstat(path)
+		if err != nil {
+			return "", err
+		}
+		body, err := ReadLessonFile(path, 4096)
+		if err != nil {
+			return "", err
+		}
+		after, err := os.Lstat(path)
+		if err != nil || !owned(path) || !os.SameFile(before, after) || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
+			return "", ErrUnsafe
+		}
+		return strings.TrimSpace(string(body)), nil
+	}
+	if checkCanonicalRoot(root) != nil || !owned(root) {
+		return ""
+	}
+	real, err := filepath.EvalSymlinks(root)
+	if err != nil || real != root {
+		return ""
+	}
+	git := filepath.Join(root, ".git")
+	info, err := os.Lstat(git)
+	if err != nil || !owned(git) {
+		return ""
+	}
+	if !info.IsDir() {
+		pointer, err := read(git)
+		if err != nil || !strings.HasPrefix(pointer, "gitdir: ") || strings.ContainsAny(pointer, "\r\n") {
+			return ""
+		}
+		git = strings.TrimPrefix(pointer, "gitdir: ")
+		if !filepath.IsAbs(git) {
+			git = filepath.Join(root, git)
+		}
+		git = filepath.Clean(git)
+	}
+	if !owned(git) {
+		return ""
+	}
+	head, err := read(filepath.Join(git, "HEAD"))
+	if err != nil {
+		return ""
+	}
+	revision := head
+	if strings.HasPrefix(head, "ref: ") {
+		ref := strings.TrimPrefix(head, "ref: ")
+		if !strings.HasPrefix(ref, "refs/heads/") || filepath.Clean(ref) != ref || strings.Trim(ref, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./-") != "" {
+			return ""
+		}
+		common := git
+		if _, err := os.Lstat(filepath.Join(git, "commondir")); err == nil {
+			pointer, err := read(filepath.Join(git, "commondir"))
+			if err != nil || pointer == "" || strings.ContainsAny(pointer, "\r\n") {
+				return ""
+			}
+			common = pointer
+			if !filepath.IsAbs(common) {
+				common = filepath.Join(git, common)
+			}
+			common = filepath.Clean(common)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return ""
+		}
+		if !owned(common) {
+			return ""
+		}
+		revision, err = read(filepath.Join(common, ref))
+		if err != nil {
+			return ""
+		}
+	}
+	if !validObservedRevision(revision) {
+		return ""
+	}
+	confirmed, err := read(filepath.Join(git, "HEAD"))
+	if err != nil || confirmed != head {
+		return ""
+	}
+	return revision
+}
 
 // recordPipelineFailure reuses the durable incident/native review path, not the
 // incomplete original task's eligibility. Its ONLY outcome is reviewed advice;
@@ -42,8 +151,12 @@ func recordPipelineFailure(ctx context.Context, opts DrainOptions, store *Store,
 	}
 	stamp := time.Now().UTC().Format(time.RFC3339)
 	marker := learningOrigin(id)
+	revision := ""
+	if opts.Config != nil && withinAny(opts.Config.CanonicalRoots, opts.SourceRoot) {
+		revision = pipelineSourceRevision(opts.SourceRoot)
+	}
 	report := &Report{SignalReport: SignalReport{SchemaVersion: ReportSchemaVersion, Mode: "pipeline_failure",
-		Trace:    ReportTrace{Identities: Identities{TaskID: id, ExecutionRoot: opts.SourceRoot}, InputSHA256: sha256hex(identity)},
+		Trace:    ReportTrace{Identities: Identities{TaskID: id, ExecutionRoot: opts.SourceRoot, SourceRevision: revision}, InputSHA256: sha256hex(identity)},
 		Evidence: []evidenceRecord{{ID: "pipeline-diagnostic", Kind: RecordSyntheticContext, SourceKind: "agf.pipeline_failure", Text: "Original report locator: " + job.ReportPath + "\nObserved job locator: " + jobsPath(store, job.SessionID)}}},
 		Status: ReportStatusIncomplete, IncompleteReasons: []string{code}, GeneratedAt: stamp}
 	path := filepath.Join(store.Dir, "reports", id+".json")
@@ -62,6 +175,11 @@ func recordPipelineFailure(ctx context.Context, opts DrainOptions, store *Store,
 	// hooks/executables. Missing explicit capability leaves a visible queue.
 	if cfg == nil || cfg.DispatchServer == "" || cfg.DispatchModel == "" || !filepath.IsAbs(opts.SourceRoot) || !withinAny(cfg.CanonicalRoots, opts.SourceRoot) {
 		return nil
+	}
+	if revision == "" {
+		receipt.Status, receipt.Error = StatusPending, "diagnosed implementation Git HEAD unavailable; pipeline review blocked, no invented original-task version"
+		_, err = save(store, receipt)
+		return err
 	}
 	enabled, err := Enabled(opts.ConfigPath)
 	if err != nil || !enabled {
@@ -92,7 +210,7 @@ func recordPipelineFailure(ctx context.Context, opts DrainOptions, store *Store,
 	receipt.CorrectorResult = text
 	body, _ := json.Marshal(proposal)
 	digest := sha256hex(body)
-	verdict, err := nativeStage(stageCtx, dispatch, store, receipt, report, marker, cfg.Reviewer, "review", nativePacket(dispatch, receipt, report, "Independently verify the pipeline diagnosis and proposed regression check. No edits, repair authority or invented coverage. Return only {\"approved\":true|false,\"candidate_sha256\":\"supplied digest\",\"reason\":\"evidence-backed verdict\"}.", proposal, digest), client)
+	verdict, err := nativeStage(stageCtx, dispatch, store, receipt, report, marker, cfg.Reviewer, "review", nativePacket(dispatch, receipt, report, "Independently verify only the advisory pipeline diagnosis and proposed regression check against the diagnosed implementation revision. This is not instruction-repair acceptance or original-task success; no old-instruction replacement or causal recovery is proposed. No edits, repair authority or invented executed coverage. Return only {\"approved\":true|false,\"candidate_sha256\":\"supplied digest\",\"reason\":\"evidence-backed verdict\"}.", proposal, digest), client)
 	verdict = redactor.Text(verdict)
 	var review nativeDecision
 	if err != nil || nativeDecode(verdict, &review) != nil || !review.Approved || review.CandidateSHA != digest || review.Reason == "" {

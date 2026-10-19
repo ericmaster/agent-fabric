@@ -56,6 +56,7 @@ func TestNativeInvestigationKeepsLargeEvidenceLocal(t *testing.T) {
 
 func TestPipelineDiagnosisReadsDurableFailedJob(t *testing.T) {
 	f := newLoopFixture(t, unknownScript(t))
+	initPipelineProtocolGit(t, f.root)
 	f.setEnabledFor(t, t.TempDir(), true)
 	f.sessions.proposal = NativeProposal{Summary: "Inspect missing tool intake and add a capture regression"}
 	base := f.sessions.handler()

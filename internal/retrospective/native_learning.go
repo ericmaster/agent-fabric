@@ -39,6 +39,10 @@ type nativeDecision struct {
 	Reason       string `json:"reason"`
 }
 
+// Only a host packet's top-level marker selects the canonical reviewer's native
+// output contract. Candidate/report prose cannot select or modify the protocol.
+const nativeDigestReviewProtocol = "agf.native-digest-review.v1"
+
 // nativeDecode permits only one typed JSON final; prose/extra fields abstain.
 // Spec: docs/specs/task-retrospective.md via finishNativeLearning
 func nativeDecode(text string, dst any) error {
@@ -151,7 +155,9 @@ func nativeFinal(ctx context.Context, client *HTTPSessionClient, id, agent, mode
 // Spec: docs/specs/task-retrospective.md via finishNativeLearning
 func nativePacket(opts DispatchOptions, receipt *Receipt, report *Report, objective string, candidate any, digest string) string {
 	packet := map[string]any{
-		"execution_root": receipt.Directory, "workspace": "read-only investigation; Go owns isolated hash-checked text application", "source_revision": firstNonEmpty(report.Trace.Identities.SourceRevision, "unversioned declared source"), "working_tree": "preserve unrelated work; verify candidate source hash before proposing",
+		"review_protocol": nativeDigestReviewProtocol,
+		"execution_root":  receipt.Directory, "workspace": "read-only investigation; Go owns isolated hash-checked text application", "source_revision": report.Trace.Identities.SourceRevision, "working_tree": "preserve unrelated work; verify candidate source hash before proposing",
+		"scope":     "canonical instruction proposal or no-edit advisory; no direct write authority",
 		"objective": objective, "non_goals": []string{"no direct edits", "no application/executable/helper/policy/credential edits", "no commit/deploy", "no original-task acceptance mutation"},
 		"authoritative_report_locator": receipt.ReportLocator, "report_sha256": receipt.ReportSHA256, "report": report, "candidate": candidate, "candidate_sha256": digest,
 		"permitted_source_roots": opts.Config.CanonicalRoots, "evidence_path": opts.Config.StateDir, "required_checks": "read causal task evidence and owning canonical instruction; verify source version, failed behavior and recovery; mere reads are not causation; report conflicts/advisories without fabrication",
@@ -162,6 +168,13 @@ func nativePacket(opts DispatchOptions, receipt *Receipt, report *Report, object
 		"hash_verification":           "Go computes candidate SHA and gates source SHA/canonical ownership immediately before apply. Compare observed source/excerpt and causal evidence using allowed read tools; do not attempt forbidden hash computation. Supplied digest binds the typed candidate, not a claim you computed it yourself.",
 		"rollback":                    "Go restores only its own recorded repair if current hash equals its postimage; no user-file overwrite",
 		"unresolved_locator_behavior": "return an advisory summary with no findings; never invent evidence or search ambient roots",
+	}
+	if report.Mode == "pipeline_failure" {
+		packet["scope"] = "advisory pipeline diagnosis and proposed regression check only; not instruction-repair acceptance or original-task success"
+		packet["source_revision_role"] = "diagnosed implementation Git HEAD observed by host; not original-task source version or clean-tree attestation"
+		packet["workspace"] = "read-only maintenance diagnosis; no source application or repair sink"
+		packet["required_checks"] = "verify the local pipeline diagnostic, affected implementation paths and plausibility of the proposed regression check; distinguish proposed checks from executed results; no original-task causal attribution or canonical-instruction repair is being requested"
+		packet["definition_of_done"] = "independently reviewed advisory diagnosis only; no edits, original-task acceptance, claimed executed regression coverage or instruction-repair acceptance"
 	}
 	encoded, _ := json.Marshal(packet)
 	if len(encoded)+256 > opts.Config.RequestLimitBytes {

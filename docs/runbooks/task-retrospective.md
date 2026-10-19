@@ -292,6 +292,17 @@ needed. Enablement and scoped opt-out still apply. Supply an unsigned noop
 identity/evidence template, not a proposed lesson or signed envelope; schema and
 contrast rules: spec, **Native lesson generation and contrasts**.
 
+Native review packets select `agf.native-digest-review.v1` in a host-authored
+top-level `review_protocol` field. A generic reviewer `BLOCKED` report is not a
+typed native verdict: inspect packet/installed canonical-role compatibility, not
+the digest gate. Missing VCS evidence remains a real blocker. Pipeline maintenance
+uses an observed HEAD of the configured implementation root (loose/detached or
+owned worktree layout), not the original failed task's version; unsupported Git
+metadata leaves a pending incident without dispatch. Its approval covers only
+diagnosis/proposed checks, never repair or executed coverage. Preserve existing
+receipts; role/schema fixes do not authorize blind root retries. Contract: spec
+**Retrospective failure feedback**. Regression: `go test ./internal/retrospective -run 'TestNativeDigestReviewRoleAndPackets|TestPipelineProtocol|TestPipelineFailure'`.
+
 ```bash
 agf retrospective lessons generate --config /absolute/operator/retrospective.json --trust /absolute/operator/trust.json --input /absolute/evidence/identity-template.json
 ```

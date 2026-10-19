@@ -50,6 +50,7 @@ for (const nativeVersion of ["2.0.24", "2.0.27", "2.0.30", "2.0.31"]) test(`nati
           const sessionID = `ses_bracket_${mode}`;
           const user = `user_${mode}`;
           if (mode === "packedrevision") { if (nativeVersion === "2.0.27") git("switch", "-q", "bracket-fixture"); git("pack-refs", "--all"); }
+          if (mode === "revisionchange") git("switch", "--detach", "--quiet", revision);
           history[mode] = [{ id: user, type: "user", time: { created: 1 }, text: "Read the unchanged catalog at valid offsets; retain observed failures." }];
           await intake({ sessionID, messageID: user, prompt: { text: history[mode][0].text } });
           for (let i = 0; i < 4; i++) {
@@ -81,6 +82,10 @@ for (const nativeVersion of ["2.0.24", "2.0.27", "2.0.30", "2.0.31"]) test(`nati
     await cleanup();
     const envelopes = envelopesOf(harness);
     const brackets = envelopes.flatMap(e => e.records).filter(r => r.kind === "read_bracket");
+    assert.ok(envelopes.flatMap(e => e.records).some(r => r.kind === "source_revision" && r.session_id === "ses_bracket_revisionchange" && r.revision === revision), "revision-change case must start with an independently observed revision, not inherit packed-ref abstention");
+    const revisionChange = brackets.find(r => r.session_id === "ses_bracket_revisionchange");
+    assert.equal(revisionChange?.read_bracket?.before_revision, revision);
+    assert.notEqual(revisionChange?.read_bracket?.after_revision, revision);
     assert.equal(brackets.filter(r => r.session_id === "ses_bracket_positive").length, 4);
     assert.ok(!JSON.stringify(brackets).includes("BRACKET-SECRET-CANARY"));
     assert.ok(!brackets.some(r => r.session_id === "ses_bracket_secret"));

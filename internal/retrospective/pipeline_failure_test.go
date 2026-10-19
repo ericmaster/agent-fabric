@@ -51,6 +51,7 @@ func TestPipelineFailureUsesNativeIndependentAdviceOnly(t *testing.T) {
 	for _, writes := range []bool{false, true} {
 		t.Run(map[bool]string{false: "advisory", true: "reject-write"}[writes], func(t *testing.T) {
 			f := newLoopFixture(t, unknownScript(t))
+			initPipelineProtocolGit(t, f.root)
 			f.setEnabledFor(t, t.TempDir(), true)
 			f.sessions.proposal = NativeProposal{Summary: "Inspect episode boundary and add prompt-to-idle regression"}
 			if writes {
