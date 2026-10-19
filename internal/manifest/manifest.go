@@ -13,11 +13,21 @@ import (
 )
 
 type File struct {
-	Path   string `json:"path"`
-	Hash   string `json:"sha256"`
-	Agent  string `json:"agent"`
-	Target string `json:"target"`
+	Path     string `json:"path"`
+	Hash     string `json:"sha256"`
+	Agent    string `json:"agent"`
+	Target   string `json:"target"`
+	Resource string `json:"resource,omitempty"`
 }
+
+// ResourceLearningOrigin is the optional retrospective asset identity.
+// It is not an agent id.
+const ResourceLearningOrigin = "retrospective-learning-origin"
+
+// ResourceRetrospectivePlugin is the opt-in owned OpenCode observation
+// plugin asset identity. It is not an agent id.
+const ResourceRetrospectivePlugin = "retrospective-opencode-plugin"
+
 type Manifest struct {
 	Schema    int               `json:"schema"`
 	Source    string            `json:"source"`

@@ -35,12 +35,12 @@ const (
 )
 
 type options struct {
-	source, project, agents, tools string
-	all, yes, strict, force, json  bool
+	source, project, agents, tools, assets string
+	all, yes, strict, force, json          bool
 }
 
 type pendingWrite struct {
-	path, body, id, target string
+	path, body, id, target, resource string
 }
 
 type hookResolution struct {
@@ -84,6 +84,16 @@ func main() {
 		}
 		return
 	}
+	if cmd == "retrospective" {
+		if len(args) == 0 {
+			usage()
+			os.Exit(2)
+		}
+		if err := runRetrospective(args); err != nil {
+			fail(err)
+		}
+		return
+	}
 	var o options
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -96,6 +106,7 @@ func main() {
 	fs.BoolVar(&o.strict, "strict", false, "warnings are failures")
 	fs.BoolVar(&o.force, "force", false, "replace modified managed files")
 	fs.BoolVar(&o.json, "json", false, "machine-readable output")
+	fs.StringVar(&o.assets, "assets", "", "optional assets to own (retrospective); omit to opt out")
 	if err := fs.Parse(args); err != nil {
 		fail(err)
 	}
@@ -128,7 +139,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "agent-fabric install|sync|hub install SOURCE|list|validate|doctor|uninstall [flags]")
+	fmt.Fprintln(os.Stderr, "agent-fabric install|sync|hub install SOURCE|list|validate|doctor|uninstall|retrospective analyze|dispatch|status|enable|disable [flags]")
 }
 func fail(err error) { fmt.Fprintln(os.Stderr, "agent-fabric:", err); os.Exit(1) }
 
@@ -591,7 +602,7 @@ func exactAgentOverrideWrites(target string, overrides map[string]agentOverride,
 		if err != nil {
 			return nil, fmt.Errorf("update %s agent %q: %w", target, id, err)
 		}
-		writes = append(writes, pendingWrite{file.Path, updated, id, target})
+		writes = append(writes, pendingWrite{file.Path, updated, id, target, ""})
 	}
 	return writes, nil
 }
@@ -815,7 +826,123 @@ func hookList(events []string, resolved map[string]hookResolution) string {
 	return strings.TrimSuffix(b.String(), "\n")
 }
 
+func managedFileKey(file manifest.File) string {
+	if file.Resource != "" {
+		return file.Target + "\x00resource:" + file.Resource
+	}
+	return file.Target + "\x00" + file.Agent
+}
+
+func optionalAssetWrites(o options, source string) ([]pendingWrite, error) {
+	spec := strings.TrimSpace(o.assets)
+	if spec == "" || spec == "none" {
+		return nil, nil
+	}
+	var writes []pendingWrite
+	for _, name := range strings.Split(spec, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if name != "retrospective" {
+			return nil, fmt.Errorf("unknown asset %q", name)
+		}
+		assetPath := filepath.Join(source, "assets", "retrospective", "learning-origin.json")
+		info, err := os.Lstat(assetPath)
+		if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("packaged retrospective asset is missing or not a regular file")
+		}
+		body, err := os.ReadFile(assetPath)
+		if err != nil {
+			return nil, err
+		}
+		scope, _, err := scopeRoot(o)
+		if err != nil {
+			return nil, err
+		}
+		writes = append(writes, pendingWrite{
+			path:     filepath.Join(scope, "retrospective", "learning-origin.json"),
+			body:     string(body),
+			target:   "retrospective",
+			resource: manifest.ResourceLearningOrigin,
+		})
+		pluginPath := filepath.Join(source, "hooks", "retrospective", "opencode.ts")
+		pluginInfo, err := os.Lstat(pluginPath)
+		if err != nil || pluginInfo.Mode()&os.ModeSymlink != 0 || !pluginInfo.Mode().IsRegular() {
+			return nil, fmt.Errorf("packaged retrospective plugin is missing or not a regular file")
+		}
+		pluginBody, err := os.ReadFile(pluginPath)
+		if err != nil {
+			return nil, err
+		}
+		destination, err := retrospectivePluginDestination(o)
+		if err != nil {
+			return nil, err
+		}
+		writes = append(writes, pendingWrite{
+			path:     destination,
+			body:     string(pluginBody),
+			target:   "retrospective",
+			resource: manifest.ResourceRetrospectivePlugin,
+		})
+	}
+	return writes, nil
+}
+
+// retrospectivePluginDestination is the opt-in owned plugin path for the
+// selected scope: global <home>/.config/opencode/plugins/retrospective.ts,
+// project <project>/.opencode/plugins/retrospective.ts.
+// Spec: docs/specs/task-retrospective.md via optionalAssetWrites
+func retrospectivePluginDestination(o options) (string, error) {
+	if o.project != "" {
+		project, err := filepath.Abs(o.project)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(project, ".opencode", "plugins", "retrospective.ts"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "opencode", "plugins", "retrospective.ts"), nil
+}
+
 func expectedManagedPath(o options, file manifest.File) (string, error) {
+	if file.Resource != "" {
+		if file.Agent != "" {
+			return "", fmt.Errorf("resource %q must not use an agent id", file.Resource)
+		}
+		if file.Resource != manifest.ResourceLearningOrigin && file.Resource != manifest.ResourceRetrospectivePlugin {
+			return "", fmt.Errorf("unknown resource %q", file.Resource)
+		}
+		var expected string
+		if file.Resource == manifest.ResourceRetrospectivePlugin {
+			var err error
+			expected, err = retrospectivePluginDestination(o)
+			if err != nil {
+				return "", err
+			}
+		} else {
+			root, _, err := scopeRoot(o)
+			if err != nil {
+				return "", err
+			}
+			var absErr error
+			expected, absErr = filepath.Abs(filepath.Join(root, "retrospective", "learning-origin.json"))
+			if absErr != nil {
+				return "", absErr
+			}
+		}
+		actual, err := filepath.Abs(file.Path)
+		if err != nil {
+			return "", err
+		}
+		if actual != expected {
+			return "", fmt.Errorf("manifest path is outside managed destination: %s", file.Path)
+		}
+		return expected, nil
+	}
 	if file.Agent == "" || filepath.Base(file.Agent) != file.Agent || strings.ContainsAny(file.Agent, `/\\`) {
 		return "", fmt.Errorf("invalid manifest agent: %q", file.Agent)
 	}
@@ -947,7 +1074,7 @@ func install(o options, sync bool) error {
 			if e != nil {
 				return e
 			}
-			writes = append(writes, pendingWrite{filepath.Join(base, rel), body, d.ID, t})
+			writes = append(writes, pendingWrite{filepath.Join(base, rel), body, d.ID, t, ""})
 		}
 		hubWrites, e := exactAgentOverrideWrites(adapterTarget(t), overrides, available, ds, previous, o)
 		if e != nil {
@@ -955,8 +1082,17 @@ func install(o options, sync bool) error {
 		}
 		writes = append(writes, hubWrites...)
 	}
+	assetWrites, err := optionalAssetWrites(o, root)
+	if err != nil {
+		return err
+	}
+	writes = append(writes, assetWrites...)
 	for _, w := range writes {
-		m.Files = append(m.Files, manifest.File{Path: w.path, Hash: manifest.Hash([]byte(w.body)), Agent: w.id, Target: w.target})
+		file := manifest.File{Path: w.path, Hash: manifest.Hash([]byte(w.body)), Agent: w.id, Target: w.target, Resource: w.resource}
+		if w.resource != "" {
+			file.Agent = ""
+		}
+		m.Files = append(m.Files, file)
 	}
 	if err := migrateMovedManagedFiles(manifestPath, &m, o.force); err != nil {
 		return err
@@ -1120,6 +1256,9 @@ func installedAgents(path string) (map[string]map[string]bool, error) {
 		return nil, err
 	}
 	for _, file := range m.Files {
+		if file.Resource != "" {
+			continue
+		}
 		if installed[file.Target] == nil {
 			installed[file.Target] = map[string]bool{}
 		}
@@ -1138,11 +1277,11 @@ func mergeManifest(path string, next manifest.Manifest, o options) (manifest.Man
 	}
 	nextKeys := make(map[string]bool, len(next.Files))
 	for _, file := range next.Files {
-		nextKeys[file.Target+"\x00"+file.Agent] = true
+		nextKeys[managedFileKey(file)] = true
 	}
 	files := make(map[string]manifest.File, len(previous.Files)+len(next.Files))
 	for _, file := range previous.Files {
-		if nextKeys[file.Target+"\x00"+file.Agent] {
+		if nextKeys[managedFileKey(file)] {
 			continue
 		}
 		if _, selected := next.Mappings[file.Target]; selected {
@@ -1186,10 +1325,10 @@ func migrateMovedManagedFiles(manifestPath string, next *manifest.Manifest, forc
 	}
 	nextByKey := make(map[string]manifest.File, len(next.Files))
 	for _, file := range next.Files {
-		nextByKey[file.Target+"\x00"+file.Agent] = file
+		nextByKey[managedFileKey(file)] = file
 	}
 	for _, old := range previous.Files {
-		replacement, moved := nextByKey[old.Target+"\x00"+old.Agent]
+		replacement, moved := nextByKey[managedFileKey(old)]
 		if !moved || old.Path == replacement.Path {
 			continue
 		}
@@ -1575,7 +1714,7 @@ func runHub(args []string) error {
 			if baseErr != nil {
 				return baseErr
 			}
-			writes = append(writes, pendingWrite{filepath.Join(base, rel), body, d.ID, target})
+			writes = append(writes, pendingWrite{filepath.Join(base, rel), body, d.ID, target, ""})
 		}
 	}
 	for _, w := range writes {

@@ -18,3 +18,5 @@ __pycache__/
 /.agents/runs/
 /.agents/reports/
 /.agents/task-retrospective-projection/
+hooks/retrospective/dist/
+hooks/retrospective/.record-captures.jsonl

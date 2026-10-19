@@ -1,0 +1,14 @@
+{"properties": {"info": {"directory": "{{execution_root}}", "id": "ses_root", "projectID": "proj_synth", "time": {"created": 1, "updated": 2}, "title": "Root aggregation fixture", "version": "2.0.24"}}, "type": "session.created"}
+{"properties": {"info": {"agent": "build", "id": "msg_root_u1", "model": {"modelID": "synthetic", "providerID": "synthetic"}, "role": "user", "sessionID": "ses_root", "time": {"created": 1}}}, "type": "message.updated"}
+{"properties": {"part": {"id": "prt_root_u1", "messageID": "msg_root_u1", "sessionID": "ses_root", "text": "Please double check the runbook", "type": "text"}}, "type": "message.part.updated"}
+{"properties": {"info": {"id": "msg_root_a1", "parentID": "", "role": "assistant", "sessionID": "ses_root", "time": {"completed": 3, "created": 2}}}, "type": "message.updated"}
+{"properties": {"info": {"directory": "{{execution_root}}", "id": "ses_child", "parentID": "ses_root", "projectID": "proj_synth", "time": {"created": 1, "updated": 2}, "title": "Child subtask", "version": "2.0.24"}}, "type": "session.created"}
+{"properties": {"info": {"agent": "build", "id": "msg_child_u1", "model": {"modelID": "synthetic", "providerID": "synthetic"}, "role": "user", "sessionID": "ses_child", "time": {"created": 1}}}, "type": "message.updated"}
+{"properties": {"part": {"id": "prt_child_u1", "messageID": "msg_child_u1", "sessionID": "ses_child", "text": "Read docs/runbook.md", "type": "text"}}, "type": "message.part.updated"}
+{"properties": {"info": {"id": "msg_child_a1", "parentID": "", "role": "assistant", "sessionID": "ses_child", "time": {"completed": 3, "created": 2}}}, "type": "message.updated"}
+{"properties": {"part": {"callID": "call_child_read", "id": "prt_tool_child", "messageID": "msg_child_a1", "sessionID": "ses_child", "state": {"input": {"filePath": "{{execution_root}}/docs/runbook.md"}, "output": "runbook excerpt", "status": "completed", "title": "read {\"filePath\": \"{{execution_root}}"}, "tool": "read", "type": "tool"}}, "type": "message.part.updated"}
+{"properties": {"part": {"id": "prt_child_final", "messageID": "msg_child_a1", "sessionID": "ses_child", "text": "Child done", "type": "text"}}, "type": "message.part.updated"}
+{"properties": {"sessionID": "ses_child"}, "type": "session.idle"}
+{"properties": {"part": {"callID": "call_root_verify", "id": "prt_tool_root", "messageID": "msg_root_a1", "sessionID": "ses_root", "state": {"input": {"filePath": "{{execution_root}}/docs/runbook.md"}, "output": "root view", "status": "completed", "title": "read {\"filePath\": \"{{execution_root}}"}, "tool": "read", "type": "tool"}}, "type": "message.part.updated"}
+{"properties": {"part": {"id": "prt_root_final", "messageID": "msg_root_a1", "sessionID": "ses_root", "text": "Verified with the child session.", "type": "text"}}, "type": "message.part.updated"}
+{"properties": {"sessionID": "ses_root"}, "type": "session.idle"}

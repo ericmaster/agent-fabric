@@ -1,0 +1,7 @@
+{"properties": {"info": {"directory": "{{execution_root}}", "id": "ses_abort", "projectID": "proj_synth", "time": {"created": 1, "updated": 2}, "title": "Abort then idle fixture", "version": "2.0.24"}}, "type": "session.created"}
+{"properties": {"info": {"agent": "build", "id": "msg_u1", "model": {"modelID": "synthetic", "providerID": "synthetic"}, "role": "user", "sessionID": "ses_abort", "time": {"created": 1}}}, "type": "message.updated"}
+{"properties": {"part": {"id": "prt_u1", "messageID": "msg_u1", "sessionID": "ses_abort", "text": "Scan the generated reports", "type": "text"}}, "type": "message.part.updated"}
+{"properties": {"info": {"id": "msg_a1", "parentID": "", "role": "assistant", "sessionID": "ses_abort", "time": {"completed": 3, "created": 2}}}, "type": "message.updated"}
+{"properties": {"part": {"callID": "call_aborted", "id": "prt_tool_1", "messageID": "msg_a1", "sessionID": "ses_abort", "state": {"input": {"command": "ls reports"}, "status": "running"}, "tool": "bash", "type": "tool"}}, "type": "message.part.updated"}
+{"properties": {"error": {"data": {"message": "the user aborted the stream"}, "name": "MessageAbortedError"}, "sessionID": "ses_abort"}, "type": "session.error"}
+{"properties": {"sessionID": "ses_abort"}, "type": "session.idle"}

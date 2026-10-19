@@ -1484,3 +1484,89 @@ func TestPersistTicketTemplateResolvesFromExplicitSourceRoot(t *testing.T) {
 		t.Fatalf("expected rendered body to invoke resolved script %s, got:\n%s", scriptPath, rendered.Body)
 	}
 }
+
+func TestOptionalRetrospectiveAssetOwnership(t *testing.T) {
+	temp := t.TempDir()
+	fabricSource, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := filepath.Join(temp, "proj")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	opts := options{source: fabricSource, project: project, agents: "learning-corrector", tools: "opencode", yes: true}
+	if err := install(opts, false); err != nil {
+		t.Fatal(err)
+	}
+	asset := filepath.Join(project, ".agent-fabric", "retrospective", "learning-origin.json")
+	if _, err := os.Stat(asset); !os.IsNotExist(err) {
+		t.Fatal("optional asset was installed without opt-in")
+	}
+	opts.assets = "retrospective"
+	if err := install(opts, false); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.ReadFile(asset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := install(opts, true); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(asset)
+	if err != nil || string(second) != string(first) {
+		t.Fatalf("sync was not idempotent: %v", err)
+	}
+	m, err := manifest.Read(filepath.Join(project, ".agent-fabric", ".agent-fabric-manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, file := range m.Files {
+		if file.Resource == manifest.ResourceLearningOrigin {
+			found = true
+			if file.Agent != "" {
+				t.Fatalf("resource used an agent id: %+v", file)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("manifest did not record the resource identity")
+	}
+	if err := doctor(options{source: fabricSource, project: project}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(asset, []byte("user kept this\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := install(opts, true); err == nil || !strings.Contains(err.Error(), "modified managed file preserved") {
+		t.Fatalf("modified asset was not preserved: %v", err)
+	}
+	kept, err := os.ReadFile(asset)
+	if err != nil || string(kept) != "user kept this\n" {
+		t.Fatalf("modified asset changed: %s", kept)
+	}
+	if err := uninstall(options{project: project}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(asset); err != nil || string(got) != "user kept this\n" {
+		t.Fatalf("uninstall removed a modified asset: %s %v", got, err)
+	}
+	clean := filepath.Join(temp, "clean")
+	if err := os.MkdirAll(clean, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cleanOpts := opts
+	cleanOpts.project = clean
+	if err := install(cleanOpts, false); err != nil {
+		t.Fatal(err)
+	}
+	cleanAsset := filepath.Join(clean, ".agent-fabric", "retrospective", "learning-origin.json")
+	if err := uninstall(options{project: clean}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(cleanAsset); !os.IsNotExist(err) {
+		t.Fatal("uninstall kept an unchanged owned asset")
+	}
+}

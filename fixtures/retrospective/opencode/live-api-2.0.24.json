@@ -1,0 +1,41 @@
+{
+  "comment": "Live 2.x server contract, verified empirically against an isolated opencode serve v2.0.24 (2026-10-07, AGF-1 QA). Synthetic password only; disposable server. Every /api route requires HTTP Basic auth (username 'opencode' by default; password env OPENCODE_PASSWORD, fallback OPENCODE_SERVER_PASSWORD — a server started with neither generates a random password the loop cannot learn). Non-/api paths serve the SPA.",
+  "version": "2.0.24",
+  "routes": {
+    "GET /api/info": {
+      "auth": true,
+      "response_bare": { "version": "2.0.24", "pid": 0, "urls": ["http://HOST:PORT"], "paths": { "tmp": "/tmp" }, "capabilities": { "persistentPty": true } }
+    },
+    "POST /api/session": {
+      "auth": true,
+      "request": { "title": "learning fixture" },
+      "response": { "data": { "id": "ses_fixture", "projectID": "project_fixture", "title": "learning fixture", "time": { "created": 0, "updated": 0 }, "location": { "directory": "/fixture/project" } } }
+    },
+    "GET /api/session": {
+      "auth": true,
+      "paginated": "?cursor=<cursor.next> until next is null; page limit fails closed",
+      "response": { "data": [ { "id": "ses_fixture", "projectID": "project_fixture", "title": "learning fixture", "location": { "directory": "/fixture/project" } } ], "cursor": { "previous": null, "next": null } }
+    },
+    "GET /api/session/{id}": {
+      "auth": true,
+      "response": { "data": { "id": "ses_fixture", "projectID": "project_fixture", "title": "learning fixture", "location": { "directory": "/fixture/project" } } }
+    },
+    "GET /api/session/{id}/message": {
+      "auth": true,
+      "paginated": "?cursor=<cursor.next> until next is null",
+      "response": { "data": [ { "id": "msg_…", "time": { "created": 0 }, "text": "flat text", "type": "user|assistant" } ], "cursor": { "previous": null, "next": null } }
+    },
+    "POST /api/session/{id}/prompt": {
+      "auth": true,
+      "request": { "text": "string" },
+      "response": { "data": { "id": "msg_…", "sessionID": "ses_…", "time": { "created": 0 }, "type": "user", "payload": { "text": "…" }, "delivery": "steer" } },
+      "notes": "Synchronous; 2xx confirms user-message delivery only (delivery=steer), not autonomous correction. Extra agent/model keys are ignored; role/model selection is not verified. prompt_async and message POST routes do NOT exist on 2.0.24 (404)."
+    }
+  },
+  "rejected_assumptions": {
+    "GET /global/health": "serves the SPA HTML (not JSON); the plugin probe uses GET /api/info",
+    "bare /session routes": "unauthenticated/non-prefixed paths do not exist; 401 on /api without Basic auth",
+    "POST /session/{id}/prompt_async": "404 on 2.0.24",
+    "bare-array list responses": "lists are {data, cursor} envelopes"
+  }
+}

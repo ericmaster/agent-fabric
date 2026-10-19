@@ -1,0 +1,7 @@
+{
+  "opencode": "2.0.24",
+  "plugin_package": "1.18.35",
+  "sdk_package": "1.18.35",
+  "recorded": "2026-10-06",
+  "note": "Recorded event fixtures for the task-retrospective observation adapter. events/ carry raw SDK shapes the plugin receives; envelopes/ carry the canonical observation envelopes the adapter flushes (Go ingest replays these). Synthetic content only; no real transcripts."
+}
