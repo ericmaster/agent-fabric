@@ -83,6 +83,18 @@ func Analyze(ctx context.Context, cfg *Config, trace *Trace, input []byte, clien
 	for i, s := range r.Signals {
 		row := SignalInterpretation{SignalID: s.ID, Choice: "uncertain", Cause: "uncertain", Status: "skipped"}
 		packet, ids := packetFor(n, r, s, cfg.ContextNeighborCalls)
+		if isExecutionEpisode(trace) {
+			// Trim optional neighbors before invoking the model. Required signal
+			// calls and input are indivisible: oversize stays explicit, never a
+			// truncated result or invented complete chunk.
+			for neighbors := cfg.ContextNeighborCalls - 1; neighbors >= 0; neighbors-- {
+				encoded, _ := json.Marshal(packet)
+				if len(encoded)+4096 <= cfg.StateQuestionLimitBytes && len(encoded)*2+4096 <= cfg.RequestLimitBytes {
+					break
+				}
+				packet, ids = packetFor(n, r, s, neighbors)
+			}
+		}
 		row.EvidenceIDs = ids
 		body, _ := json.Marshal(packet)
 		row.EvidenceSHA256 = sha256hex(body)

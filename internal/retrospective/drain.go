@@ -241,6 +241,14 @@ func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock
 		if err := store.WriteDrainJob(&job); err != nil {
 			return JobFailed
 		}
+		if status == JobFailed {
+			if err := recordPipelineFailure(ctx, opts, store, &job); err != nil {
+				job.Error += "; maintenance intake could not be retained"
+			}
+		}
+		if err := store.WriteDrainJob(&job); err != nil {
+			return JobFailed
+		}
 		return job.Status
 	}
 	job.Attempts++
@@ -290,8 +298,9 @@ func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock
 		}
 	}
 	var reconcileGaps []Gap
+	var historySnapshot *Spool
 	if !invalidSpoolURL {
-		reconcileGaps = reconcileServer(ctx, cfg, store, spool, originalJobURL)
+		reconcileGaps, historySnapshot = reconcileServerSnapshot(ctx, cfg, store, spool, originalJobURL)
 		unlock, err := spoolLock(store, spool.SessionID)
 		if err != nil {
 			return save(JobFailed, "cannot reload reconciled startup evidence")
@@ -303,84 +312,138 @@ func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock
 		}
 		spool = latest
 	}
+	if historySnapshot != nil {
+		// Use the independently decoded native history order for episode
+		// boundaries; backfill arrival order is not execution order. The
+		// original spool, loss counters and reports remain untouched.
+		spool = historySnapshot
+	}
 	trace := assembleTrace(store, spool, spool.SessionID)
 	trace.Gaps = append(trace.Gaps, reconcileGaps...)
-	if !rootTriggerCandidate(spool, job.SessionID) {
-		return save(JobSkipped, "non-root session observed; the owning root aggregates it")
+	episodes := executionEpisodes(spool, trace)
+	if len(episodes) == 0 {
+		if len(trace.Messages) == 0 && len(trace.Calls) == 0 && len(trace.Gaps) == 0 {
+			return save(JobSkipped, "no observed execution records")
+		}
+		// Missing intake/idle is itself a retained failure, never a fabricated
+		// episode and never sent to the provider as a whole-session fallback.
+		path := filepath.Join(store.Dir, "reports", drainReportName("missing-episode-"+spool.SessionID))
+		diagnostic := &Report{SignalReport: SignalReport{SchemaVersion: ReportSchemaVersion, Trace: ReportTrace{Identities: trace.Identities}}, Status: ReportStatusIncomplete, IncompleteReasons: []string{"missing_prompt_idle_boundary"}}
+		if err := WriteReport(path, diagnostic); err != nil {
+			return save(JobFailed, "cannot retain episode boundary diagnostic")
+		}
+		job.ReportPath = path
+		return save(JobFailed, "collection startup incomplete or idle missing; full report: "+path)
 	}
-	raw, err := json.Marshal(trace)
-	if err != nil {
-		return save(JobFailed, "marshal trace: "+err.Error())
+	// A failed older episode never grows to include later prompts. Each closed
+	// episode has its own report, input digest and dispatch dedup identity.
+	var processingError string
+	for _, episode := range episodes {
+		if err := ctx.Err(); err != nil {
+			return save(JobFailed, "episode processing cancelled")
+		}
+		raw, err := json.Marshal(episode)
+		if err != nil {
+			return save(JobFailed, "marshal episode: "+err.Error())
+		}
+		digest := sha256hex(raw)
+		id := episode.Identities.TaskID
+		if job.EpisodeDigests[id] == digest {
+			continue
+		}
+		reportPath, receiptStatus, err := analyzeDrainTrace(ctx, opts, store, enabled, episode, raw, choiceClientFor(cfg, opts.EnvKey))
+		job.ReportPath, job.ReceiptStatus = reportPath, receiptStatus
+		if err != nil {
+			processingError = err.Error()
+			continue
+		}
+		if job.EpisodeDigests == nil {
+			job.EpisodeDigests = map[string]string{}
+		}
+		if receiptStatus == "" || conclusivelySettled[receiptStatus] {
+			job.EpisodeDigests[id] = digest
+		}
+		if err := store.WriteDrainJob(&job); err != nil {
+			return JobFailed
+		}
 	}
-	client := choiceClientFor(cfg, opts.EnvKey)
+	if processingError != "" {
+		return save(JobFailed, processingError)
+	}
+	return save(JobDone, "")
+}
+
+// analyzeDrainTrace retains an episode report even when interpretation abstains.
+// Observation closure is not accepted task success and does not move the legacy
+// accepted-success boundary. The ordinary independent repair gates still apply.
+func analyzeDrainTrace(ctx context.Context, opts DrainOptions, store *Store, enabled bool, trace *Trace, raw []byte, client ChoiceClient) (string, string, error) {
+	cfg := opts.Config
 	report, err := Analyze(ctx, cfg, trace, raw, client)
 	if err != nil {
-		if len(trace.Gaps) > 0 {
-			// Malformed/missing startup identities can fail before analysis has
-			// a report. Retain an explicit incomplete diagnostic, not fake data.
-			path := filepath.Join(store.Dir, "reports", drainReportName(trace.Identities.TaskID))
-			if trace.Identities.TaskID == "" {
-				path = filepath.Join(store.Dir, "reports", drainReportName(spool.SessionID))
-			}
-			diagnostic := &Report{SignalReport: SignalReport{SchemaVersion: ReportSchemaVersion, Trace: ReportTrace{Identities: trace.Identities}}, Status: ReportStatusIncomplete, IncompleteReasons: []string{"collection startup incomplete; trace validation failed"}}
-			if writeErr := WriteReport(path, diagnostic); writeErr != nil {
-				return save(JobFailed, "cannot retain incomplete collection diagnostic")
-			}
-			return save(JobFailed, "collection incomplete; full report: "+path)
-		}
-		return save(JobFailed, "analyze: "+err.Error())
+		return "", "", fmt.Errorf("analyze episode: %w", err)
 	}
 	taskID := report.Trace.Identities.TaskID
 	if taskID == "" {
-		return save(JobFailed, "analyze produced no task identity")
+		return "", "", errors.New("analyze produced no episode identity")
 	}
 	// The optional trusted coordinator packet is the only external
 	// dispatch-evidence producer of the loop; the drain itself never
 	// fabricates findings (analysis does not supply them).
 	packet, packetErr := coordinatorFindings(store, taskID)
 	if packetErr != nil {
-		return save(JobFailed, "coordinator packet: "+packetErr.Error())
+		return "", "", fmt.Errorf("coordinator packet: %w", packetErr)
 	}
 	if len(packet) > 0 {
 		report.Findings = packet
 	}
 	reportPath := filepath.Join(store.Dir, "reports", drainReportName(taskID))
-	if err := WriteReport(reportPath, report); err != nil {
-		return save(JobFailed, "write report: "+err.Error())
+	alreadySaved := false
+	if isExecutionEpisode(trace) {
+		// Later observed coverage may change the same episode's input. Keep
+		// its earlier diagnostic bytes instead of rewriting historical evidence.
+		stamp := report.GeneratedAt
+		report.GeneratedAt = ""
+		version, _ := json.Marshal(report)
+		report.GeneratedAt = stamp
+		reportPath = filepath.Join(store.Dir, "reports", drainReportName(taskID+"-"+sha256hex(version)))
+		if existing, _, err := LoadReport(reportPath); err == nil {
+			existing.GeneratedAt = ""
+			body, _ := json.Marshal(existing)
+			if !bytes.Equal(body, version) {
+				return "", "", errors.New("episode report version conflict")
+			}
+			alreadySaved = true
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", "", fmt.Errorf("read episode report: %w", err)
+		}
+	}
+	if !alreadySaved {
+		if err := WriteReport(reportPath, report); err != nil {
+			return "", "", fmt.Errorf("write report: %w", err)
+		}
+	}
+	if report.Status == ReportStatusIncomplete {
+		for _, gap := range report.Trace.Gaps {
+			if gap.Kind == "missing_startup" && (gap.Scope == "current" || gap.Scope == "unknown") {
+				return reportPath, "", fmt.Errorf("collection startup incomplete; full report: %s", reportPath)
+			}
+		}
+		return reportPath, "", fmt.Errorf("episode evidence incomplete; full report: %s", reportPath)
+	}
+	for _, row := range report.Interpretation.Rows {
+		if row.Status == "unavailable" || row.Reason == "oversized_packet" || row.Reason == "invalid_answer_or_citation" || row.Reason == "malformed_provider_response" || row.Reason == "invalid_packet" {
+			return reportPath, "", fmt.Errorf("episode interpretation unavailable; full report: %s", reportPath)
+		}
 	}
 	receiptStatus := ""
 	if ineligible(report) == "" && report.Status == ReportStatusComplete {
 		receipt, err := drainDispatch(ctx, opts, store, cfg, enabled, reportPath, taskID)
 		if err != nil {
-			return save(JobFailed, "dispatch: "+err.Error())
+			return reportPath, "", fmt.Errorf("dispatch: %w", err)
 		}
 		receiptStatus = receipt.Status
 	}
-	// Conclusive resolutions settle the turn; a complete report that does
-	// not trigger is also an accepted boundary. Locally incomplete reports
-	// never advance the boundary (the turn stays open for re-analysis).
-	conclusive := receiptStatus != "" && conclusivelySettled[receiptStatus]
-	accepted := report.Status == ReportStatusComplete &&
-		(conclusive || (receiptStatus == "" && !report.Dispatch.Eligible))
-	if accepted {
-		if job.Incidents == nil {
-			job.Incidents = map[string]string{}
-		}
-		job.Incidents[taskID] = receiptStatus
-	}
-	job.ReportPath = reportPath
-	job.ReceiptStatus = receiptStatus
-	if accepted {
-		if err := acceptBoundary(store, cfg, spool.SessionID, spoolIntervalEnd(spool)); err != nil {
-			return save(JobFailed, "accepted boundary: "+err.Error())
-		}
-	}
-	for _, gap := range trace.Gaps {
-		if gap.Kind == "missing_startup" {
-			return save(JobFailed, "collection startup incomplete; full report: "+reportPath)
-		}
-	}
-	return save(JobDone, "")
+	return reportPath, receiptStatus, nil
 }
 
 // drainDispatch wraps Dispatch with the drain's task-level dedup: an
@@ -522,28 +585,39 @@ func choiceClientFor(cfg *Config, apiKey string) ChoiceClient {
 // probe falls back to a diagnostic gap without any fetch.
 // Spec: docs/specs/task-retrospective.md via processDrainJob
 func reconcileServer(ctx context.Context, cfg *Config, store *Store, spool *Spool, serverURL string) []Gap {
+	gaps, _ := reconcileServerSnapshot(ctx, cfg, store, spool, serverURL)
+	return gaps
+}
+
+func reconcileServerSnapshot(ctx context.Context, cfg *Config, store *Store, spool *Spool, serverURL string) ([]Gap, *Spool) {
 	base := firstNonEmpty(serverURL, cfg.DispatchServer, spool.ServerURL)
 	if base == "" {
-		return nil
+		return nil, nil
 	}
 	for _, location := range []string{base, spool.ServerURL, serverURL} {
 		if location != "" && (!collectionServerURL(location, cfg) || !trustedServerURL(location, cfg.DispatchServer)) {
-			return []Gap{{Kind: "partial_stream", Detail: "backfill server origin is not the configured trusted dispatch origin; no credentials or request sent"}}
+			return []Gap{{Kind: "partial_stream", Detail: "backfill server origin is not the configured trusted dispatch origin; no credentials or request sent"}}, nil
 		}
 	}
 	client := OpenSessionClient(cfg)
 	client.BaseURL = base
-	rows, err := client.Messages(ctx, spool.SessionID)
+	var rows []SessionMessageRow
+	var err error
+	if client.messageGeneration() {
+		rows, err = client.nativeHistoryMode(ctx, spool.SessionID, true)
+	} else {
+		rows, err = client.Messages(ctx, spool.SessionID)
+	}
 	if err != nil {
 		if errors.Is(err, ErrCapability) {
-			return nil
+			return nil, nil
 		}
-		return []Gap{{Kind: "partial_stream", Detail: "message reconcile failed: " + boundedGapDetail(err.Error())}}
+		return []Gap{{Kind: "partial_stream", Detail: "message reconcile failed: " + boundedGapDetail(err.Error())}}, nil
 	}
 	var gaps []Gap
 	budget := DrainMaxBackfillChildren
 	gaps = append(gaps, backfillSession(ctx, client, store, cfg, spool.SessionID, &budget, rows)...)
-	return gaps
+	return gaps, nativeHistorySnapshot(cfg, spool, rows)
 }
 
 // backfillSession merges one session's fetched message history into its
@@ -633,6 +707,34 @@ func backfillLoadStage(ctx context.Context, client *HTTPSessionClient, store *St
 		}
 		rows = fetched
 	}
+	records := historyRecords(spool, rows)
+	if len(records) > EnvelopeMaxRecords {
+		records = records[:EnvelopeMaxRecords]
+		spool.appendGap(Gap{Kind: "partial_stream", Detail: "history record cap exceeded"})
+	}
+	redactor, redactorErr := NewRedactor(cfg)
+	if redactorErr != nil {
+		return nil, []Gap{{Kind: "partial_stream", Detail: "reconcile redactor: " + boundedGapDetail(redactorErr.Error())}}
+	}
+	stageRecords(redactor, capRecords(records), spool)
+	if spool.ServerURL == "" {
+		spool.ServerURL = firstNonEmpty(client.BaseURL, spool.ServerURL)
+	}
+	if err := writeSpoolBounded(cfg, store, spool); err != nil {
+		return nil, []Gap{{Kind: "partial_stream", Detail: "spool write failed: " + sessionID + ": " + boundedGapDetail(err.Error())}}
+	}
+	var childIDs []string
+	for _, id := range sortedSessionIDs(spool) {
+		if id == sessionID || spool.Sessions[id].ParentID != sessionID {
+			continue
+		}
+		childIDs = append(childIDs, id)
+	}
+	return childIDs, nil
+}
+
+// historyRecords uses the same validated converter for merge and ordered replay.
+func historyRecords(spool *Spool, rows []SessionMessageRow) []EnvelopeRecord {
 	var records []EnvelopeRecord
 	for _, row := range rows {
 		if row.Control != "" {
@@ -672,28 +774,7 @@ func backfillLoadStage(ctx context.Context, client *HTTPSessionClient, store *St
 			records = append(records, partEnvelopeRecord(&row.Parts[i]))
 		}
 	}
-	if len(records) > EnvelopeMaxRecords {
-		records = records[:EnvelopeMaxRecords]
-	}
-	redactor, redactorErr := NewRedactor(cfg)
-	if redactorErr != nil {
-		return nil, []Gap{{Kind: "partial_stream", Detail: "reconcile redactor: " + boundedGapDetail(redactorErr.Error())}}
-	}
-	stageRecords(redactor, capRecords(records), spool)
-	if spool.ServerURL == "" {
-		spool.ServerURL = firstNonEmpty(client.BaseURL, spool.ServerURL)
-	}
-	if err := writeSpoolBounded(cfg, store, spool); err != nil {
-		return nil, []Gap{{Kind: "partial_stream", Detail: "spool write failed: " + sessionID + ": " + boundedGapDetail(err.Error())}}
-	}
-	var childIDs []string
-	for _, id := range sortedSessionIDs(spool) {
-		if id == sessionID || spool.Sessions[id].ParentID != sessionID {
-			continue
-		}
-		childIDs = append(childIDs, id)
-	}
-	return childIDs, nil
+	return records
 }
 
 // boundedGapDetail clips one gap detail.
@@ -712,6 +793,7 @@ func boundedGapDetail(detail string) string {
 func partEnvelopeRecord(row *SessionPartRow) EnvelopeRecord {
 	record := EnvelopeRecord{
 		Kind:      "part",
+		SessionID: row.SessionID,
 		RecordID:  row.ID,
 		MessageID: row.MessageID,
 		PartType:  row.Type,
@@ -955,6 +1037,9 @@ func assembleTrace(store *Store, spool *Spool, sessionID string) *Trace {
 			continue
 		}
 		switch event.Event {
+		case "session.evidence_gap":
+			start, end := event.Seq, event.Seq
+			trace.Gaps = append(trace.Gaps, Gap{Kind: "partial_stream", Detail: event.Detail, SessionID: sessionID, RecordID: event.RecordID, StartSeq: &start, EndSeq: &end})
 		case "session.compacted":
 			gap := Gap{Kind: "compacted", Detail: "session history compacted before seq " + fmt.Sprintf("%d", event.Seq), SessionID: sessionID, RecordID: event.RecordID}
 			if event.Seq > 0 {

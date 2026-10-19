@@ -362,12 +362,6 @@ func IngestEnvelope(opts IngestOptions, envelope *Envelope) (*IngestResult, erro
 	if !envelope.Trigger {
 		return result, nil
 	}
-	if !rootTriggerCandidate(spool, envelope.SessionID) {
-		// A known child session never triggers its own retrospective job;
-		// the owner root aggregates it (unknown parents are treated as
-		// roots because pre-plugin sessions carry no session record).
-		return result, nil
-	}
 	if !spoolHasUserTurn(spool) && len(spool.Parts) == 0 {
 		// A bare idle is degenerate, but terminal work whose startup was lost
 		// must remain inspectable and explicitly incomplete, never silently inert.
@@ -494,14 +488,6 @@ func disabledMarkerIn(directory string) bool {
 		depth++
 	}
 	return false
-}
-
-// rootTriggerCandidate reports whether the owner session is treated as a root
-// (unknown or empty parent).
-// Spec: docs/specs/task-retrospective.md via IngestEnvelope
-func rootTriggerCandidate(spool *Spool, sessionID string) bool {
-	row := spool.Sessions[sessionID]
-	return row == nil || row.ParentID == ""
 }
 
 // spoolHasUserTurn reports whether at least one user message was staged.
@@ -742,6 +728,10 @@ func (spool *Spool) appendEvent(event SpoolEvent) {
 		for _, evicted := range spool.Events[:len(spool.Events)-SpoolEventsRetained] {
 			if evicted.Event == "session.compacted" {
 				spool.GapOmissions = gapCountAdd(spool.GapOmissions, 1)
+			} else if evicted.Event == "session.idle" || evicted.Event == "session.evidence_gap" {
+				start, end := 0, evicted.Seq
+				spool.appendGap(Gap{Kind: "partial_stream", SessionID: evicted.SessionID, RecordID: evicted.RecordID,
+					StartSeq: &start, EndSeq: &end, Detail: "episode boundary or evidence-gap event evicted"})
 			}
 		}
 		spool.Events = spool.Events[len(spool.Events)-SpoolEventsRetained:]

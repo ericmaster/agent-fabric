@@ -615,10 +615,10 @@ func TestLoopDrainSuccessFixesOwningInstructionExactlyOnce(t *testing.T) {
 	if err != nil || job.Status != JobDone || job.ReceiptStatus != StatusRepaired {
 		t.Fatalf("final job: %+v %v", job, err)
 	}
-	// The accepted boundary advanced so later triggers replay only newer turns.
+	// Processing an episode records its digest, never an accepted task success.
 	final := finalSpool(t, f.store, "ses_task01")
-	if final.AcceptedAfterSeq == 0 {
-		t.Fatalf("accepted boundary not advanced: %+v", final)
+	if final.AcceptedAfterSeq != 0 || len(job.EpisodeDigests) != 1 {
+		t.Fatalf("episode was not recorded independently of task success: %+v", job)
 	}
 	// Replaying the same fixture again (a later trigger) must NOT create a
 	// second root: the task-level dedup holds.
@@ -715,7 +715,7 @@ func TestRunDrainResumesCrashedJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.Processed != 2 || summary.Completed != 2 {
+	if summary.Processed != 2 || summary.Completed != 1 || summary.Failed != 1 {
 		t.Fatalf("crash-resume summary: %+v", summary)
 	}
 	for _, sessionID := range []string{"ses_crashed", "ses_abort"} {
@@ -760,8 +760,8 @@ func TestRunDrainNoDuplicateRootAfterAmbiguousReceipt(t *testing.T) {
 	if err != nil || after.Status != JobFailed || !strings.Contains(after.Error, "no duplicate root") {
 		t.Fatalf("job after re-trigger: %+v %v", after, err)
 	}
-	if sessions, err := f.store.ListReceipts(); err != nil || len(sessions) > 1 {
-		t.Fatalf("receipt spam: %+v %v", sessions, err)
+	if sessions := taskReceipts(t, f.store); len(sessions) > 1 {
+		t.Fatalf("receipt spam: %+v", sessions)
 	}
 }
 

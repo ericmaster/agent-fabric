@@ -618,17 +618,19 @@ func (s *Store) summaryObservation() (map[string]int, int, error) {
 // DrainJob is one persisted observation job. It is not a supervisor ledger.
 // Spec: docs/specs/task-retrospective.md via Store
 type DrainJob struct {
-	Schema        int               `json:"schema"`
-	SessionID     string            `json:"session_id"`
-	ServerURL     string            `json:"server_url,omitempty"`
-	Status        string            `json:"status"`
-	Attempts      int               `json:"attempts"`
-	Incidents     map[string]string `json:"incidents,omitempty"`
-	ReportPath    string            `json:"report_path,omitempty"`
-	ReceiptStatus string            `json:"receipt_status,omitempty"`
-	Error         string            `json:"error,omitempty"`
-	CreatedAt     string            `json:"created_at"`
-	UpdatedAt     string            `json:"updated_at,omitempty"`
+	Schema              int               `json:"schema"`
+	SessionID           string            `json:"session_id"`
+	ServerURL           string            `json:"server_url,omitempty"`
+	Status              string            `json:"status"`
+	Attempts            int               `json:"attempts"`
+	Incidents           map[string]string `json:"incidents,omitempty"`
+	EpisodeDigests      map[string]string `json:"episode_digests,omitempty"`
+	MaintenanceIncident string            `json:"maintenance_incident,omitempty"`
+	ReportPath          string            `json:"report_path,omitempty"`
+	ReceiptStatus       string            `json:"receipt_status,omitempty"`
+	Error               string            `json:"error,omitempty"`
+	CreatedAt           string            `json:"created_at"`
+	UpdatedAt           string            `json:"updated_at,omitempty"`
 }
 
 // WriteDrainJob atomically stores one drain job at 0600.

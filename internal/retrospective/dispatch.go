@@ -92,14 +92,15 @@ type SessionClient interface {
 // message history is a flat {id, time, text, type} row list.
 // Spec: docs/specs/task-retrospective.md via SessionClient
 type HTTPSessionClient struct {
-	BaseURL       string
-	HTTP          *http.Client
-	Generation    string
-	Username      string
-	Password      string
-	TrustedOrigin string
-	Model         string
-	ReadRoots     []string
+	BaseURL          string
+	HTTP             *http.Client
+	Generation       string
+	Username         string
+	Password         string
+	TrustedOrigin    string
+	Model            string
+	ReadRoots        []string
+	PromptLimitBytes int
 }
 
 // OpenSessionClient builds the configured transport for dispatch and drain.
@@ -110,14 +111,15 @@ type HTTPSessionClient struct {
 func OpenSessionClient(cfg *Config) *HTTPSessionClient {
 	user, pass := ResolveDispatchAuth(cfg)
 	return &HTTPSessionClient{
-		BaseURL:       cfg.DispatchServer,
-		TrustedOrigin: cfg.DispatchServer,
-		Generation:    cfg.DispatchEndpoint,
-		HTTP:          &http.Client{Timeout: cfg.DispatchTimeout + time.Second},
-		Username:      user,
-		Password:      pass,
-		Model:         cfg.DispatchModel,
-		ReadRoots:     append([]string{cfg.StateDir}, cfg.CanonicalRoots...),
+		BaseURL:          cfg.DispatchServer,
+		TrustedOrigin:    cfg.DispatchServer,
+		Generation:       cfg.DispatchEndpoint,
+		HTTP:             &http.Client{Timeout: cfg.DispatchTimeout + time.Second},
+		Username:         user,
+		Password:         pass,
+		Model:            cfg.DispatchModel,
+		ReadRoots:        append([]string{cfg.StateDir}, cfg.CanonicalRoots...),
+		PromptLimitBytes: cfg.RequestLimitBytes,
 	}
 }
 
@@ -357,6 +359,13 @@ func (c *HTTPSessionClient) Prompt(ctx context.Context, id string, req PromptReq
 	}
 	if err != nil {
 		return err
+	}
+	limit := c.PromptLimitBytes
+	if limit == 0 {
+		limit = 24000
+	}
+	if len(body) > limit {
+		return fmt.Errorf("%w: native prompt exceeds request byte budget", ErrSizeRejected)
 	}
 	elem := "/session/" + url.PathEscape(id) + "/prompt"
 	_, err = c.roundTrip(ctx, http.MethodPost, elem, body)

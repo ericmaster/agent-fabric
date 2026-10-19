@@ -139,6 +139,7 @@ func TestScopedGapAcrossAcceptedDrainBoundary(t *testing.T) {
 			f.cfg.DispatchServer = ""
 			admit := func(records []EnvelopeRecord) *Report {
 				t.Helper()
+				records = append(records, EnvelopeRecord{Kind: "event", SessionID: "root", Event: "session.idle"})
 				raw, _ := json.Marshal(&Envelope{Version: 1, Harness: HarnessOpenCode, SessionID: "root", Trigger: true, Records: records})
 				envelope, err := DecodeEnvelope(bytes.NewReader(raw))
 				if err != nil {
@@ -172,9 +173,9 @@ func TestScopedGapAcrossAcceptedDrainBoundary(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			accepted := spool.AcceptedAfterSeq
-			if !old.Coverage.EvidenceComplete || accepted == 0 {
-				t.Fatal("fixture did not establish a real accepted boundary")
+			accepted := old.Trace.Interval.EndSeq
+			if !old.Coverage.EvidenceComplete || accepted == 0 || spool.AcceptedAfterSeq != 0 {
+				t.Fatal("fixture did not establish an observed idle without task success")
 			}
 			newTool := EnvelopeRecord{Kind: "part", RecordID: "new-tool", MessageID: "new-final", PartType: "tool", Tool: "read", ToolStatus: "error", Input: "new", Error: "expected failure"}
 			if mode == "current" || mode == "current-flood" {
@@ -203,8 +204,8 @@ func TestScopedGapAcrossAcceptedDrainBoundary(t *testing.T) {
 				}
 			}
 			current := admit(records)
-			if current.Trace.BoundarySource != "accepted-success" || current.Trace.Interval.StartSeq != accepted {
-				t.Fatal("accepted interval mapping changed")
+			if current.Trace.BoundarySource != "prompt-idle" || current.Trace.Interval.StartSeq != accepted {
+				t.Fatal("episode did not start at the next prompt")
 			}
 			complete := mode == "historical"
 			if current.Coverage.EvidenceComplete != complete || (len(f.jev.recorded()) == 1) != complete || current.Counts.RawFailures != 1 || current.RepairSafe {
@@ -214,7 +215,7 @@ func TestScopedGapAcrossAcceptedDrainBoundary(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !complete && (spool.AcceptedAfterSeq != accepted || current.Dispatch.Eligible) {
+			if !complete && (spool.AcceptedAfterSeq != 0 || current.Dispatch.Eligible) {
 				t.Fatal("incomplete task advanced accepted boundary")
 			}
 			if strings.HasSuffix(mode, "-flood") {
@@ -440,6 +441,7 @@ func TestGapIngestDrainRequiresExplicitBoundary(t *testing.T) {
 	f.cfg.DispatchServer = "" // no history transport or real service
 	admit := func(records []EnvelopeRecord) {
 		t.Helper()
+		records = append(records, EnvelopeRecord{Kind: "event", SessionID: "root", Event: "session.idle"})
 		raw, _ := json.Marshal(&Envelope{Version: 1, Harness: HarnessOpenCode, SessionID: "root", Trigger: true, Records: records})
 		envelope, err := DecodeEnvelope(bytes.NewReader(raw))
 		if err != nil {
@@ -487,10 +489,10 @@ func TestGapIngestDrainRequiresExplicitBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if spool.AcceptedAfterSeq != 0 || len(spool.Events) != 1 {
+	if spool.AcceptedAfterSeq != 0 || len(spool.Events) != 3 {
 		t.Fatal("incomplete task gained success boundary or repeated known compaction")
 	}
-	if spool.LastSeq != spool.Parts["new-final:text"].Seq {
+	if spool.LastSeq != spool.Parts["new-final:text"].Seq+1 {
 		t.Fatal("duplicate native event consumed another sequence")
 	}
 	trace := assembleTrace(f.store, spool, "root")
@@ -504,7 +506,7 @@ func TestGapIngestDrainRequiresExplicitBoundary(t *testing.T) {
 	trace.TaskInterval = &TaskInterval{ID: "coordinator-new-task", StartSeq: spool.Parts["new-user:text"].Seq}
 	raw, _ = json.Marshal(trace)
 	current, err := Analyze(context.Background(), f.cfg, trace, raw, NewJevClient(f.cfg.Endpoint, "synthetic-key", f.cfg))
-	if err != nil || !current.Coverage.EvidenceComplete || len(f.jev.recorded()) != 1 || current.Counts.RawFailures != 1 {
+	if err != nil || !current.Coverage.EvidenceComplete || len(f.jev.recorded()) != 2 || current.Counts.RawFailures != 1 {
 		t.Fatal("known historical gaps poisoned explicit current task", err)
 	}
 	if len(current.Trace.SourceFiles) != 0 || current.RepairSafe {

@@ -59,6 +59,7 @@ type TaskInterval struct {
 	ID       string `json:"id"`
 	StartSeq int    `json:"start_seq"`
 	EndSeq   int    `json:"end_seq,omitempty"`
+	Kind     string `json:"kind,omitempty"` // episode = observed prompt through idle, not task success
 }
 
 // Boundary is an explicit task boundary marker of the root session.
@@ -356,6 +357,12 @@ func (n *Normalized) InInterval(record *Record) bool {
 	if record.Kind == RecordRequirement {
 		return true
 	}
+	// Native nonhuman input remains applicable context, never a fabricated
+	// opening prompt or a productive step. Projection keeps only input known
+	// before this episode's idle, including inherited synthetic constraints.
+	if isExecutionEpisode(n.Trace) && record.Kind == RecordSyntheticContext {
+		return record.Seq <= n.IntervalEnd
+	}
 	if record.Seq < 0 || record.Seq <= n.IntervalStart {
 		return false
 	}
@@ -608,9 +615,18 @@ func resolveInterval(n *Normalized) error {
 		if task.ID == "" {
 			return fmt.Errorf("trace task.id is required when a task interval is supplied")
 		}
+		if task.Kind != "" && task.Kind != "episode" {
+			return fmt.Errorf("invalid task interval kind %q", task.Kind)
+		}
+		if task.Kind == "episode" && (task.StartSeq <= 0 || task.EndSeq < task.StartSeq) {
+			return fmt.Errorf("episode requires a bounded positive prompt-to-idle interval")
+		}
 		n.IntervalStart = task.StartSeq - 1
 		n.IntervalEnd = task.EndSeq
 		n.BoundarySource = "host"
+		if task.Kind == "episode" {
+			n.BoundarySource = "prompt-idle"
+		}
 		return nil
 	}
 	accepted := -1
@@ -698,7 +714,7 @@ func resolveCompleteness(n *Normalized) {
 	if running > 0 {
 		n.Reasons = append(n.Reasons, CompletenessReason{Kind: ReasonRunningTool, Detail: "unresolved running tool calls inside the task interval"})
 	}
-	if n.FinalResponse() == nil {
+	if n.FinalResponse() == nil && !isExecutionEpisode(n.Trace) {
 		n.Reasons = append(n.Reasons, CompletenessReason{Kind: ReasonMissingFinal, Detail: "no assistant response inside the resolved task interval"})
 	}
 	if status := n.Trace.TerminalStatus; status == TaskStatusAborted || status == TaskStatusError {

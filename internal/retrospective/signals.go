@@ -199,7 +199,7 @@ func DetectSignals(trace *Trace, input []byte, config *SignalConfig) (*SignalRep
 	r.Dispatch = ReportDispatch{Eligible: false, Reasons: []string{"detector observations alone never authorize dispatch or repair"}}
 	r.TerminalOutcome.Status = trace.TerminalStatus
 	r.TerminalOutcome.Observed = trace.TerminalStatus != ""
-	if r.TerminalOutcome.Status == "" {
+	if r.TerminalOutcome.Status == "" && !isExecutionEpisode(trace) {
 		r.TerminalOutcome.Status = TaskStatusOK
 	}
 	digest := sha256.Sum256(input)
@@ -648,7 +648,14 @@ func (r *SignalReport) retainEvidence(n *Normalized, calls []signalCall, redacto
 			gram.SourceRefs[i].SHA256 = redactor.Text(gram.SourceRefs[i].SHA256)
 		}
 		body, _ := json.Marshal(gram)
-		if bytesUsed+len(body)+1 > cfg.EvidenceLimitBytes {
+		// Native episodes use per-signal packets as model chunks. Their local
+		// evidence union may exceed one HTTP packet; never discard another
+		// signal's evidence just because a preceding packet filled the budget.
+		overBudget := bytesUsed+len(body)+1 > cfg.EvidenceLimitBytes
+		if isExecutionEpisode(n.Trace) {
+			overBudget = len(body)+2 > cfg.EvidenceLimitBytes
+		}
+		if overBudget {
 			r.Coverage.RecordDispositions[position].Disposition = "omitted:evidence_byte_cap"
 			r.Coverage.OmittedContextRecords++
 			continue

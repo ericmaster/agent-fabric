@@ -82,6 +82,12 @@ func decodeNativeHistory(raw []byte, dst any) error {
 // Fetch complete pages before staging. Controls count against all budgets too.
 // Spec: docs/specs/task-retrospective.md via HTTPSessionClient.Messages
 func (c *HTTPSessionClient) nativeHistory(ctx context.Context, id string) ([]SessionMessageRow, error) {
+	return c.nativeHistoryMode(ctx, id, false)
+}
+
+// Episode projection is deliberately prompt + agent tool calls/results. Native
+// review/final consumers retain the strict full-history decoder above.
+func (c *HTTPSessionClient) nativeHistoryMode(ctx context.Context, id string, episode bool) ([]SessionMessageRow, error) {
 	var wire []nativeHistoryRow
 	cursor := ""
 	seen := map[string]bool{}
@@ -117,6 +123,9 @@ func (c *HTTPSessionClient) nativeHistory(ctx context.Context, id string) ([]Ses
 				Type string `json:"type"`
 			}
 			if json.Unmarshal(rawRow, &tag) == nil {
+				if episode && (tag.Type == "system" || tag.Type == "skill") {
+					continue // harness configuration, not episode input or agent execution
+				}
 				switch tag.Type {
 				case "system", "skill", "shell":
 					// Known union members carry material context/execution, not
@@ -211,14 +220,57 @@ func (c *HTTPSessionClient) nativeHistory(ctx context.Context, id string) ([]Ses
 		}
 	}
 	for _, row := range wire {
+		if episode && row.Type == "assistant" {
+			var execution []json.RawMessage
+			for _, content := range row.Content {
+				var tag struct {
+					Type string `json:"type"`
+				}
+				if json.Unmarshal(content, &tag) == nil {
+					if tag.Type == "reasoning" {
+						continue
+					}
+					if tag.Type == "text" {
+						var text struct {
+							Text *string `json:"text"`
+						}
+						if json.Unmarshal(content, &text) == nil && text.Text != nil && len(*text.Text) > EnvelopeRecordMaxBytes {
+							continue // narrative is not model evidence for an episode
+						}
+					}
+				}
+				execution = append(execution, content)
+			}
+			row.Content = execution
+			if row.Content == nil {
+				row.Content = []json.RawMessage{}
+			}
+		}
 		normalized, err := normalizeNativeHistory(row, id)
 		if err != nil {
-			return nil, err
+			if !episode {
+				return nil, err
+			}
+			// This row has validated identity/type/time and position. Retain
+			// its loss at that position instead of rejecting unrelated episodes
+			// or forwarding an incomplete result as successful evidence.
+			normalized = SessionMessageRow{Native: true, Control: "evidence-gap"}
+			normalized.Info.ID, normalized.Info.SessionID = row.ID, id
+			normalized.Events = []EnvelopeRecord{{Kind: "event", Event: "session.evidence_gap", SessionID: id, RecordID: row.ID + ":evidence-gap", Detail: "native history row unavailable; incomplete prompt or tool evidence"}}
+		}
+		if episode {
+			for i := range normalized.Events {
+				if normalized.Events[i].Kind == "removed" {
+					normalized.Events[i].Kind = "event"
+					normalized.Events[i].Event = "session.evidence_gap"
+					normalized.Events[i].Detail = "native history row incomplete at observed position"
+				}
+			}
 		}
 		// A historical idle belongs to its earlier turn, not a later admitted user.
 		// Existing staged parts keep their original seq; do not append stale errors
 		// at the tail merely because backfill arrived after live observation.
-		if row.Type == "idle" && row.Time.Created < latestUser {
+		if !episode && row.Type == "idle" && row.Time.Created < latestUser {
 			normalized.Events = nil
 		}
 		count += 1 + len(normalized.Parts) + len(normalized.Events)
@@ -231,7 +283,7 @@ func (c *HTTPSessionClient) nativeHistory(ctx context.Context, id string) ([]Ses
 		}
 		controls = controls || normalized.Control != "" || row.Type == "synthetic"
 	}
-	if lastAssistant >= 0 {
+	if lastAssistant >= 0 && !episode {
 		final := false
 		for _, part := range rows[lastAssistant].Parts {
 			if part.Type == "text" && !part.NonFinal && part.Text != "" {
@@ -244,7 +296,7 @@ func (c *HTTPSessionClient) nativeHistory(ctx context.Context, id string) ([]Ses
 			}
 			rows[lastAssistant].Events = append(rows[lastAssistant].Events, EnvelopeRecord{Kind: "removed", SessionID: id, RecordID: "native-final-gap", Detail: "native history lacks a completed final assistant answer"})
 		}
-	} else if controls {
+	} else if controls && !episode {
 		return nil, errors.New("native control history contains no assistant evidence")
 	}
 	return rows, nil

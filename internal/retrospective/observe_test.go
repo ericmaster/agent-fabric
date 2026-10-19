@@ -168,9 +168,10 @@ func TestRecordedReplayChildAggregation(t *testing.T) {
 	replayFromFile(t, store,
 		filepath.Join(fixtureRoot(t), "envelopes", "childsession.jsonl"),
 		map[string]string{"{{execution_root}}": "/proj/tree", "{{wrong_root}}": "/proj/other"})
-	// The child trigger must not create its own job (non-root owner).
-	if job, err := store.ReadDrainJob("ses_child"); err == nil {
-		t.Fatalf("child session produced a job: %+v", job)
+	// A delegated prompt has its own episode; legacy trace aggregation stays
+	// available for offline inspection without suppressing the child's intake.
+	if job, err := store.ReadDrainJob("ses_child"); err != nil || job.Status != JobPending {
+		t.Fatalf("child episode job missing: %+v %v", job, err)
 	}
 	job, err := store.ReadDrainJob("ses_root")
 	if err != nil || job.Status != JobPending {
@@ -498,7 +499,7 @@ func TestSpoolBoundOverflowDropsOldest(t *testing.T) {
 	}
 }
 
-func TestIngestTriggerOnlyOnRootOwner(t *testing.T) {
+func TestIngestTriggerOnEachEpisodeOwner(t *testing.T) {
 	store := testStore(t)
 	cfg := observationConfig(store)
 	var spawnCalls atomic.Int64
@@ -514,18 +515,31 @@ func TestIngestTriggerOnlyOnRootOwner(t *testing.T) {
 	if _, err := IngestEnvelope(IngestOptions{Config: cfg, Store: store, SpawnWorker: spawn}, stage); err != nil {
 		t.Fatal(err)
 	}
-	// A trigger for the known child never creates a job or spawns a worker.
+	// The adapter delivers each owner's parts to that owner's spool; global
+	// session identities in a parent's envelope do not populate child intake.
+	if _, err := IngestEnvelope(IngestOptions{Config: cfg, Store: store, SpawnWorker: spawn}, &Envelope{
+		Version: EnvelopeSchemaVersion, Harness: HarnessOpenCode, SessionID: "ses_childx",
+		Records: []EnvelopeRecord{
+			{Kind: "session", SessionID: "ses_childx", ParentID: "ses_owner", Directory: "/proj/owner"},
+			{Kind: "message", RecordID: "msg_child_u", SessionID: "ses_childx", Role: "user"},
+			{Kind: "part", RecordID: "prt_childx", SessionID: "ses_childx", MessageID: "msg_child_u", PartType: "text", Text: "delegated prompt"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Delegated input is ordinary episode intake, subject to the same origin
+	// exclusions; parenthood alone must not suppress it.
 	if _, err := IngestEnvelope(IngestOptions{Config: cfg, Store: store, SpawnWorker: spawn}, &Envelope{
 		Version: EnvelopeSchemaVersion, Harness: HarnessOpenCode,
 		SessionID: "ses_childx", Trigger: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if job, err := store.ReadDrainJob("ses_childx"); err == nil {
-		t.Fatalf("child owner produced a job: %+v", job)
+	if job, err := store.ReadDrainJob("ses_childx"); err != nil || job.Status != JobPending {
+		t.Fatalf("child episode job missing: %+v %v", job, err)
 	}
-	if spawnCalls.Load() != 0 {
-		t.Fatalf("child triggers must not spawn: %d", spawnCalls.Load())
+	if spawnCalls.Load() != 1 {
+		t.Fatalf("child episode must spawn once: %d", spawnCalls.Load())
 	}
 	// The root owner's trigger creates exactly one job and spawns once.
 	if _, err := IngestEnvelope(IngestOptions{Config: cfg, Store: store, SpawnWorker: spawn}, &Envelope{
@@ -537,8 +551,8 @@ func TestIngestTriggerOnlyOnRootOwner(t *testing.T) {
 	if job, err := store.ReadDrainJob("ses_owner"); err != nil || job.Status != JobPending {
 		t.Fatalf("root job: %+v %v", job, err)
 	}
-	if spawnCalls.Load() != 1 {
-		t.Fatalf("worker spawns = %d (want 1)", spawnCalls.Load())
+	if spawnCalls.Load() != 2 {
+		t.Fatalf("worker spawns = %d (want 2)", spawnCalls.Load())
 	}
 	// A second trigger while pending does not re-spawn the worker.
 	if _, err := IngestEnvelope(IngestOptions{Config: cfg, Store: store, SpawnWorker: spawn}, &Envelope{
@@ -547,7 +561,7 @@ func TestIngestTriggerOnlyOnRootOwner(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if spawnCalls.Load() != 1 {
+	if spawnCalls.Load() != 2 {
 		t.Fatalf("pending triggers must not respawn: %d", spawnCalls.Load())
 	}
 	// An idle blip without any user turn must not create jobs.
@@ -609,8 +623,7 @@ func TestTerminalWorkWithMissingStartupCreatesInspectableIncompleteReport(t *tes
 		job, _ := store.ReadDrainJob(id)
 		t.Fatalf("missing-startup completeness gap has no inspectable report: summary=%+v job=%+v entries=%v", summary, job, entries)
 	}
-	receipts, err := store.ListReceipts()
-	if err != nil || len(receipts) != 0 {
+	if len(taskReceipts(t, store)) != 0 {
 		t.Fatal("incomplete startup dispatched correction")
 	}
 }

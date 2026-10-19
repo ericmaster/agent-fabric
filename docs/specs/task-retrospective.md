@@ -1299,20 +1299,73 @@ Exit codes are recorded only when the tool payload makes them observable;
 nothing is inferred. No requirements are synthesized; explicit requirement
 records are always host-supplied.
 
-Boundaries and terminal status: the interval resolves per trace schema v1 —
-legacy positional `accepted_success` boundary when `accepted_after_seq > 0`, otherwise
-session-start. Task identity when no host task id exists:
-`retro:<session-id>:<first user message seq>:<final message id>` — stable
-across restarts so an identical completed turn never produces a second
-incident for the same task half.
+#### Native execution episodes
+
+Native drain analyzes **input prompt → next observed idle**, not the entire
+session or an accepted-success interval. A prompt may come from a person,
+another agent or automation; wire role `user` does not establish human authorship.
+Additional prompts before that idle remain input to the same episode. Duplicate
+idles without new input create nothing; a prompt without idle stays open.
+`task.kind:episode` requires positive bounded start/end sequences and reports
+`boundary_source:prompt-idle`. Idle establishes closure, never task success;
+an assistant final is unnecessary. Explicit errors/interruptions stay distinct.
+Legacy offline traces retain their existing host/accepted-success behavior.
+
+The projection retains input, applicable durable nonhuman context, agent tool
+calls/results and at-use source hashes. Assistant narrative/private reasoning
+is not sent to the model. The native episode decoder excludes harness system/skill
+configuration; strict native review/final decoding is unchanged. Validated history
+order, including historical idles, supplies a separate redacted snapshot: backfill
+arrival sequences cannot establish execution order. Original spools, overflow
+counters, collection gaps and reports are preserved, not reset to admit a repair.
+Compaction of model context alone does not remove independently fetched stored
+prompt/tool rows. Unavailable rows in that snapshot retain positional evidence
+gaps; malformed history/pagination or collection caps remain explicit failures.
+Unscoped gaps in collector-only fallback remain material to every affected episode.
+Descendant sessions have their own episodes; the parent includes its observed
+delegating call/result, not the child's entire session. Origin/exposure exclusions
+remain authoritative for both roots and descendants.
+
+Existing per-signal neighborhoods are the model chunks: retain the relevant
+input and complete selected calls/results; trim optional neighbor calls before
+sending. The local union of episode evidence may exceed one HTTP packet, while
+each request retains the configured byte/request caps. An indivisible oversized
+input/result or signal packet abstains explicitly; no text truncation is treated
+as a complete chunk. No model call is made for chunks without signals. Request
+budgets apply per episode; deterministic replay uses no provider or dispatch.
+Native corrector/reviewer/QA packets keep an oversized report union local and
+send a bounded evidence preview plus the authoritative locator. A preview never
+replaces required causal reads. Serialized native prompts over the configured
+request byte cap are refused before HTTP delivery, including oversized candidates.
+
+Episode identity hashes session, opening input identities and observed idle ID
+(staged sequence only when no idle ID exists). The job's `episode_digests` deduplicates unchanged processed input,
+without advancing `accepted_after_seq` or inventing task success. An incomplete
+earlier episode does not expand across later prompts or prevent their analysis.
+
+#### Retrospective failure feedback
+
+Failed collection/analysis/interpretation/dispatch produces a separate durable
+`pipeline-*` maintenance incident, deduplicated by failure class and installed
+source root. Its report has `mode:pipeline_failure`, remains incomplete and is
+ineligible for ordinary task dispatch/repair. Original report/job locators are
+diagnostic evidence, not a fabricated successful task trace.
+
+With an explicit source root inside configured canonical roots, existing enabled
+native dispatch/model capability runs the existing read-only corrector followed
+by the configured independent reviewer. Only an empty-findings actionable diagnosis
+and proposed regression check can become `suggested`; any proposed write is refused.
+This path never calls a repair sink. Implementation of executable/hook fixes uses
+ordinary scoped change authority. Missing capabilities retain `queued`; ambiguous
+attempts retain `pending` without automatic root retries. Learning-origin binding
+suppresses capture of diagnosis/review roots and descendants, preventing recursion.
 
 ### Drain jobs and lifecycle
 
 `<state>/jobs/<session-id>.json` (schema `1`): `{session_id, server_url?,
 status: pending|running|done|failed|skipped, attempts, incidents:{task:
-receipt status}, report_path?, receipt_status?, error?, created_at,
-updated_at}`. Skipped covers observation rows that never trigger (a child
-session's terminal event, learning-origin rows, suppressed spools).
+receipt status}, episode_digests?, maintenance_incident?, report_path?, receipt_status?, error?, created_at,
+updated_at}`. Skipped covers learning-origin/suppressed spools or absent execution records.
 Ingest writes/persists a job at a terminal trigger (trigger candidate =
 `session.idle` or `session.status: idle` for the owner session) with
 `status: pending`, then launches one detached `agf retrospective drain`
@@ -1334,15 +1387,14 @@ worker. The worker:
   a cyclic observed-parent topology; marking a `partial_stream` gap when
   the reconcile fails — transport errors are recorded as gaps, never
   invented as coverage);
-  assembles the trace; validates; runs `analyze` (evaluator budgets per config);
+  projects closed episodes; validates; runs `analyze` (evaluator budgets per episode/config);
   writes the report into `<state>/reports/`; runs `dispatch` under the same
   global-enable re-check and request budgets; records the receipt status in
-  the job and advances the processed-interval cursor only after a durable
-  conclusive report/receipt for a fully resolved, complete interval. Error/abort
-  outcomes can be processed without certifying success. Incomplete/ambiguous
-  intervals never advance. A provider-unavailable report is a retained conclusive
-  advisory, not success or permission to retry forever; explicit later re-analysis
-  is a separate bounded action preserving task/incident identity;
+  the job and records each processed input digest. Incomplete episodes retain
+  reports and fail the job with a separate maintenance incident, while later
+  closed episodes still run. Neither closure nor error/abort certifies success.
+  Semantic uncertainty and intentionally exhausted budgets remain abstentions,
+  not permission to retry forever; explicit re-analysis preserves incident identity;
 - disabled mid-flight (global opt-out) → dispatch is skipped and the job
   stops at `pending` (paused work stays inspectable; the next trigger or
   restart resume continues it);

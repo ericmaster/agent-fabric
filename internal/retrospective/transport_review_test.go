@@ -218,7 +218,7 @@ func TestTamperedPersistedJobAndSpoolURLCannotAuthorizeBackfill(t *testing.T) {
 			if hits != 0 {
 				t.Fatal("tampered state caused attacker request")
 			}
-			if receipts, err := f.store.ListReceipts(); err != nil || len(receipts) != 0 {
+			if len(taskReceipts(t, f.store)) != 0 {
 				t.Fatal("untrusted backfill invented eligible/queued disposition")
 			}
 			job, _ := f.store.ReadDrainJob("ses_task01")
@@ -237,8 +237,7 @@ func TestBackfillAuthFailureIsActionableGapNotQueuedReceipt(t *testing.T) {
 	f.stageReplay(t, filepath.Join(fixtureRoot(t), "envelopes", "success-recovery.jsonl"))
 	f.sessions.statusCode = 401
 	drainCluster(t, f, "synthetic-fastino-key")
-	receipts, err := f.store.ListReceipts()
-	if err != nil || len(receipts) != 0 {
+	if len(taskReceipts(t, f.store)) != 0 {
 		t.Fatal("backfill auth gap misrepresented as queued dispatch")
 	}
 	job, err := f.store.ReadDrainJob("ses_task01")

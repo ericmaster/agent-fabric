@@ -605,7 +605,7 @@ func TestNativeHistoryGapsNoGuessedSuccessOrPrivateText(t *testing.T) {
 			}
 			var report Report
 			json.Unmarshal(body, &report)
-			success := mode == "private-reasoning" || mode == "old-idle-error" || mode == "interrupted"
+			success := mode == "private-reasoning" || mode == "old-idle-error" || mode == "interrupted" || mode == "missing-final"
 			if success != (report.Status == ReportStatusComplete) {
 				t.Fatalf("wrong coverage: %+v", report.IncompleteReasons)
 			}
