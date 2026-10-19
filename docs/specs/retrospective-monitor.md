@@ -36,8 +36,14 @@ The installed first-party schedule.list scoped to the exact project supplies cur
 stored prompt definitions in memory only. Require unique IDs/names, disabled tasks,
 nonrunning state, no targetSessionId, exact optional directory and prompt execution
 without goal/agent attachments. No candidate-derived hash is a recognized template;
-only exact current stored prompt SHA256 is recognized. Historical/expanded templates
-are NOT recognized by this release. Conflicting identical prompt definitions retain.
+Recognize exact current stored prompt SHA256 and only two independently reviewed AGF
+historical instructions: d432155a4a1010016552f0a06605f51cc886d7a2c36c4b30bc0e81b0dd80c0db
+and ee47ffbe1fa9d0a40fd5fa104a8f9c18db9c3f67ef4302c40736309b4a28aeb5.
+The operator reviewed their complete read-only monitor instructions on 2026-10-19,
+including samples ses_eb1027710ffe0ta7xPC9szoigC and ses_eba2ec7c5ffe86QBEMutfUE1DQ.
+Approval applies only to the exact AGF task and preserves every independent identity,
+completion, continuation, queue and archive check. Unknown/expanded templates retain.
+Conflicting prompt matches retain. Observing a candidate hash never auto-approves it.
 
 Complete project native inventory (8 pages x100, unique IDs and cursor safeguards)
 discovers scheduled-kind exact-title candidates beyond the classification cache.
@@ -85,7 +91,8 @@ No new journal, HTTP route or cross-language cursor writer is introduced.
 `agf.monitor-legacy.v1` is a distinct ephemeral composite attestation, NOT a native
 historical task execution receipt: bind exact task ID/name/project/control4098/
 producer41629/session/kind/title, initial native authored USER ID and instruction
-SHA256, recognized current stored prompt SHA256 and source `schedule.list.current`.
+SHA256, recognized instruction SHA256 and source `schedule.list.current` or
+`operator.reviewed-history` for the two explicitly reviewed historical instructions.
 It is recorded in the final archive/audit without prompt text; not cached as a
 run receipt. Fresh pre-delete snapshot recomputes it from native user.text and
 the same recognized task definitions, and full metadata/history version must match.

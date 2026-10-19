@@ -168,11 +168,13 @@ never overwriting it or importing arbitrary archive filenames as authority.
 --cleanup-plan remains one read-only phase and never saves classification.
 
 Exact scheduled kind/project/task-name + creation timestamp title and initial
-native user.text SHA256 matching a unique recognized current stored prompt produce
+native user.text SHA256 matching a unique recognized stored or explicitly reviewed historical prompt produce
 `agf.monitor-legacy.v1`. This is an honest composite, NOT a historical task-ID
 execution receipt; archives/audits record its source and IDs/hashes, not prompt
-text. Old observed d432… and expanded snippets are NOT recognized merely from an
-observed candidate. They remain retained. No historical-template registry is added.
+text. The two exact AGF historical instruction hashes reviewed by the operator on
+2026-10-19 are listed in the spec and recorded as operator.reviewed-history.
+Other observed hashes and expanded snippets remain unrecognized; discovery alone
+never approves a historical instruction.
 Unknown template recognition is deliberately separate from this working slice.
 Fresh snapshot rechecks initial instruction, all metadata, completion and history.
 Any second authored user message retains even when it repeats the monitor prompt.

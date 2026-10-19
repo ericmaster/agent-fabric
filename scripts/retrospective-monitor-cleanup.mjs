@@ -7,6 +7,15 @@ import { pathToFileURL } from 'node:url';
 
 const PROJECT = '/home/ericmaster/nimbler-ops';
 const TASK = 'd2785bca-a95c-4252-ab72-7e89a1b5e941';
+// Spec: docs/specs/retrospective-monitor.md — operator reviewed both complete read-only monitor instructions, 2026-10-19.
+const HISTORICAL_AGF_PROMPTS = new Set([
+  'd432155a4a1010016552f0a06605f51cc886d7a2c36c4b30bc0e81b0dd80c0db',
+  'ee47ffbe1fa9d0a40fd5fa104a8f9c18db9c3f67ef4302c40736309b4a28aeb5',
+]);
+// Spec: docs/specs/retrospective-monitor.md — historical approval is scoped to the AGF task, never title alone.
+export function recognizesPrompt(task, digest) {
+  return digest === task.promptSHA256 || (task.id === TASK && HISTORICAL_AGF_PROMPTS.has(digest));
+}
 const TASKS = {
   [TASK]: 'AGF-1 OpenChamber session monitor',
   '55d5f2b9-3ea8-4223-91fe-7cffdc71bcef': 'Monitor operativo de agentes — progreso y loops',
@@ -247,10 +256,10 @@ async function snapshot(request, sessionID, tasks) {
       && (user.metadata === undefined || (record(user.metadata) && Object.keys(user.metadata).length === 0))
       && ['files', 'agents', 'skills'].every(k => user[k] === undefined || (Array.isArray(user[k]) && user[k].length === 0)), 'LEGACY_IDENTITY_UNPROVEN');
     const instructionSHA256 = hash(user.text);
-    check(instructionSHA256 === task.promptSHA256 && tasks.filter(t => t.promptSHA256 === instructionSHA256).length === 1, 'LEGACY_IDENTITY_UNPROVEN');
-    attestation = { schema: 'agf.monitor-legacy.v1', source: 'schedule.list.current', taskID: task.id, taskName: task.name,
+    check(recognizesPrompt(task, instructionSHA256) && tasks.filter(t => recognizesPrompt(t, instructionSHA256)).length === 1, 'LEGACY_IDENTITY_UNPROVEN');
+    attestation = { schema: 'agf.monitor-legacy.v1', source: instructionSHA256 === task.promptSHA256 ? 'schedule.list.current' : 'operator.reviewed-history', taskID: task.id, taskName: task.name,
       project: PROJECT, control: 'http://127.0.0.1:4098', producer: 'http://127.0.0.1:41629', sessionID, kind: 'scheduled', title: s.title,
-      initialUserID: user.id, instructionSHA256, recognizedPromptSHA256: task.promptSHA256 };
+      initialUserID: user.id, instructionSHA256, recognizedPromptSHA256: instructionSHA256 };
   }
   const text = [];
   for (const part of final.content) {

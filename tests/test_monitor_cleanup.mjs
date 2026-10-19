@@ -6,10 +6,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
-import { maintenance, publish, authorize, projectQueue, boundedFetch, firstPartyTransport, readInput, captureCovers } from '../scripts/retrospective-monitor-cleanup.mjs';
+import { maintenance, publish, authorize, projectQueue, boundedFetch, firstPartyTransport, readInput, captureCovers, recognizesPrompt } from '../scripts/retrospective-monitor-cleanup.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const sha = value => createHash('sha256').update(value).digest('hex');
+test('reviewed historical prompt hashes grant no authority to a different task or an unknown template', () => {
+  const task = { id: 'd2785bca-a95c-4252-ab72-7e89a1b5e941', promptSHA256: 'current' };
+  for (const digest of ['d432155a4a1010016552f0a06605f51cc886d7a2c36c4b30bc0e81b0dd80c0db', 'ee47ffbe1fa9d0a40fd5fa104a8f9c18db9c3f67ef4302c40736309b4a28aeb5']) {
+    assert.equal(recognizesPrompt(task, digest), true);
+    assert.equal(recognizesPrompt({ ...task, id: 'foreign' }, digest), false);
+  }
+  assert.equal(recognizesPrompt(task, 'unknown'), false);
+  assert.equal(recognizesPrompt(task, 'current'), true);
+});
 test('capture completion compares RFC3339 seconds without accepting an earlier second', () => {
   const completed = Date.parse('2026-10-18T21:24:27.287Z');
   assert.equal(captureCovers('2026-10-18T21:24:27Z', completed), true);
@@ -53,6 +62,36 @@ function legacyOptions(f, definitions = [legacyDefinition(f.id)]) {
   return { ...f.options, listTasks: async () => ({ tasks: definitions }), request: wire(async (e, m) =>
     e.startsWith('/api/session?') && !new URL(e, 'http://fixture').searchParams.has('parentID')
       ? { status: 200, body: { data: [f.session], cursor: { previous: null, next: null } } } : f.request(e, m)) };
+}
+// Spec: docs/specs/retrospective-monitor.md — substitute only an approved digest in an in-memory module, never store real instructions.
+for (const scenario of ['approved', 'foreign-task', 'unknown-template', 'conflicting-match']) {
+  test(`historical snapshot and archive authorization: ${scenario}`, () => fixture(async f => {
+    const approved = 'd432155a4a1010016552f0a06605f51cc886d7a2c36c4b30bc0e81b0dd80c0db';
+    const source = await fs.readFile(path.join(HERE, '../scripts/retrospective-monitor-cleanup.mjs'), 'utf8');
+    assert.equal(source.split(approved).length, 2);
+    const module = await import(`data:text/javascript;base64,${Buffer.from(source.replace(approved, sha('PRIVATE_USER'))).toString('base64')}`);
+    const tasks = [{ ...legacyDefinition(f.id), execution: { prompt: 'SYNTHETIC_CURRENT' } }];
+    const foreign = { ...legacyDefinition(null), id: '55d5f2b9-3ea8-4223-91fe-7cffdc71bcef', name: 'Monitor operativo de agentes — progreso y loops', execution: { prompt: 'SYNTHETIC_OTHER' } };
+    if (scenario === 'foreign-task') tasks[0] = foreign;
+    if (scenario === 'unknown-template') f.messages[0].text = 'SYNTHETIC_UNKNOWN';
+    if (scenario === 'conflicting-match') tasks.push({ ...foreign, execution: { prompt: 'PRIVATE_USER' } });
+    const options = legacyOptions(f, tasks);
+    if (scenario === 'foreign-task') {
+      tasks.push({ ...legacyDefinition(null), execution: { prompt: 'SYNTHETIC_CURRENT' } });
+      f.session.title = `${foreign.name} 1970-01-01 00:00`;
+    }
+    const result = await module.maintenance({ ...f.input, receipts: {} }, options);
+    assert.equal(result.deleted, scenario === 'approved' ? 1 : 0);
+    assert.equal(f.calls.filter(c => c[1] === 'DELETE').length, scenario === 'approved' ? 1 : 0);
+    if (scenario === 'approved') {
+      const bytes = await fs.readFile(path.join(f.root, '1970-01-01', `${f.id}.md`), 'utf8');
+      const metadata = JSON.parse(bytes.match(/<!-- (.*) -->/)[1]);
+      assert.equal(metadata.attestation.source, 'operator.reviewed-history');
+      assert.equal(metadata.attestation.recognizedPromptSHA256, sha('PRIVATE_USER'));
+      assert.equal(metadata.attestation.instructionSHA256, sha('PRIVATE_USER'));
+      assert.doesNotMatch(bytes, /PRIVATE_USER|SYNTHETIC_CURRENT/);
+    } else assert.deepEqual(await fs.readdir(f.root), []);
+  }));
 }
 // Spec: docs/specs/retrospective-monitor.md via maintenance — fixtures only/no live APIs.
 async function fixture(run) {
