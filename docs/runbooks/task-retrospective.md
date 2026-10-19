@@ -107,7 +107,7 @@ records no hidden reasoning, never posts into the source session, and never
 blocks a session on evaluation. OpenCode must be restarted to load, unload, or
 replace the plugin file.
 
-2.0.24/2.0.27/2.0.30 prompt extra agent/model keys are ignored: prompt sends text only.
+2.0.24/2.0.27/2.0.30/2.0.31 prompt extra agent/model keys are ignored: prompt sends text only.
 Selection instead uses native session.create fields `agent`, `model` (Model.Ref)
 and `location`. The canonical learning-corrector investigates a typed proposal;
 separate visible parentless reviewer and qa-runner roots execute before acceptance.
@@ -119,7 +119,7 @@ A completed no-edit advisory is `suggested`, not `repaired`.
 The native default plugin definition uses installed-generation
 `@opencode/plugin@2.0.24`, `ctx.event.subscribe` and `ctx.app.version`.
 Its v1 named hook export is replay compatibility only. The runtime allowlist is
-exactly OpenCode `2.0.24`, `2.0.27` and `2.0.30`; required prompt/get, execute.after and event
+exactly OpenCode `2.0.24`, `2.0.27`, `2.0.30` and `2.0.31`; required prompt/get, execute.after and event
 subscription capabilities are checked before staging. Other versions (including
 future patches) fail closed and log a full private diagnostic under
 `<state>/observer-errors`. Do not widen the allowlist from `/api/info` alone.

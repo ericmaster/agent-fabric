@@ -11,7 +11,7 @@
 // envelope goes through stdin; argv carries static flags only), never posts
 // into the user's source session, and never blocks a response on Jev.
 //
-// Version pinning: fixture-tested against OpenCode 2.0.24, 2.0.27 and 2.0.30
+// Version pinning: contract-tested against OpenCode 2.0.24, 2.0.27, 2.0.30 and 2.0.31
 // (@opencode/plugin@2.0.24 default setup/events API). The v1 named hook export
 // and @opencode-ai/plugin@1.18.35 types are replay-only compatibility. Native
 // setup uses ctx.app.version and rejects an unconfirmed generation.
@@ -31,7 +31,7 @@ const FLUSH_THRESHOLD_RECORDS = 25;
 const MAX_BUFFERED_EVENTS = 2000;
 const SPAWN_TIMEOUT_MS = 30_000;
 const HEALTH_TIMEOUT_MS = 5_000;
-const SUPPORTED_NATIVE_VERSIONS = ["2.0.24", "2.0.27", "2.0.30"];
+const SUPPORTED_NATIVE_VERSIONS = ["2.0.24", "2.0.27", "2.0.30", "2.0.31"];
 const LEARNING_ORIGIN_PREFIX = "agf-learning-origin:v1:";
 
 /** Ingest exit codes; the adapter reacts without parsing any output. */
@@ -651,7 +651,7 @@ export default {
     const supported = SUPPORTED_NATIVE_VERSIONS.includes(version);
     const capabilities = typeof ctx.session?.hook === "function" && typeof ctx.session?.get === "function" && typeof ctx.tool?.hook === "function" && typeof ctx.event?.subscribe === "function";
     if (!supported || !capabilities) {
-      const message = `AGF retrospective: ${supported ? "missing native capabilities" : "unsupported native plugin generation"}; require OpenCode 2.0.24, 2.0.27 or 2.0.30 with session prompt/get, tool execute.after and event subscribe. See docs/runbooks/task-retrospective.md (Installed version pins in backing spec).`;
+      const message = `AGF retrospective: ${supported ? "missing native capabilities" : "unsupported native plugin generation"}; require OpenCode 2.0.24, 2.0.27, 2.0.30 or 2.0.31 with session prompt/get, tool execute.after and event subscribe. See docs/runbooks/task-retrospective.md (Installed version pins in backing spec).`;
       reportIngestFailure(1, message, "Native setup refused before staging; use a verified runtime and required capabilities. No transcript or environment retained.");
       throw new Error(message);
     }

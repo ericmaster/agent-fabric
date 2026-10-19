@@ -7,7 +7,7 @@ import path from "node:path";
 import os from "node:os";
 import nativePlugin from "../opencode";
 
-for (const version of ["2.0.27", "2.0.30"]) test(`native ${version} unbound setup never resolves CWD/HOME or registers repeated capture hooks`, async (t) => {
+for (const version of ["2.0.27", "2.0.30", "2.0.31"]) test(`native ${version} unbound setup never resolves CWD/HOME or registers repeated capture hooks`, async (t) => {
   const root = mkdtempSync(path.join(os.tmpdir(), "agf-binding-"));
   const previous = { ...process.env }, cwd = process.cwd();
   let children = 0, hooks = 0;
@@ -48,7 +48,7 @@ test("native binding rejects relative, symlink, writable file/parent and non-own
   } finally { mock.mock.restore(); process.env = previous; }
 });
 
-for (const version of ["2.0.27", "2.0.30"]) test(`native ${version} capability probe is bounded, private, once-only and cannot grant capture on failure`, async (t) => {
+for (const version of ["2.0.27", "2.0.30", "2.0.31"]) test(`native ${version} capability probe is bounded, private, once-only and cannot grant capture on failure`, async (t) => {
   const previous = { ...process.env };
   const root = mkdtempSync(path.join(os.tmpdir(), "agf-binding-"));
   const bin = path.join(root, "agf"); writeFileSync(bin, "synthetic", { mode: 0o700 });

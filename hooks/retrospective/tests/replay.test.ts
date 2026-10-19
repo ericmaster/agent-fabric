@@ -148,7 +148,7 @@ test("native duplicate old step cannot borrow a later opening or queued inbox id
   } finally { harness.restore(); }
 });
 
-for (const nativeVersion of ["2.0.24", "2.0.27", "2.0.30"]) test(`fresh native ${nativeVersion} opening failed reads survive real ingest validation and terminal batching`, async () => {
+for (const nativeVersion of ["2.0.24", "2.0.27", "2.0.30", "2.0.31"]) test(`fresh native ${nativeVersion} opening failed reads survive real ingest validation and terminal batching`, async () => {
   const harness = fixtureCLI();
   const previous = { state: process.env.AGF_RETROSPECTIVE_STATE, config: process.env.AGF_CONFIG, noSpawn: process.env.AGF_RETROSPECTIVE_NO_SPAWN };
   delete process.env.AGF_PLUGIN_FAKE_HEALTH;
@@ -221,7 +221,7 @@ test("native setup rejects unsupported versions and missing capabilities before 
   const context = { app: { version: "2.0.30" }, location: { directory: harness.root },
     session: { async get() {}, async hook() {} }, tool: { async hook() {} }, event: { async *subscribe() {} } };
   try {
-    for (const version of ["2.0.25", "2.0.26", "2.0.28", "2.0.31", "2.1.0", "3.0.0", "2.0.30-dev", "garbage"]) {
+    for (const version of ["2.0.25", "2.0.26", "2.0.28", "2.0.32", "2.1.0", "3.0.0", "2.0.30-dev", "garbage"]) {
       await assert.rejects(nativePlugin.setup({ ...context, app: { version } } as any), /unsupported.*docs\/runbooks\/task-retrospective\.md/);
     }
     for (const domain of ["session", "tool", "event"]) {

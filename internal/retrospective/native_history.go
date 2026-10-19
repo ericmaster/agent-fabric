@@ -1,4 +1,4 @@
-// Spec: docs/specs/task-retrospective.md — OpenCode 2.0.24/2.0.27/2.0.30 history adapter.
+// Spec: docs/specs/task-retrospective.md — OpenCode 2.0.24/2.0.27/2.0.30/2.0.31 history adapter.
 package retrospective
 
 import (

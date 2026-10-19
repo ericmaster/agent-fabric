@@ -996,11 +996,18 @@ No process-global environment mutation/pin is used; reload gets fresh instance s
 Global installation does not prove all-session coverage: only the activated and
 verified origin (initial rollout: 4097) may be claimed.
 
-Native support is an explicit allowlist: `2.0.24`, `2.0.27` and `2.0.30`, never a semver
-range. Both require session prompt/get, tool execute.after and event subscription
+Native support is an explicit allowlist: `2.0.24`, `2.0.27`, `2.0.30` and `2.0.31`, never a semver
+range. All require session prompt/get, tool execute.after and event subscription
 capabilities before staging. Unsupported versions/missing capabilities fail closed
 with an actionable error and full runbook locator. The typing dependency remains
 `@opencode/plugin@2.0.24`; no dependency upgrade is required for the unchanged hooks.
+Exact tags `v2.0.30` (`f16ef9ad8878279ea2be3cfab7baeed97aef61aa`) and
+`v2.0.31` (`22728d67461260d56bb9796b9b8f36e1de47202e`) have identical consumed
+plugin, session/history/event and protocol contracts. Published plugin packages
+differ only in their version metadata. This justifies bounded 2.0.31 compatibility
+tests, not an untested live claim. Native activity discovery is
+`GET /api/session/active` (all foreground drains in that process); session
+outcome/idle timestamps and `/api/session/status` cannot prove current quiescence.
 Tag `v2.0.27` is commit `1f4d07a4a519185955ae8ab2ea3607805509e386`.
 Exact-tag plugin Promise/effect session/tool/event contracts and session/event
 schemas retain the consumed 2.0.24 wire shapes. The 2.0.27 history idle control adds
@@ -1171,7 +1178,7 @@ exclusions cover basename suffixes `.env`, `.pem`, `.p12`, `.pfx` and `.env`,
 credentials/secrets/id_rsa/id_ed25519 path segments (case insensitive), matching
 the legacy adapter; excluded files are neither read nor hashed by capture.
 
-- Native runtime versions are OpenCode CLI `2.0.24`, `2.0.27` and `2.0.30`, using the
+- Native runtime versions are OpenCode CLI `2.0.24`, `2.0.27`, `2.0.30` and `2.0.31`, using the
   unchanged `@opencode/plugin@2.0.24` typing pin.
   `@opencode-ai/plugin@1.18.35` and `@opencode-ai/sdk@1.18.35` are historical
   replay typings, not evidence of live loader compatibility.
