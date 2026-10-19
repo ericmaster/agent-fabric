@@ -5,7 +5,7 @@
 import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, readdirSync, existsSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Envelope } from "../opencode";
@@ -20,6 +20,85 @@ import { EventEmitter } from "node:events";
 // and loop tests).
 const FIXTURES = path.resolve(__dirname, "../../../../fixtures/retrospective/opencode");
 const SUPPORTED_VERSION = "2.0.24";
+
+for (const nativeVersion of ["2.0.24", "2.0.27", "2.0.30", "2.0.31"]) test(`native ${nativeVersion} read brackets reach ingest, native history, episode and strict reflection without assigned prerequisites`, async () => {
+  const harness = fixtureCLI(); delete process.env.AGF_PLUGIN_FAKE_HEALTH;
+  let root = path.join(harness.root, "proj");
+  const git = (...args: string[]) => execFileSync("git", ["-C", root, "-c", "core.hooksPath=/dev/null", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" }, timeout: 10000 });
+  git("init", "-q", "--initial-branch=bracket-fixture"); git("commit", "--allow-empty", "-qm", "bracket fixture");
+  if (nativeVersion === "2.0.27") git("switch", "--detach", "HEAD");
+  if (nativeVersion === "2.0.31") {
+    const worktree = path.join(harness.root, "worktree");
+    git("worktree", "add", "-q", "-b", "bracket-worktree", worktree); root = worktree;
+  }
+  const file = path.join(root, "catalog.txt"); writeFileSync(file, "one\ntwo\n");
+  const revision = git("rev-parse", "HEAD").trim();
+  const history: Record<string, any[]> = {};
+  const hooks: Record<string, any> = {};
+  let intake: any;
+  const modes = ["positive", "missingbefore", "missingafter", "changedfile", "mismatch", "historymismatch", "conflict", "reconcilegap", "symlink", "escape", "oversize", "secret", "missingrevision", "packedrevision", "revisionchange"];
+  symlinkSync(file, path.join(root, "link.txt"));
+  writeFileSync(path.join(root, "large.txt"), "x".repeat(65537));
+  writeFileSync(path.join(root, ".env"), "BRACKET-SECRET-CANARY");
+  writeFileSync(path.join(harness.root, "outside.txt"), "OUTSIDE-ROOT-CANARY");
+  try {
+    const cleanup = await nativePlugin.setup({ app: { version: nativeVersion }, location: { directory: root },
+      session: { async get({ sessionID }: any) { return { id: sessionID, title: "bracket QA", location: { directory: root } }; }, async hook(_name: string, callback: any) { intake = callback; return { async dispose() {} }; } },
+      tool: { async hook(name: string, callback: any) { hooks[name] = callback; return { async dispose() {} }; } },
+      event: { async *subscribe() {
+        for (const mode of modes) {
+          const sessionID = `ses_bracket_${mode}`;
+          const user = `user_${mode}`;
+          if (mode === "packedrevision") { if (nativeVersion === "2.0.27") git("switch", "-q", "bracket-fixture"); git("pack-refs", "--all"); }
+          history[mode] = [{ id: user, type: "user", time: { created: 1 }, text: "Read the unchanged catalog at valid offsets; retain observed failures." }];
+          await intake({ sessionID, messageID: user, prompt: { text: history[mode][0].text } });
+          for (let i = 0; i < 4; i++) {
+            const messageID = `msg_${mode}_${i}`, id = "read:0";
+            const target = mode === "symlink" ? "link.txt" : mode === "oversize" ? "large.txt" : mode === "secret" ? ".env" : "catalog.txt";
+            const input = { path: mode === "escape" ? root + "/../outside.txt" : path.join(root, target), offset: i % 2 === 0 ? 1000 : 1, limit: 1 };
+            const event = { sessionID, messageID, id, tool: "read", input };
+            if (!(mode === "missingbefore" && i === 0)) await hooks["execute.before"](event);
+            if (mode === "changedfile" && i === 0) writeFileSync(file, "changed during call\n");
+            if (mode === "revisionchange" && i === 0) git("commit", "--allow-empty", "-qm", "changed revision during call");
+            if (mode === "mismatch" && i === 0) event.input = { ...input, offset: 1001 };
+            const failed = i % 2 === 0;
+            if (!(mode === "missingafter" && i === 0)) await hooks["execute.after"]({ ...event, status: failed ? "error" : "completed" });
+            if (mode === "conflict" && i === 0) await hooks["execute.after"]({ ...event, status: "error" });
+            const data = { sessionID, assistantMessageID: messageID, id };
+            yield { type: "session.step.started", data };
+            yield { type: "session.tool.input.started", data: { ...data, name: "read" } };
+            yield { type: "session.tool.called", data: { ...data, input: event.input } };
+            yield { type: failed ? "session.tool.failed" : "session.tool.success", data: { ...data, error: failed ? { message: "Offset beyond end of file" } : undefined, content: failed ? [] : [{ type: "text", text: "one" }] } };
+            const historyInput = mode === "historymismatch" && i === 0 ? { ...event.input, offset: 1001 } : event.input;
+            const state = failed ? { status: "error", input: historyInput, error: { type: "tool.execution", message: "Offset beyond end of file" } } : { status: "completed", input: historyInput, content: [{ type: "text", text: "one" }] };
+            history[mode].push({ id: messageID, type: "assistant", agent: "build", model: { id: "fixture", providerID: "fixture" }, time: { created: i+2, completed: i+2 }, content: [{ type: "tool", id, name: "read", state, time: { created: i+2, completed: i+2 } }] });
+          }
+          history[mode].push({ id: `idle_${mode}`, type: "idle", time: { created: 9 }, outcome: "succeeded" });
+          yield { type: "session.execution.succeeded", data: { sessionID } };
+        }
+      } },
+    } as any);
+    await cleanup();
+    const envelopes = envelopesOf(harness);
+    const brackets = envelopes.flatMap(e => e.records).filter(r => r.kind === "read_bracket");
+    assert.equal(brackets.filter(r => r.session_id === "ses_bracket_positive").length, 4);
+    assert.ok(!JSON.stringify(brackets).includes("BRACKET-SECRET-CANARY"));
+    assert.ok(!brackets.some(r => r.session_id === "ses_bracket_secret"));
+    const escape = brackets.filter(r => r.session_id === "ses_bracket_escape");
+    assert.ok(escape.every(r => !r.read_bracket?.before && !r.read_bracket?.after), "outside-root paths must never acquire snapshots");
+    assert.notEqual(readFileSync(file, "utf8"), "one\ntwo\n", "later disk state must not rehydrate positive prerequisite snapshots");
+    assert.notEqual(git("rev-parse", "HEAD").trim(), revision, "later HEAD must not rehydrate the positive episode version");
+    const fixture = path.join(harness.root, "brackets.json");
+    writeFileSync(fixture, JSON.stringify({ envelopes, histories: history, revision }));
+    try {
+      const result = execFileSync("go", ["test", "-count=1", "-v", "./internal/retrospective", "-run", "^TestNativeReadBracketCapturedFlow$"], {
+        cwd: path.resolve(FIXTURES, "../../.."), timeout: 120000,
+        env: { ...process.env, GOPROXY: "off", GOSUMDB: "off", AGF_TEST_READ_BRACKETS: fixture }, encoding: "utf8",
+      });
+      assert.match(result, /PASS/);
+    } catch (error: any) { throw new Error(`${error.message}\n${error.stdout}\n${error.stderr}`); }
+  } finally { harness.restore(); }
+});
 
 interface CaptureRow {
   argv: string[];

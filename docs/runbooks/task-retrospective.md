@@ -119,7 +119,7 @@ A completed no-edit advisory is `suggested`, not `repaired`.
 The native default plugin definition uses installed-generation
 `@opencode/plugin@2.0.24`, `ctx.event.subscribe` and `ctx.app.version`.
 Its v1 named hook export is replay compatibility only. The runtime allowlist is
-exactly OpenCode `2.0.24`, `2.0.27`, `2.0.30` and `2.0.31`; required prompt/get, execute.after and event
+exactly OpenCode `2.0.24`, `2.0.27`, `2.0.30` and `2.0.31`; required prompt/get, execute.before/after and event
 subscription capabilities are checked before staging. Other versions (including
 future patches) fail closed and log a full private diagnostic under
 `<state>/observer-errors`. Do not widen the allowlist from `/api/info` alone.
@@ -310,6 +310,18 @@ real CLI/transport/store with protocol-mocked role finals, not live provider QA.
 Actual native capture→generation→review→later-task consumption remains a separate
 phase6 acceptance check. Signed offline records still need enrolled public keys;
 native generation adds no key/trust framework and never signs arbitrary prose.
+
+For minimal native-capture QA, use an owned canonical disposable Git repository
+with a loose branch HEAD (or detached HEAD) and an unchanged ordinary `catalog.txt`
+outside instruction-path classification. In one prompt→idle episode, elicit two
+sequential same-file invalid-offset→valid-offset read pairs; verify actual native
+error→completed statuses, not error-looking successful text. Capture must retain
+both brackets, exact call/input/runtime bindings and prompt/read Git observations.
+Use the untouched episode trace and its observed `SourceRevision` in the generation
+identity template. Blank versions or prerequisites are blockers, not fields to fill.
+See spec **Narrow native read brackets** for supported paths/layouts and limits.
+Run `npm test --prefix hooks/retrospective` for collector→reflection regression;
+independent live acceptance and later consumption still require their own evidence.
 
 ### Optional native contextual recall / portable fallback
 

@@ -83,7 +83,10 @@ type Envelope struct {
 // EnvelopeRecord is one observed observable record; `kind` selects the shape.
 // Spec: docs/specs/task-retrospective.md via Envelope
 type EnvelopeRecord struct {
-	Kind       string `json:"kind"` // session | message | part | removed | event | source | source_gap
+	ReadBracket *ReadBracket `json:"read_bracket,omitempty"`
+	Revision    string       `json:"revision,omitempty"`
+
+	Kind       string `json:"kind"` // session | message | part | removed | event | source | source_gap | read_bracket | source_revision
 	SessionID  string `json:"session_id,omitempty"`
 	RecordID   string `json:"record_id,omitempty"`
 	ParentID   string `json:"parent_id,omitempty"`
@@ -167,6 +170,14 @@ func (e *Envelope) validate() error {
 			if record.Path == "" {
 				return fmt.Errorf("record %d: source gap without path", i)
 			}
+		case "read_bracket":
+			if record.RecordID == "" || record.MessageID == "" || record.CallID != record.RecordID || record.ReadBracket == nil || !record.ReadBracket.valid() {
+				return fmt.Errorf("record %d: invalid read bracket", i)
+			}
+		case "source_revision":
+			if record.RecordID == "" || record.MessageID != record.RecordID || !validObservedRevision(record.Revision) || !validSignalHash(record.SHA256) {
+				return fmt.Errorf("record %d: invalid observed revision", i)
+			}
 		default:
 			return fmt.Errorf("record %d: unsupported kind %q", i, record.Kind)
 		}
@@ -247,6 +258,9 @@ type SpoolEvent struct {
 // Spool is one staged per-session observation document.
 // Spec: docs/specs/task-retrospective.md
 type Spool struct {
+	PromptRevisions map[string]*ObservedPromptRevision `json:"prompt_revisions,omitempty"`
+	ReadBrackets    map[string]*ObservedReadBracket    `json:"read_brackets,omitempty"`
+
 	Schema           int                      `json:"schema"`
 	SessionID        string                   `json:"session_id"`
 	LastSeq          int                      `json:"last_seq"`
@@ -518,6 +532,16 @@ func stageRecords(redactor *Redactor, records []EnvelopeRecord, spool *Spool) in
 		record.Error = redactor.Text(record.Error)
 		record.Title = redactor.Text(record.Title)
 		record.Directory = redactor.Text(record.Directory)
+		if record.ReadBracket != nil {
+			copy := *record.ReadBracket
+			copy.Input = redactor.Text(copy.Input)
+			copy.Directory = redactor.Text(copy.Directory)
+			// Redacted applicability cannot attest an unredacted prerequisite.
+			if copy.Input != record.ReadBracket.Input || copy.Directory != record.ReadBracket.Directory {
+				copy.Before, copy.After = nil, nil
+			}
+			record.ReadBracket = &copy
+		}
 		detail := ""
 		if record.Detail != "" && (record.Kind == "part" || record.Kind == "message") {
 			detail = record.Detail + " (" + record.RecordID + ")"
@@ -575,6 +599,32 @@ func clipRuneBoundary(value string, limit int) string {
 // Spec: docs/specs/task-retrospective.md via stageRecords
 func (spool *Spool) upsert(record *EnvelopeRecord) {
 	switch record.Kind {
+	case "source_revision":
+		if spool.PromptRevisions == nil {
+			spool.PromptRevisions = map[string]*ObservedPromptRevision{}
+		}
+		row := &ObservedPromptRevision{SessionID: record.SessionID, Revision: record.Revision, PromptSHA256: record.SHA256}
+		if old := spool.PromptRevisions[record.RecordID]; old != nil {
+			if old.SessionID != row.SessionID || old.Revision != row.Revision || old.PromptSHA256 != row.PromptSHA256 {
+				old.Conflict = true
+			}
+		} else if len(spool.PromptRevisions) < EnvelopeMaxRecords {
+			spool.PromptRevisions[record.RecordID] = row
+		}
+	case "read_bracket":
+		if spool.ReadBrackets == nil {
+			spool.ReadBrackets = map[string]*ObservedReadBracket{}
+		}
+		observed := &ObservedReadBracket{SessionID: record.SessionID, MessageID: record.MessageID, CallID: record.CallID, ReadBracket: *record.ReadBracket}
+		if old := spool.ReadBrackets[record.RecordID]; old != nil {
+			a, _ := json.Marshal(old.ReadBracket)
+			b, _ := json.Marshal(observed.ReadBracket)
+			if old.SessionID != observed.SessionID || old.MessageID != observed.MessageID || old.CallID != observed.CallID || string(a) != string(b) {
+				old.Conflict = true
+			}
+		} else if len(spool.ReadBrackets) < EnvelopeMaxRecords {
+			spool.ReadBrackets[record.RecordID] = observed
+		}
 	case "session":
 		if spool.Sessions == nil {
 			spool.Sessions = map[string]*SpoolSession{}

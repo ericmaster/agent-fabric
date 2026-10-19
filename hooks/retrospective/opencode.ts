@@ -23,7 +23,7 @@ import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Plugin as NativePlugin } from "@opencode/plugin";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync, statSync, realpathSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, statSync, realpathSync, mkdirSync, writeFileSync, openSync, closeSync, fstatSync, readSync, constants } from "node:fs";
 import path from "node:path";
 
 const ENVELOPE_VERSION = 1;
@@ -39,7 +39,9 @@ const EXIT_OK = 0;
 const EXIT_DISABLED = 2;
 
 interface EnvelopeRecord {
-  kind: "session" | "message" | "part" | "removed" | "event" | "source" | "source_gap";
+  kind: "session" | "message" | "part" | "removed" | "event" | "source" | "source_gap" | "read_bracket" | "source_revision";
+  read_bracket?: ReadBracket;
+  revision?: string;
   session_id?: string;
   record_id?: string;
   parent_id?: string;
@@ -62,6 +64,110 @@ interface EnvelopeRecord {
   detail?: string;
   path?: string;
   sha256?: string;
+}
+
+interface ReadBracket {
+  tool: string;
+  input: string;
+  runtime: string;
+  binding: string;
+  directory: string;
+  before?: ReadSnapshot;
+  after?: ReadSnapshot;
+  before_revision?: string;
+  after_revision?: string;
+}
+
+// No git process, discovery walk, config, credentials or reconciliation reads.
+// Only an exact repository root with loose/detached HEAD (including worktree
+// gitdir/commondir indirection) is supported. Packed-only refs abstain.
+function observedRevision(directory: string): string | undefined {
+  const text = (file: string): string => {
+    if (secretSourcePath(file) || realpathSync(file) !== path.resolve(file)) throw new Error("unsafe git path");
+    let fd: number | undefined;
+    try {
+      fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+      const a = fstatSync(fd, { bigint: true });
+      if (!a.isFile() || a.size > 4096n || a.uid !== BigInt(process.getuid!())) throw new Error("unsafe git metadata");
+      const bytes = Buffer.alloc(Number(a.size)+1), count = readSync(fd, bytes, 0, bytes.length, 0);
+      const b = fstatSync(fd, { bigint: true });
+      if (count !== Number(a.size) || a.ino !== b.ino || a.size !== b.size || a.mtimeNs !== b.mtimeNs || a.ctimeNs !== b.ctimeNs || realpathSync(file) !== path.resolve(file)) throw new Error("changed git metadata");
+      return bytes.subarray(0, count).toString("utf8").trim();
+    } finally { if (fd !== undefined) closeSync(fd); }
+  };
+  try {
+    if (realpathSync(directory) !== path.resolve(directory)) return;
+    let git = path.join(directory, ".git");
+    if (!statSync(git).isDirectory()) {
+      const pointer = text(git);
+      if (!pointer.startsWith("gitdir: ") || pointer.includes("\n")) return;
+      git = path.resolve(directory, pointer.slice(8));
+    }
+    if (realpathSync(git) !== git || !statSync(git).isDirectory() || statSync(git).uid !== process.getuid!()) return;
+    const head = text(path.join(git, "HEAD"));
+    let revision = head;
+    if (head.startsWith("ref: ")) {
+      const ref = head.slice(5);
+      if (!/^refs\/heads\/[A-Za-z0-9_./-]+$/.test(ref) || ref.split("/").some(p => !p || p === "." || p === "..")) return;
+      let common = git;
+      try { common = path.resolve(git, text(path.join(git, "commondir"))); }
+      catch (error: any) { if (error?.code !== "ENOENT") return; }
+      if (realpathSync(common) !== common || statSync(common).uid !== process.getuid!()) return;
+      revision = text(path.join(common, ref));
+    }
+    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision) || text(path.join(git, "HEAD")) !== head) return;
+    return revision;
+  } catch { return; }
+}
+
+interface ReadSnapshot {
+  path: string;
+  sha256: string;
+  // dev, inode, mode, uid, gid, size, mtime-ns, ctime-ns; no atime.
+  metadata: string[];
+}
+
+function bracketInput(input: unknown, directory: string): string | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return;
+  const args = input as Record<string, unknown>;
+  if (Object.keys(args).some(k => !["path", "filePath", "offset", "limit"].includes(k))) return;
+  if ((typeof args.path === "string") === (typeof args.filePath === "string")) return;
+  if ([args.offset, args.limit].some(v => v !== undefined && (!Number.isSafeInteger(v) || typeof v !== "number"))) return;
+  const file = observedPath(input, directory);
+  if (!file || secretSourcePath(file) || secretSourcePath(directory)) return;
+  const encoded = JSON.stringify(input);
+  return encoded.length <= 8192 ? encoded : undefined;
+}
+
+// Narrow read prerequisites only. Never inspect missing paths, symlinks, large
+// files or secrets. A digest observes a bracket, not absence of transient writes.
+function readSnapshot(input: unknown, directory: string): ReadSnapshot | undefined {
+  const candidate = observedPath(input, directory);
+  const file = candidate ? path.resolve(candidate) : undefined;
+  const args = input as Record<string, unknown> | null;
+  if (!file || !args || Object.keys(args).some(k => !["path", "filePath", "offset", "limit"].includes(k))) return;
+  if (typeof args.path === "string" && typeof args.filePath === "string") return;
+  if (secretSourcePath(candidate!) || secretSourcePath(file) || secretSourcePath(directory)) return;
+  let fd: number | undefined;
+  try {
+    const root = realpathSync(directory);
+    if (root !== path.resolve(directory) || realpathSync(file) !== path.resolve(file) || !file.startsWith(root + path.sep)) return;
+    fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const before = fstatSync(fd, { bigint: true });
+    if (!before.isFile() || before.size > 65536n || before.nlink !== 1n || before.uid !== BigInt(process.getuid!())) return;
+    const linked = statSync(file, { bigint: true });
+    if (realpathSync(file) !== path.resolve(file) || linked.dev !== before.dev || linked.ino !== before.ino) return;
+    const bytes = Buffer.alloc(Number(before.size) + 1);
+    const length = readSync(fd, bytes, 0, bytes.length, 0);
+    const after = fstatSync(fd, { bigint: true });
+    const metadata = (s: typeof before) => [s.dev, s.ino, s.mode, s.uid, s.gid, s.size, s.mtimeNs, s.ctimeNs].map(String);
+    if (length !== Number(before.size) || JSON.stringify(metadata(before)) !== JSON.stringify(metadata(after))) return;
+    if (realpathSync(file) !== path.resolve(file)) return;
+    const final = statSync(file, { bigint: true });
+    if (JSON.stringify(metadata(before)) !== JSON.stringify(metadata(final))) return;
+    return { path: file, metadata: metadata(before), sha256: createHash("sha256").update(bytes.subarray(0, length)).digest("hex") };
+  } catch { return; }
+  finally { if (fd !== undefined) { try { closeSync(fd); } catch { /* observation only */ } } }
 }
 
 export interface Envelope {
@@ -651,7 +757,7 @@ export default {
     const supported = SUPPORTED_NATIVE_VERSIONS.includes(version);
     const capabilities = typeof ctx.session?.hook === "function" && typeof ctx.session?.get === "function" && typeof ctx.tool?.hook === "function" && typeof ctx.event?.subscribe === "function";
     if (!supported || !capabilities) {
-      const message = `AGF retrospective: ${supported ? "missing native capabilities" : "unsupported native plugin generation"}; require OpenCode 2.0.24, 2.0.27, 2.0.30 or 2.0.31 with session prompt/get, tool execute.after and event subscribe. See docs/runbooks/task-retrospective.md (Installed version pins in backing spec).`;
+      const message = `AGF retrospective: ${supported ? "missing native capabilities" : "unsupported native plugin generation"}; require OpenCode 2.0.24, 2.0.27, 2.0.30 or 2.0.31 with session prompt/get, tool execute.before/after and event subscribe. See docs/runbooks/task-retrospective.md (Installed version pins in backing spec).`;
       reportIngestFailure(1, message, "Native setup refused before staging; use a verified runtime and required capabilities. No transcript or environment retained.");
       throw new Error(message);
     }
@@ -701,17 +807,45 @@ export default {
 	  adapter.observe(event.sessionID, { kind: "message", session_id: event.sessionID, record_id: event.messageID, role: "user" });
 	  const part: EnvelopeRecord = { kind: "part", session_id: event.sessionID, record_id: `${event.messageID}:text`, message_id: event.messageID, part_type: "text" };
 	  boundedField(part, "text", event.prompt.text); adapter.observe(event.sessionID, part);
+	  const revision = observedRevision(ctx.location.directory);
+	  if (revision) adapter.observe(event.sessionID, { kind: "source_revision", session_id: event.sessionID, record_id: event.messageID, message_id: event.messageID, revision, sha256: createHash("sha256").update(event.prompt.text).digest("hex") });
+	});
+	const pendingReads = new Map<string, ReadBracket>();
+	const runtimeBinding = createHash("sha256").update(JSON.stringify(["read-bracket:v1", version, process.version, process.execPath, process.getuid?.(), process.getgid?.(), fingerprint])).digest("hex");
+	const bracketIdentity = (event: { sessionID: string; messageID: string; id: string }) => `${event.sessionID}:${event.messageID}:${event.id}`;
+	const readBefore = await ctx.tool.hook("execute.before", async (event) => {
+	  if (disposed || bindingRefused || !adapter.isStaging() || event.tool !== "read") return;
+	  const input = bracketInput(event.input, ctx.location.directory);
+	  if (!input || !event.messageID || !event.id) return;
+	  const key = bracketIdentity(event);
+	  // Duplicate starts cannot replace an earlier observation or claim stability.
+	  if (pendingReads.has(key)) { pendingReads.get(key)!.before = undefined; return; }
+	  if (pendingReads.size >= MAX_BUFFERED_EVENTS) return;
+	  pendingReads.set(key, { tool: event.tool, input, runtime: `opencode:${version}`, binding: runtimeBinding, directory: ctx.location.directory, before: readSnapshot(event.input, ctx.location.directory), before_revision: observedRevision(ctx.location.directory) });
 	});
 	const provenance = await ctx.tool.hook("execute.after", async (event) => {
 	  if (disposed || bindingRefused) return;
+	  const afterSnapshot = event.tool === "read" ? readSnapshot(event.input, ctx.location.directory) : undefined;
+	  const key = bracketIdentity(event);
+	  const bracket = pendingReads.get(key);
+	  pendingReads.delete(key);
+	  const input = bracketInput(event.input, ctx.location.directory);
+	  if (event.tool === "read" && input && event.messageID && event.id) {
+	    // An unmatched/mutated execution emits an incomplete observation, never
+	    // silently borrows prerequisites from another call or previous attempt.
+	    const observed: ReadBracket = bracket && bracket.input === input && bracket.tool === event.tool ? bracket : { tool: event.tool, input, runtime: `opencode:${version}`, binding: runtimeBinding, directory: ctx.location.directory };
+	    observed.after = afterSnapshot;
+	    observed.after_revision = observedRevision(ctx.location.directory);
+	    adapter.observe(event.sessionID, { kind: "read_bracket", session_id: event.sessionID, record_id: `${event.messageID}:${event.id}`, message_id: event.messageID, call_id: `${event.messageID}:${event.id}`, read_bracket: observed });
+	  }
 	  if (event.tool !== "read" || event.status !== "completed") return;
 	  const file = observedPath(event.input, ctx.location.directory);
 	  if (!file) return;
 	  if (secretSourcePath(file)) {
 	    adapter.observe(event.sessionID, { kind: "source_gap", session_id: event.sessionID, path: file, detail: "secret-file candidate: body never collected" }); return;
 	  }
-	  try { adapter.observe(event.sessionID, { kind: "source", session_id: event.sessionID, path: file, sha256: createHash("sha256").update(readFileSync(file)).digest("hex") }); }
-	  catch { adapter.observe(event.sessionID, { kind: "source_gap", session_id: event.sessionID, path: file, detail: "native at-use read provenance unavailable" }); }
+	  if (afterSnapshot) adapter.observe(event.sessionID, { kind: "source", session_id: event.sessionID, path: file, sha256: afterSnapshot.sha256 });
+	  else adapter.observe(event.sessionID, { kind: "source_gap", session_id: event.sessionID, path: file, detail: "native bounded at-use read provenance unavailable" });
 	});
     // Request-local context is not a durable human/synthetic message. Never
     // derive applicability from prompt prose or edit native model/options.
@@ -764,7 +898,7 @@ export default {
         }
       }
     })().catch(() => { if (!abort.signal.aborted) console.error("AGF retrospective: native event subscription failed; collection incomplete"); });
-    return async () => { abort.abort(); await intake.dispose(); await provenance.dispose(); await recall?.dispose(); await consume; disposed = true; };
+    return async () => { abort.abort(); await intake.dispose(); await readBefore.dispose(); await provenance.dispose(); await recall?.dispose(); await consume; pendingReads.clear(); disposed = true; };
   },
 };
 

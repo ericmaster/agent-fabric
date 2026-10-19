@@ -318,6 +318,9 @@ func processDrainJob(ctx context.Context, opts DrainOptions, store *Store, clock
 		// original spool, loss counters and reports remain untouched.
 		spool = historySnapshot
 	}
+	if len(reconcileGaps) != 0 {
+		spool.ReadBrackets = nil
+	}
 	trace := assembleTrace(store, spool, spool.SessionID)
 	trace.Gaps = append(trace.Gaps, reconcileGaps...)
 	episodes := executionEpisodes(spool, trace)
@@ -984,7 +987,7 @@ func assembleTrace(store *Store, spool *Spool, sessionID string) *Trace {
 		if callID == "" {
 			callID = staged.id
 		}
-		call := CallRecord{ID: "c:" + callID, Seq: part.Seq, Tool: part.Tool}
+		call := CallRecord{ID: "c:" + callID, Seq: part.Seq, Tool: part.Tool, Prereq: readPrerequisite(spool, staged.id, part)}
 		switch part.ToolStatus {
 		case "completed":
 			call.Status = StatusSuccess
@@ -1149,6 +1152,9 @@ func messageRole(spool *Spool, messageID string) string {
 // input); the digest is the hash of the bytes as observed then.
 // Spec: docs/specs/task-retrospective.md via assembleTrace
 func callSourceProvenance(spool *Spool, part *SpoolPart) (string, string) {
+	if part.ToolStatus != "completed" {
+		return "", ""
+	}
 	path, _ := observedReadPath(part)
 	if path == "" || !instructionLikePath(path) {
 		return "", ""

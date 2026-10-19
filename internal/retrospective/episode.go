@@ -20,7 +20,12 @@ func nativeHistorySnapshot(cfg *Config, original *Spool, rows []SessionMessageRo
 		}
 	}
 	snapshot := &Spool{Schema: SpoolSchemaVersion, SessionID: original.SessionID, Sessions: original.Sessions,
-		Messages: map[string]*SpoolMessage{}, Parts: map[string]*SpoolPart{}, SourceRefs: original.SourceRefs}
+		Messages: map[string]*SpoolMessage{}, Parts: map[string]*SpoolPart{}, SourceRefs: original.SourceRefs,
+		ObservedSDK: original.ObservedSDK, ReadBrackets: original.ReadBrackets, PromptRevisions: original.PromptRevisions}
+	// Loss never authorizes prerequisite recovery, even when history restores text.
+	if len(original.Gaps) != 0 || original.Overflows != 0 || original.GapOmissions != 0 {
+		snapshot.ReadBrackets = nil
+	}
 	var records []EnvelopeRecord
 	for _, record := range historyRecords(snapshot, rows) {
 		// A native compaction changes model context, not the stored history
@@ -114,6 +119,7 @@ func executionEpisodes(spool *Spool, trace *Trace) []*Trace {
 				episode.Calls = append(episode.Calls, call)
 			}
 		}
+		episode.Identities.SourceRevision = observedEpisodeRevision(spool, episode)
 		// Retain historical/unknown root gaps; Normalize scopes only ranges
 		// proved outside this episode. Child sessions are separate episodes,
 		// represented here by the delegating call's observed input/result.

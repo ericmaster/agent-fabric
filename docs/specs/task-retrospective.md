@@ -569,6 +569,50 @@ advice relevance still require independent review. Single contrast, selected
 winner, multiple observed changes or confidence cannot prove benefit;
 confounded/uncertain conclusions must abstain (noop, never active).
 
+##### Narrow native read brackets
+
+Native `read` prerequisites use actual `execute.before`/`execute.after` observations,
+including terminal errors. The collector supports only `path` or `filePath` plus
+integer `offset`/`limit`, a canonical execution-root descendant, and an owned,
+single-link regular file up to 64 KiB. Secret paths, symlinks, unsupported inputs,
+unavailable snapshots and cap exhaustion leave prerequisites unknown. Read-only
+nonblocking/no-follow descriptors bound each snapshot; descriptor/path identity,
+size and metadata are checked around the bounded read. Snapshots retain path,
+SHA256 and decimal dev/inode/mode/uid/gid/size/mtime-ns/ctime-ns (not atime or bytes).
+
+The optional v1 envelope `read_bracket` record binds session, message and compound
+call IDs (`messageID:callID`) to tool, exact input, native version, collector/runtime
+binding, execution directory and both snapshots. Go derives a fingerprint only
+for equal complete snapshots and exact tool/input/identity matches. Canonical JSON
+comparison tolerates history whitespace/key order, not changed values. Repeated
+conflicting observations poison that call; missing observations are never restored
+from current disk. The bounded spool sidecar survives native-history reconstruction
+by exact identity join, not arrival sequence. Known collection/reconciliation gaps
+or losses suppress qualification. Old envelopes/spools have unknown prerequisites;
+old strict decoders reject new record kinds rather than silently accept them.
+
+`source_revision` additionally binds prompt ID and exact prompt-text SHA256 to an
+observed Git HEAD. Read brackets record HEAD before/after. Only exact repository
+roots with detached or loose branch HEAD qualify; owned canonical worktree
+`gitdir`/`commondir` indirection is supported. Metadata reads are bounded to 4 KiB;
+no Git subprocess, ancestor search, packed-ref fallback or reconciliation disk read
+occurs. An episode receives `SourceRevision` only when every admitted prompt agrees
+and every call has a qualifying read bracket with that same before/after revision.
+Missing/conflicting prompts, unsupported calls/layouts or revision changes leave
+the identity empty; the existing generation version gate remains authoritative.
+
+Bracket equality means **observed bracket stability**, not exclusion of transient
+mutation, clean working-tree identity, semantic equivalence or causal improvement.
+Prerequisites are independent of loaded-source refs; failed reads never acquire
+loaded-source provenance. Native loaded-source hashing reuses the same bounded
+after snapshot; unavailable/unsupported completed reads leave a source gap rather
+than causing an additional unbounded file read. The strict reflection gate and independent review stay
+unchanged. Deliberately elicited contrasts test plumbing, not naturally occurring
+productivity benefit. `npm test --prefix hooks/retrospective` runs registered native
+hooks against real local files/Git metadata, then real ingest, protocol-mocked
+native-history decoding, episode assembly and reflection validation without direct
+`Prereq` assignment; this is not live provider/acceptance/consumption evidence.
+
 The private Store receipt retains attempted stage identities, configured model,
 typed results/rejection and completed-review authority. Exact safe trace bytes,
 including negative/discarded observations, use existing durable `preimages/`
@@ -997,7 +1041,7 @@ Global installation does not prove all-session coverage: only the activated and
 verified origin (initial rollout: 4097) may be claimed.
 
 Native support is an explicit allowlist: `2.0.24`, `2.0.27`, `2.0.30` and `2.0.31`, never a semver
-range. All require session prompt/get, tool execute.after and event subscription
+range. All require session prompt/get, tool execute.before/after and event subscription
 capabilities before staging. Unsupported versions/missing capabilities fail closed
 with an actionable error and full runbook locator. The typing dependency remains
 `@opencode/plugin@2.0.24`; no dependency upgrade is required for the unchanged hooks.
@@ -1221,6 +1265,10 @@ Every record is one of the following kinds (single object, `kind` selects):
   returned).
 - `source_gap` — `{session_id, path, detail}`; a load the adapter saw but
   could not hash.
+- `read_bracket` — `{session_id, record_id, message_id, call_id, read_bracket}`;
+  optional native call-bound observation (Narrow native read brackets).
+- `source_revision` — `{session_id, record_id, message_id, revision, sha256}`;
+  exact admitted prompt identity/text hash and observed HEAD, not a supplied version.
 
 Ingest performs only these operations: validate (strict decode; unknown
 envelope fields or a `version != 1`, `harness != opencode`, oversized batch
