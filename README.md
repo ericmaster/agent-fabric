@@ -211,3 +211,11 @@ scripts/release.sh 1.0.0 dist
 
 The release script builds static Linux amd64/arm64, macOS amd64/arm64, and
 Windows amd64 archives, `sha256sums.txt`, and `release-manifest.json`.
+
+## ☕ Cómprame un café / Buy me a coffee
+
+Si este recurso te sirvió, invítame un café con DeUna (Ecuador). / If this project helped you, you can buy me a coffee via DeUna.
+
+<img src=".github/assets/deuna-qr-300.png" alt="Código QR de DeUna / DeUna QR code" width="200">
+
+Escanéalo desde la app DeUna o desde la app de tu banco ecuatoriano compatible con DeUna. / Scan it with the DeUna app or a DeUna-enabled Ecuadorian banking app.
