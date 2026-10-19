@@ -266,12 +266,18 @@ async function snapshot(request, sessionID, tasks) {
   return { sessionID, projectID: s.projectID, finalID: final.id, completed: end.time.created, version, output, taskID: attestation?.taskID || TASK, ...(attestation ? { attestation } : {}) };
 }
 
+// Spec: docs/specs/retrospective-monitor.md — Go job timestamps have whole-second precision.
+export function captureCovers(updated, completed) {
+  return typeof updated === 'string' && Number.isFinite(Date.parse(updated))
+    && Number.isSafeInteger(completed) && Date.parse(updated) >= Math.floor(completed / 1000) * 1000;
+}
+
 // Spec: docs/specs/retrospective-monitor.md — settled capture before history disappears.
 async function captured(sessionID, completed) {
   await directory(path.join(STATE, 'jobs'));
   const job = JSON.parse(await read(path.join(STATE, 'jobs', `${sessionID}.json`)));
   return job.schema === 1 && job.session_id === sessionID && job.status === 'done' && job.server_url === 'http://127.0.0.1:41629'
-    && (completed === undefined || (typeof job.updated_at === 'string' && Date.parse(job.updated_at) >= completed));
+    && (completed === undefined || captureCovers(job.updated_at, completed));
 }
 
 // Spec: docs/specs/retrospective-monitor.md — final-only private immutable archive.

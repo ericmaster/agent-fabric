@@ -43,6 +43,8 @@ Complete project native inventory (8 pages x100, unique IDs and cursor safeguard
 discovers scheduled-kind exact-title candidates beyond the classification cache.
 Every discovery page explicitly supplies the `directory` query parameter; the
 directory header alone does not scope the installed session-list API.
+Capture job `updated_at` uses Go RFC3339 whole-second precision; compare completion
+at that same precision, while still requiring the matching job to be `done`.
 Titles must equal exact task name + creation minute formatted in the task timezone
 (host default if unspecified), using the installed yyyy-MM-dd HH:mm contract.
 Explicit task lastSessionIds are also inspected, never automatically authorized.

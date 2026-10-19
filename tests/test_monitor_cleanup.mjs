@@ -6,10 +6,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
-import { maintenance, publish, authorize, projectQueue, boundedFetch, firstPartyTransport, readInput } from '../scripts/retrospective-monitor-cleanup.mjs';
+import { maintenance, publish, authorize, projectQueue, boundedFetch, firstPartyTransport, readInput, captureCovers } from '../scripts/retrospective-monitor-cleanup.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const sha = value => createHash('sha256').update(value).digest('hex');
+test('capture completion compares RFC3339 seconds without accepting an earlier second', () => {
+  const completed = Date.parse('2026-10-18T21:24:27.287Z');
+  assert.equal(captureCovers('2026-10-18T21:24:27Z', completed), true);
+  assert.equal(captureCovers('2026-10-18T21:24:26Z', completed), false);
+  assert.equal(captureCovers('2026-10-18T21:24:28Z', completed), true);
+  assert.equal(captureCovers('invalid', completed), false);
+  assert.equal(captureCovers(null, completed), false);
+  assert.equal(captureCovers('2026-10-18T21:24:27Z', NaN), false);
+});
 test('production stdin reader retains a fixed bound and rejects oversized or malformed input', async () => {
   await assert.rejects(readInput(Readable.from(['x'.repeat(1024 * 1024), 'x'])));
   await assert.rejects(readInput(Readable.from(['{invalid json'])));
