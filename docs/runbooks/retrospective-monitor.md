@@ -30,7 +30,7 @@ old complete snapshot with empty output on failure. The helper never writes
 reports/jobs/spools or its previous snapshot. The scheduler owns any eventual
 atomic snapshot replacement. No config/credential/socket/provider is needed.
 
-## Zero-token one-shot gate — hourly; cleanup opt-in not activated
+## Zero-token one-shot gate — hourly; cleanup opt-in
 
 The LLM task `d2785bca-a95c-4252-ab72-7e89a1b5e941` must remain disabled permanently.
 The owned timer is hourly, independent of OpenChamber's LLM scheduler. Preserve
@@ -211,8 +211,8 @@ overwrite the current release. Keep timer cadence (minimal fragment):
 
 ```ini
 [Timer]
-OnActiveSec=1h
-OnUnitActiveSec=1h
+OnCalendar=hourly
+Persistent=false
 ```
 
 `--cleanup` is outside the model and adds no model calls. It runs on quiet ticks
