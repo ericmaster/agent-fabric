@@ -87,6 +87,26 @@ class LedgerTests(unittest.TestCase):
             self.run_hook({**self.request, "compact": True})
         self.assertFalse(self.root.exists())
 
+    # Spec: docs/specs/agent-fabric.md — delivery stages and duplicate observations
+    def test_delivery_stages_and_duplicate_observations(self):
+        for stage in ("integration", "deployment", "verification", "cleanup"):
+            self.request["checkpoint"]["next_stage"] = stage
+            receipt = self.run_hook(self.request)
+            self.request["expected_version"] = receipt["version"]
+            before = Path(receipt["path"]).read_bytes()
+            duplicate = self.run_hook(self.request)
+            self.assertFalse(duplicate["recorded"])
+            self.assertEqual(duplicate["version"], receipt["version"])
+            self.assertEqual(Path(receipt["path"]).read_bytes(), before)
+            self.request["timestamp"] = f"later-observation-{stage}"
+            self.assertFalse(self.run_hook(self.request)["recorded"])
+        # An actual new event is retained even if the checkpoint is unchanged.
+        self.request["summary"] = "verified a different release target"
+        changed = self.run_hook(self.request)
+        self.assertTrue(changed["recorded"])
+        with self.assertRaisesRegex(ValueError, "stale"):
+            self.run_hook(self.request)
+
     # Spec: docs/specs/agent-fabric.md — structural recovery checkpoints
     def test_structural_recovery_and_aggregate_acceptance_round_trip(self):
         for stage in ("structural_recovery", "aggregate_acceptance"):
@@ -161,6 +181,7 @@ class LedgerTests(unittest.TestCase):
         receipt = self.run_hook(self.request)
         before = Path(receipt["path"]).read_bytes()
         self.request["expected_version"] = 1
+        self.request["checkpoint"]["next_stage"] = "reconciliation"
         with patch.object(ledger.os, "replace", side_effect=OSError("disk failure")):
             with self.assertRaises(OSError):
                 self.run_hook(self.request)

@@ -292,11 +292,11 @@ func TestInstallSynchronizesManifestManagedExactAgentOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 	canonical, err := os.ReadFile(filepath.Join(home, ".config", "opencode", "agents", "canonical.md"))
-	const canonicalTools = "tools:\n  \"*\": false\n  \"bash\": true\n  \"read\": true\n"
+	const canonicalTools = "permissions:\n  - action: \"*\"\n    resource: \"*\"\n    effect: \"deny\"\n  - action: \"read\"\n    resource: \"*\"\n    effect: \"allow\"\n  - action: \"shell\"\n    resource: \"*\"\n    effect: \"allow\"\n"
 	if err != nil || !strings.Contains(string(canonical), canonicalTools) {
 		t.Fatalf("canonical exact override did not merge profile tools: %s, err=%v", canonical, err)
 	}
-	if !strings.Contains(string(canonical), `model: "xai/grok-4.6"`) || !strings.Contains(string(canonical), `variant: "medium"`) {
+	if !strings.Contains(string(canonical), `model: "xai/grok-4.6#medium"`) || strings.Contains(string(canonical), "\nvariant:") {
 		t.Fatalf("canonical exact model/effort override missing:\n%s", canonical)
 	}
 	updated, err := os.ReadFile(hubPath)

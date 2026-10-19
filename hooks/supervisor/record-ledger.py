@@ -12,7 +12,7 @@ import sys
 import tempfile
 
 COUNTERS = ("mutating", "review_rejections", "infrastructure_failures", "diagnostics")
-STAGES = {"select_phase", "implementation", "code_review", "qa", "reconciliation", "structural_recovery", "aggregate_acceptance", "blocked", "done"}
+STAGES = {"select_phase", "implementation", "code_review", "qa", "reconciliation", "structural_recovery", "aggregate_acceptance", "integration", "deployment", "verification", "cleanup", "blocked", "done"}
 
 
 def validate_checkpoint(value, execution_root):
@@ -107,6 +107,11 @@ def operate(request, root, execution_root):
         if previous and any(checkpoint["attempts"][name] < previous["attempts"][name] for name in COUNTERS):
             raise ValueError("attempt counters cannot decrease")
         event = {key: value for key, value in request.items() if key not in {"operation", "expected_version", "checkpoint"}}
+        if previous == checkpoint and state["events"]:
+            last = {key: value for key, value in state["events"][-1].items() if key != "timestamp"}
+            observation = {key: value for key, value in event.items() if key != "timestamp"}
+            if last == observation:
+                return {"status": "ok", "recorded": False, "version": state["version"], "path": str(path)}
         state["events"].append(event)
         state["version"] += 1
         state["checkpoint"] = checkpoint

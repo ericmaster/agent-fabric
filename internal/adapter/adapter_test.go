@@ -2,6 +2,7 @@
 package adapter
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,19 +33,19 @@ func TestRenderTargets(t *testing.T) {
 		if target == "opencode" && strings.Contains(body, "x-agent-fabric") {
 			t.Fatal("extension leaked")
 		}
-		if target != "codex" && !strings.Contains(body, "pre-plan") {
+		if target != "codex" && target != "opencode" && !strings.Contains(body, "pre-plan") {
 			t.Fatal("hook registration missing")
 		}
 		if target == "codex" && strings.Contains(body, "hooks =") {
 			t.Fatal("portable hook names must not be emitted as native Codex hooks")
 		}
-		if !strings.Contains(body, "sandbox") {
+		if target != "opencode" && !strings.Contains(body, "sandbox") {
 			t.Fatal("sandbox mapping missing")
 		}
 		if strings.Contains(body, "## Agent Fabric Policy") {
 			t.Fatal("policy block leaked into agent instructions")
 		}
-		if target != "codex" && (!strings.Contains(body, "visibility") || !strings.Contains(body, "edit") || !strings.Contains(body, "network")) {
+		if target != "codex" && target != "opencode" && (!strings.Contains(body, "visibility") || !strings.Contains(body, "edit") || !strings.Contains(body, "network")) {
 			t.Fatal("native adapter mapping missing")
 		}
 	}
@@ -99,7 +100,7 @@ func TestRenderOpenCodeToolsAreDeterministic(t *testing.T) {
 	if first != second {
 		t.Fatal("OpenCode tools rendering is not deterministic")
 	}
-	const want = "tools:\n  \"*\": false\n  \"apply_patch\": true\n  \"codebase-memory-mcp_*\": true\n  \"context7_*\": true\n  \"read\": true\n"
+	const want = "permissions:\n  - action: \"*\"\n    resource: \"*\"\n    effect: \"deny\"\n  - action: \"codebase-memory-mcp_*\"\n    resource: \"*\"\n    effect: \"allow\"\n  - action: \"context7_*\"\n    resource: \"*\"\n    effect: \"allow\"\n  - action: \"edit\"\n    resource: \"*\"\n    effect: \"allow\"\n  - action: \"read\"\n    resource: \"*\"\n    effect: \"allow\"\n"
 	if !strings.Contains(first, want) {
 		t.Fatalf("OpenCode tools mapping was not sorted or rendered correctly:\n%s", first)
 	}
@@ -119,6 +120,91 @@ func TestRenderNonOpenCodeTargetsDoNotIncludeTools(t *testing.T) {
 		if strings.Contains(body, "\ntools:\n") {
 			t.Fatalf("%s output leaked OpenCode tools:\n%s", target, body)
 		}
+	}
+}
+
+// Spec: docs/specs/agent-fabric.md — exact OpenCode 2.0.30 agent schema
+func TestOpenCodeV2NativeContract(t *testing.T) {
+	d := agent.Definition{ID: "supervisor", Description: "Own delivery", Mode: "all", Body: "Run resolved hooks.\n",
+		Fabric: agent.Fabric{Profile: "supervisor", Visibility: "hidden", Effort: "high", Permissions: map[string]string{"task": "allow", "bash": "allow", "edit": "deny"}}}
+	m := Mapping{Profiles: map[string]Profile{"supervisor": {Model: "openai/gpt-6.1-sol", Tools: map[string]bool{"*": false, "read": true, "task": true, "patch": true}}}}
+	body, _, _, err := Render("opencode", d, m, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`model: "openai/gpt-6.1-sol#high"`, "hidden: true", "permissions:", `action: "shell"`, `action: "subagent"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing native field %q: %s", want, body)
+		}
+	}
+	for _, legacy := range []string{"\nvariant:", "\nsandbox:", "\nvisibility:", "\nisolation:", "\npermission:", "\ntools:", "\nhooks:"} {
+		if strings.Contains(body, legacy) {
+			t.Errorf("legacy field emitted: %s", legacy)
+		}
+	}
+	// Evaluate the rendered ordered wildcard rules, rather than just field presence.
+	rules := strings.Split(body, "  - action: ")[1:]
+	for action, want := range map[string]string{"read": "allow", "subagent": "allow", "edit": "deny", "shell": "deny"} {
+		got := ""
+		for _, rule := range rules {
+			lines := strings.Split(rule, "\n")
+			if lines[0] == `"*"` || lines[0] == fmt.Sprintf("%q", action) {
+				got = strings.Trim(strings.TrimSpace(strings.TrimPrefix(lines[2], "    effect:")), "\"")
+			}
+		}
+		if got != want {
+			t.Errorf("effective %s permission = %q, want %q", action, got, want)
+		}
+	}
+	profile := m.Profiles["supervisor"]
+	profile.Model = "openai/gpt-6.1-sol#medium"
+	m.Profiles["supervisor"] = profile
+	body, _, _, _ = Render("opencode", d, m, false)
+	if !strings.Contains(body, `model: "openai/gpt-6.1-sol#medium"`) {
+		t.Fatal("explicit model variant was replaced")
+	}
+}
+
+// Spec: docs/specs/agent-fabric.md — defaults precede exceptions; alias denial wins
+func TestOpenCodePermissionPrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		policies map[string]string
+		tools    map[string]bool
+		action   string
+		want     string
+	}{
+		{"policy wildcard default", map[string]string{"*": "deny", "read": "allow"}, map[string]bool{"read": true}, "read", "allow"},
+		{"tool edit/write conflict", nil, map[string]bool{"edit": false, "write": true}, "edit", "deny"},
+		{"tool shell/bash conflict", nil, map[string]bool{"shell": false, "bash": true}, "shell", "deny"},
+		{"policy alias conflict", map[string]string{"shell": "allow", "bash": "deny"}, nil, "shell", "deny"},
+		{"explicit role deny", map[string]string{"edit": "deny"}, map[string]bool{"*": false, "write": true}, "edit", "deny"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rules := strings.Split(openCodePermissionRules(tc.policies, tc.tools), "  - action: ")[1:]
+			got := ""
+			for _, rule := range rules {
+				lines := strings.Split(rule, "\n")
+				if lines[0] == `"*"` || lines[0] == fmt.Sprintf("%q", tc.action) {
+					got = strings.Trim(strings.TrimSpace(strings.TrimPrefix(lines[2], "    effect:")), "\"")
+				}
+			}
+			if got != tc.want {
+				t.Fatalf("effective %s = %q, want %q", tc.action, got, tc.want)
+			}
+		})
+	}
+}
+
+// Spec: docs/specs/agent-fabric.md — exact overrides preserve scoped native rules
+func TestNativeOpenCodeOverridePreservesRules(t *testing.T) {
+	body := "---\nmodel: \"openai/gpt-6.1-sol#high\"\nhidden: false\npermissions:\n  - action: edit\n    resource: src/**\n    effect: deny\n---\nOwn delivery.\n"
+	got, err := ReplaceOpenCodeAgentOverrides(body, "", "medium", nil)
+	if err != nil || !strings.Contains(got, `model: "openai/gpt-6.1-sol#medium"`) || !strings.HasSuffix(got, body[strings.Index(body, "permissions:"):]) {
+		t.Fatalf("native override changed scoped permissions or effort: %s %v", got, err)
+	}
+	if _, err := ReplaceOpenCodeTools(body, map[string]bool{"edit": true}); err == nil {
+		t.Fatal("unselected native agent rule scopes were flattened")
 	}
 }
 

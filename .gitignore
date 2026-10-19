@@ -14,3 +14,7 @@ node_modules/
 .wrangler/
 .DS_Store
 __pycache__/
+# Private runtime evidence, not canonical agents/skills or deliverable source.
+/.agents/runs/
+/.agents/reports/
+/.agents/task-retrospective-projection/

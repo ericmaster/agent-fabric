@@ -190,8 +190,8 @@ Curation Firewall across all subagent dispatches:
 ```
 
 `PASS` requires every original DoD item and every mandatory gate to have concrete passing evidence.
-An exhausted episode returns `FAIL` with `recovery.mode: exhausted`; explicit user
-continuation may authorize evaluation of a distinct two-mutation episode. Historical
+An exhausted episode returns `FAIL` with `recovery.mode: exhausted`; the delivery
+owner evaluates a distinct two-mutation episode under standing task authority. Historical
 counters and hard caps remain. QA is recommended, not mandatory: record run/skip/reuse/
 defer, preserve unverified checks and expose implementation readiness separately from
 acceptance. Running children are IN_PROGRESS. Reduced delivery reuses the accepted,

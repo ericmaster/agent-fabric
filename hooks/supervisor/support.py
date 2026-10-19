@@ -152,11 +152,17 @@ def reconcile(request):
     if not flight:
         return outcome('CONTINUE_STAGE', 'no in-flight dispatch')
     session = request.get('session', {})
+    if not isinstance(session, dict):
+        return outcome('IDENTITY_GAP', 'session observation must be an object')
+    native = session.get('status')
+    state = native.get('type') if isinstance(native, dict) else session.get('state')
     if (not flight.get('session_id') or cp['sessions'].get(flight['role']) != flight['session_id']
             or any(session.get(k) != v for k, v in
                    [('dispatch_id', flight['dispatch_id']), ('session_id', flight['session_id']),
                     ('execution_root', cp['execution_root'])])
-            or session.get('state') not in {'live', 'idle', 'unavailable'}):
+            or not isinstance(state, str) or state not in {'live', 'busy', 'retry', 'idle', 'unavailable'}
+            or ('status' in session and (not isinstance(native, dict)
+                or ('state' in session and session['state'] != state)))):
         return outcome('IDENTITY_GAP', 'session identity/state unresolved')
     commands = flight.get('commands', [])
     if not isinstance(commands, list):
@@ -179,7 +185,7 @@ def reconcile(request):
             return outcome('IDENTITY_GAP', 'owned command probe unavailable')
         live |= bool(observed and observed['live'] and all(
             observed[k] == handle[k] for k in ('pid', 'start_ticks', 'boot_id', 'uid')))
-    if session['state'] == 'live' or live:
+    if state in {'live', 'busy', 'retry'} or live:
         return outcome('WAIT', 'live child or verified live owned command')
     report = request.get('report')
     if report is not None:

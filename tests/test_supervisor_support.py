@@ -54,6 +54,30 @@ class SupportTests(unittest.TestCase):
         self.assertEqual(self.reconcile()['action'], 'WAIT')
         self.assertEqual(self.reconcile()['pending_stage'], 'qa')
 
+    # Spec: docs/specs/agent-fabric.md — native session.status compatibility
+    def test_native_busy_retry_and_idle_are_reconciled(self):
+        for state in ('busy', 'retry'):
+            with self.subTest(state=state):
+                self.session['state'] = state
+                self.assertEqual(self.reconcile()['action'], 'WAIT')
+                del self.session['state']
+                self.session['status'] = {'type': state}
+                self.assertEqual(self.reconcile()['action'], 'WAIT')
+                self.assertFalse(self.reconcile()['may_dispatch'])
+                del self.session['status']
+        self.session['status'] = {'type': 'idle'}
+        result = self.reconcile(report=dict(dispatch_id='d1', session_id='s1', status='PASS', locator='report'))
+        self.assertEqual(result['action'], 'RECONCILE_REPORT')
+        # Native state is never permission to ignore the dispatch identity.
+        self.session['dispatch_id'] = 'other'
+        self.assertEqual(self.reconcile()['action'], 'IDENTITY_GAP')
+        self.session['dispatch_id'] = 'd1'
+        self.session['state'] = 'live'
+        self.assertEqual(self.reconcile()['action'], 'IDENTITY_GAP')
+        del self.session['state']
+        self.session['status'] = {'type': 'new-unverified-state'}
+        self.assertEqual(self.reconcile()['action'], 'IDENTITY_GAP')
+
     def handle(self):
         return self.cli(dict(operation='command-identity', pid=os.getpid(), dispatch_id='d1',
                              execution_root=str(self.root)))['handle']

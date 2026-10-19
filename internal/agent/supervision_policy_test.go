@@ -73,7 +73,7 @@ func TestBoundedEpisodesAndDiscretionaryQA(t *testing.T) {
 			"does not stop remaining implementation",
 			"Never label skipped, deferred or running checks PASS",
 			"implementation_ready",
-			"Automatic goal continuations do not authorize new episodes",
+			"standing task authority",
 			"at most two mutations",
 			"baseline_attempts",
 			"hypothesis, difference from prior attempts, evidence, failing regression, budget and rollback",
@@ -91,7 +91,7 @@ func TestBoundedEpisodesAndDiscretionaryQA(t *testing.T) {
 			"loop-supervisor owns the QA decision",
 			"DEFERRED",
 			"implementation_ready",
-			"Automatic goal continuations do not authorize new episodes",
+			"standing task authority",
 			"at most two mutations",
 			"Hard limits remain in force",
 			"An active child or command is IN_PROGRESS, not a failed gate",
@@ -130,6 +130,30 @@ func TestBoundedEpisodesAndDiscretionaryQA(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Spec: docs/specs/agent-fabric.md — Delivery ownership and checkout closure
+func TestDeliveryOwnershipAndNativeContinuations(t *testing.T) {
+	for _, role := range []string{"plan-supervisor", "loop-supervisor", "deploy-supervisor"} {
+		d, err := ParseFile(filepath.Join("..", "..", "agents", role+".md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := strings.Join(strings.Fields(d.Body), " ")
+		if d.Mode != "all" {
+			t.Errorf("%s must support both root delivery and native child delegation", role)
+		}
+		for _, want := range []string{"own delivery", "authorized deployment", "current checkout", "active writers", "not dirtiness alone", "never auto-commit foreign changes", "owning checkout clean", "busy and retry", "matching dispatch/session once", "compact current delta", "original authority"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s missing delivery contract %q", role, want)
+			}
+		}
+		for _, forbidden := range []string{"until explicit user authority and a distinct recovery strategy arrive", "a direct explicit user continuation permits evaluation", "A direct explicit user instruction after exhaustion permits", "Automatic goal continuations do not authorize new episodes"} {
+			if strings.Contains(body, forbidden) {
+				t.Errorf("%s retains permission-renewal loop %q", role, forbidden)
+			}
+		}
 	}
 }
 

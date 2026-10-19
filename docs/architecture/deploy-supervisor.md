@@ -1,6 +1,6 @@
 # Deploy Supervisor — Workflow Diagram
 
-`agents/deploy-supervisor.md` · profile: `supervisor` · mode: `primary` · isolation: `workspace`
+`agents/deploy-supervisor.md` · profile: `supervisor` · mode: `all` · isolation: `workspace`
 
 The Deploy Supervisor coordinates post-merge deployment execution, database migration checks,
 live endpoint smoke testing, and empirical release evidence collection. It executes deployments

@@ -61,7 +61,7 @@ func Render(target string, d agent.Definition, m Mapping, project bool) (string,
 	}
 	switch target {
 	case "opencode":
-		return markdown(d, p, true), filepath.Join(prefix, "agents", d.ID+".md"), warn, nil
+		return openCodeMarkdown(d, p), filepath.Join(prefix, "agents", d.ID+".md"), warn, nil
 	case "kilo":
 		return markdown(d, p, false), filepath.Join(prefix, "agents", d.ID+".md"), warn, nil
 	case "antigravity":
@@ -188,6 +188,32 @@ func ReplaceOpenCodeAgentOverrides(body, model, effort string, tools map[string]
 		headerEnd = len(delimiter)
 	}
 	header := body[len(delimiter):headerEnd]
+	if strings.Contains("\n"+header, "\npermissions:") || strings.Contains("\n"+header, "\nhidden:") {
+		// Native rules carry ordered resource scopes. Do not flatten them into
+		// an action map when overriding an unselected, externally owned agent.
+		if len(tools) > 0 {
+			return "", fmt.Errorf("native OpenCode tool overrides require re-rendering from the owning source; select this agent in sync")
+		}
+		lines := strings.SplitAfter(header, "\n")
+		written := false
+		for i, line := range lines {
+			if !strings.HasPrefix(line, "model:") {
+				continue
+			}
+			current := strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "model:")), "\"'")
+			if model != "" {
+				current = model
+			} else if effort != "" {
+				current, _, _ = strings.Cut(current, "#")
+			}
+			lines[i] = fmt.Sprintf("model: %q\n", openCodeModel(current, effort))
+			written = true
+		}
+		if !written && model != "" {
+			lines = append(lines, fmt.Sprintf("model: %q\n", openCodeModel(model, effort)))
+		}
+		return delimiter + strings.Join(lines, "") + delimiter + body[headerEnd+len(delimiter):], nil
+	}
 	if len(tools) > 0 {
 		merged := map[string]bool{}
 		inTools := false

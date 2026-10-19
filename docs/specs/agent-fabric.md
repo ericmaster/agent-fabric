@@ -14,7 +14,7 @@ for Codex readonly, worker, reviewer, supervisor, and qa roles.
 OpenCode/Kilo bundled profiles must not restore retired `openai/gpt-5.6*` defaults
 into the dashboard's generated model suggestions.
 Profile overrides merge `permissions` and `tools` entries by key. `tools` is a
-boolean OpenCode allowlist map; OpenCode emits it as a sorted frontmatter mapping,
+boolean OpenCode allowlist map; OpenCode 2 compiles it to sorted permission rules,
 while Kilo, Claude, Antigravity, and Codex ignore the target-specific field.
 Exact-agent OpenCode overrides live under `agents.<target>.<agent>` in the same
 user config and may set `model`, `effort`, and merged `tools`. They apply after the
@@ -25,6 +25,23 @@ destination; unknown agent IDs fail before any writes. Project sync ignores an
 override owned only by the global manifest, never creating or modifying a
 project-local hub file. Exact-agent overrides for non-OpenCode targets are rejected
 rather than applied inconsistently.
+
+OpenCode targets the V2 agent contract (verified against 2.0.30): model effort is
+encoded as `provider/model#variant` (an explicit variant in model wins), visibility
+becomes `hidden`, and permissions are ordered `{action,resource,effect}` rules.
+Portable bash/task map to shell/subagent; network covers webfetch/websearch only,
+not shell/MCP egress or an OS sandbox. Omit legacy variant/sandbox/visibility/
+isolation/permission/tools/hooks frontmatter; resolved hook commands remain in the
+body. Tool flags restrict effective actions, with wildcard defaults first and
+explicit permission denies retained last. An allow flag cannot override a role deny.
+Normalize aliases before ordering; conflicting aliases resolve deny over ask over
+allow, independent of input-map iteration. Re-append only explicit action denies,
+never the wildcard default, so broad defaults do not erase deliberate exceptions.
+Other harness output is unchanged. Exact overrides preserve native permission rules;
+tool overrides for an unselected native agent require re-rendering from its owning
+source rather than flattening ordered resource scopes into an action map. Model/
+effort-only overrides preserve the rules byte-for-byte.
+legacy managed hub files retain their old format until refreshed from their owner.
 
 When agent or tool selections are omitted from an interactive command, the CLI
 uses `/dev/tty`, preselects all canonical agents and PATH-detected tools, and
@@ -275,7 +292,7 @@ split. At the mutation cap, evaluate structural recovery before external escalat
 When the task remains atomic and no permitted remediation remains, return terminal
 `FAIL` with `recovery.mode: exhausted`, counters, failed gates, and rejected-split
 evidence. The parent must not redispatch that exhausted episode without a valid
-non-mutating recovery path or an explicitly authorized new episode under the
+non-mutating recovery path or a standing-authority new episode under the
 bounded episode contract below. Hard limits remain in force.
 Retryable FAIL uses `retry`; overbroad FAIL uses `split`; verified external BLOCKED
 uses `external_block`; PASS uses `none`. Exhaustion alone never means BLOCKED.
@@ -388,13 +405,19 @@ regression and an atomicity check. Five ends that episode; it is not a lifetime
 cap imposed by this workflow. Explicit task, host, provider, spending, safety and
 policy hard limits remain non-renewable by an ordinary continuation instruction.
 
-After exhaustion, a direct explicit user instruction to continue permits the
-supervisor to evaluate one new episode, not automatically mutate. A renewed episode
-allows at most two mutations by default. Record the authority locator, new evidence
+After soft exhaustion, standing executable task authority permits the delivery owner
+to evaluate a renewed episode without another user message. A renewed episode
+allows at most two mutations by default. Record the original authority locator, new evidence
 or diagnosis or authorized scope change, and a materially distinct causal strategy
 before opening it. A new model, session, command spelling, or scope name is not a
-new strategy. Automatic goal continuations do not authorize new episodes. If there
-is no distinct strategy, retain exhaustion and report the exact next decision once.
+new strategy. An automatic continuation is a wakeup, not additional authority or
+evidence: use the existing task authority only after the strategy check. If there
+is no distinct strategy, retain exhaustion and report the exact next decision once,
+with a recommended recovery or explicitly deferred delivery; never ask for a ritual
+renewal of an already authorized task. Further autonomous renewal requires a newly
+verified acceptance criterion or restored prerequisite since the last renewal;
+another hypothesis alone cannot sustain a chain of exhausted episodes.
+Hard caps override standing authority.
 
 Before every mutation, record a compact mutation brief: hypothesis, difference from
 prior attempts, evidence, failing regression, budget and rollback. For initial work,
@@ -417,7 +440,54 @@ An active child or command is `IN_PROGRESS`, not a failed gate. Preserve the pen
 stage and `in_flight`; wait for its result with the native completion/wait mechanism
 when available. Do not dispatch an equivalent child, repeatedly audit unchanged
 state, consume mutation/rejection budget, or claim progress merely for waiting.
-Automatic continuations cannot turn waiting or terminal exhaustion into new work.
+Automatic continuations cannot turn waiting or a hard cap into new work. A soft
+episode ending transfers recovery to the delivery owner, not to the user's inbox.
+
+## Delivery ownership and checkout closure
+
+Plan, loop and deploy supervisors own delivery, not merely dispatch or a local PASS.
+All three use mode `all` so native V2 delegation can reach them as well as root use.
+Carry the original objective through applicable review, scoped commit, integration,
+authorized deployment, live verification and cleanup. Record delivery stage, owner,
+target and next action; an implementation report is not proof of a deployed result.
+Inherited release approval remains valid for its named scope and target; honor
+explicit repository/host confirmation rules without repeatedly requesting a granted
+approval. Scope changes, destructive actions and safety boundaries retain their gates.
+
+Inspect dirty status, diffs, provenance and active writers before mutation. Prefer
+the current checkout with one writer when safe; use a worktree for actual concurrent
+mutation, required isolation or an explicit request, not dirtiness alone. A host or
+repository worktree mandate takes precedence. Review pre-existing work and preserve
+unknown ownership; never auto-commit foreign changes or discard them to clean status.
+Own integration back to the intended mainline and remove eligible task-owned temporary
+resources. Successful delivery leaves task-owned source committed, integrated and the
+owning checkout clean. Checkpoint incomplete work outside root main without claiming
+acceptance, verify its recovery before restoring only owned hunks, and report any
+retained foreign changes. Do not abandon dirty root main or erase unknown work.
+
+## Native asynchronous orchestration
+
+Portable shell hooks are explicit commands, not OpenCode plugin lifecycle hooks.
+OpenCode 2 plugins use their installed generation's setup/domain API; do not assume
+V1 hook names or deprecated idle events provide child completion. Verify registration
+and version/capability compatibility against the running server, not only CLI version.
+Treat busy and retry as in-flight. Idle means read the result, not successful delivery.
+On a completed child result, reconcile the matching dispatch/session once, record the
+transition and advance the exact next stage. Wait using native completion/notification
+or supported wait APIs; do not create a polling agent or repeatedly prompt a live child.
+Keep the parent responsible for the next action; never promise an unregistered callback.
+On resume reconcile once; refresh only changed inputs. Use one compact current delta
+and receipt locators instead of full transcripts or stacked handoffs. Native context
+compaction retains objective, authority, stage, handles and unresolved findings; it is
+not a reason to restart a role. Do not change pinned models merely to reduce tokens.
+
+The reference ledger accepts integration, deployment, verification and cleanup stages.
+An exact repeated event/checkpoint at the current version (ignoring observation
+timestamp only) is a no-op (recorded=false),
+not another progress event; stale version checks still apply. Reconciliation accepts
+native session.status types busy/retry/idle as well as legacy live observations and
+validates dispatch/session/root identity before using either form. Retry waits rather
+than opening another child; conflicting or unknown state remains an identity gap.
 Record actual dispatch/return/state changes; send one no-progress notice with the
 full evidence locator, then update only on changed evidence or a required deadline.
 These are portable instructions, not a runtime Goal Mode watchdog.
@@ -512,7 +582,8 @@ as a completed preflight. Hosts may call this command from existing hooks.
 - `operation: reconcile`, `checkpoint`, `session`, optional `report` inspects
   one current host session observation and `in_flight.commands` handles once.
   Session observations bind `dispatch_id`, `session_id`, `execution_root` and
-  `state: live|idle|unavailable|unknown`. Matching live child or verified live
+   `state: live|busy|retry|idle|unavailable|unknown`, or native `status: {type: busy|retry|idle}`.
+   Conflicting state/status is a gap. Matching live/busy/retry child or verified live
   command returns `WAIT/IN_PROGRESS` with the exact `pending_stage` (in-flight
   stage, or checkpoint next_stage). A matching terminal report (`PASS|FAIL|BLOCKED`,
   dispatch/session IDs, full locator) with idle/unavailable session returns
@@ -662,7 +733,7 @@ across roles, followed by one bounded diagnostic (or reuse) and one evidence-bac
 recovery per episode. Continued failure yields exhausted FAIL, or BLOCKED at the existing exact
 external/policy boundary. Infrastructure failures count here independently of
 substantive rejection counters. Rebriefs, new sessions and renamed scopes retain
-this history. Renewed episodes require the explicit authorization and distinct
+this history. Renewed episodes require standing task authority and the distinct
 strategy above. For QA-only prerequisites, defer instead of stopping implementation.
 QA returns its recovery request after at most three attempts within its assigned budget;
 supervisors own the final diagnostic/recovery allowance. At tool/child boundaries,

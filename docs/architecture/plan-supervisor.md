@@ -1,6 +1,6 @@
 # Plan Supervisor — Workflow Diagram
 
-`agents/plan-supervisor.md` · profile: `supervisor` · mode: `primary` · isolation: `workspace`
+`agents/plan-supervisor.md` · profile: `supervisor` · mode: `all` · isolation: `workspace`
 
 The Plan Supervisor executes a pre-decomposed implementation plan phase-by-phase through bounded
 task supervision. It owns phase ordering and evidence integrity; the phase loop
@@ -130,7 +130,7 @@ The Plan Supervisor acts as a curation firewall between phases:
 |---|---|
 | Successful non-final phase | Continue immediately — no human pause |
 | Phase explicitly `operator-required` | Pause and wait for human action |
-| Episode budget exhausted | Preserve history; explicit user continuation may open a distinct bounded episode; hard limits remain |
+| Soft episode budget exhausted | Delivery owner evaluates a distinct bounded recovery under standing authority; history and hard limits remain |
 | QA execution blocker | Record deferred checks; retry at discretion, continue implementation with verified functional prerequisites |
 | Child or command still running | IN_PROGRESS; wait, no equivalent dispatch or repeated audits |
 | No DoD-preserving split and verified external gate | Produce `PLAN_ESCALATION.md`; stop |
@@ -151,7 +151,7 @@ The Plan Supervisor acts as a curation firewall between phases:
 
 The plan supervisor integrates accepted slice outputs into one recorded revision;
 dependent slices consume verified predecessor changes. Aggregate acceptance runs
-against that integrated revision. Exhausted episodes are not redispatched without
-eligible explicit user authority. QA is recommended and owned by loop-supervisor;
+against that integrated revision. Soft exhaustion requires a distinct evidence-backed
+strategy, not another user instruction; explicit hard caps still bind. QA is recommended and owned by loop-supervisor;
 acceptance requires substantive evidence, not a QA session. Reduced delivery reuses
 the verified deployed revision and declares deferred and defective behavior.

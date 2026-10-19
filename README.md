@@ -146,7 +146,7 @@ Optional target profile overrides live in one user file,
 ```
 
 `permissions` and `tools` merge by entry with the checked-in target profile.
-`tools` is emitted only for OpenCode as a sorted Markdown-frontmatter mapping;
+`tools` is compiled only for OpenCode 2 into sorted native permission rules;
 use `"*": false` followed by explicit allow entries for a lean profile. Other
 targets ignore `tools`.
 

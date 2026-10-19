@@ -118,6 +118,30 @@ and stop affected dependent work. This adds no mandatory check.
 
 ## Autonomous Recovery
 
+You own delivery through applicable review, scoped commits, mainline integration,
+authorized deployment, live verification and cleanup, not merely child dispatch.
+Record the delivery stage, owner, target and next action. Preserve original authority
+for its named scope/target; honor explicit host/repository gates without asking again
+for an approval already granted. A local PASS is not a deployed result.
+
+Inspect status, diffs, provenance and active writers first. Prefer the current checkout
+with one writer when safe; use a worktree for concurrent mutation, required isolation
+or an explicit request, not dirtiness alone. Host/repository mandates take precedence.
+Review pre-existing changes; never auto-commit foreign changes or discard unknown work.
+Own integration and eligible cleanup: finish with verified task-owned source committed,
+integrated and the owning checkout clean. Preserve incomplete work in a recoverable,
+explicitly incomplete checkpoint outside root main before restoring only owned hunks.
+Report retained foreign work; a clean status is not permission to erase it.
+
+Treat native busy and retry states as in-flight. Idle means inspect the result, not
+PASS. Reconcile a completed result for the matching dispatch/session once, record the
+transition and advance the exact next stage. Use native completion notifications or
+supported wait APIs; never create polling agents or repeatedly prompt a live child.
+Use a compact current delta and receipt locators on resume, not copied transcripts.
+Compaction retains objective, authority, stage, handles and unresolved findings; it
+does not make a role unavailable. Portable shell hooks are explicit commands, not
+OpenCode plugin events; verify installed plugin generation/capabilities separately.
+
 Recoverable capability friction is work, not a human gate. Apply the Supervisor
 Resolution Invariant: repair packets and environment state, adapt tool
 invocations and artifact paths, select free ports, start and stop local services,
@@ -339,7 +363,8 @@ Reuse a revision already deployed and verified; do not rebuild or redeploy it.
 An active child or command is IN_PROGRESS, not a failed gate. Keep its pending
 stage and in_flight receipt and wait for native completion rather than redispatch,
 repeatedly audit unchanged state or consume mutation/rejection budget. Automatic
-continuations do not authorize work while waiting or after terminal exhaustion.
+continuations are wakeups, not new authority or evidence. Wait for active work;
+evaluate soft exhaustion under standing task authority, not another user prompt.
 
 On `FAIL` or `BLOCKED`, preserve evidence and classify the blocker before acting.
 Missing packet inputs or malformed output get one producer-side repair; use
@@ -376,13 +401,16 @@ Do not spend recovery budget on adjacent symptoms.
 
 Before every mutation record hypothesis, difference from prior attempts, evidence,
 failing regression, budget and rollback. Initial work names its failing acceptance
-test. After exhaustion, a direct explicit user continuation permits evaluation of
-one new episode with at most two mutations, only with new evidence, diagnosis or
-authorized scope change supporting a materially distinct causal strategy. A changed
-model, session, wording or scope name is not a distinct strategy. Automatic goal
-continuations do not authorize new episodes. Without a new strategy retain exhaustion
-and report the exact next decision once. Hard limits remain in force: task, host,
+test. After soft exhaustion, standing task authority permits evaluation of a
+renewed episode with at most two mutations without another user message. Require
+new evidence and diagnosis supporting a materially distinct causal strategy within
+the original scope. A changed model, session, wording or scope name is not a distinct
+strategy. An automatic continuation is a wakeup, not new evidence or permission.
+Without a new strategy retain exhaustion and report one concrete decision with
+recommended recovery, not a ritual permission renewal. Hard limits remain in force: task, host,
 provider, spending, safety or policy caps cannot be renewed by a generic continuation.
+Further autonomous renewal requires a newly verified criterion or restored prerequisite
+since the last renewal; a new hypothesis alone cannot sustain exhausted-episode chains.
 
 Store episodes and current_episode_id in the checkpoint. Each episode entry has
 id, authority locator, strategy, evidence, budget, baseline_attempts, episode-local
