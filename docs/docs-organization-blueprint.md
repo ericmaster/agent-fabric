@@ -30,11 +30,11 @@ Two environments, deliberately separated:
    copy), synthesize, then commit.
 4. **Cite, don't inline.** When a `docs/` file distills something large, it states the takeaway
    and links back to the full source rather than pasting it in.
-5. **Current state, decision history in ADRs.** Specs and all other non-ADR docs describe
-   current truth or reusable guidance; update them in place. Do not use them as changelogs,
-   timelines, release notes, or historical change logs. Only `docs/adr/` retains historical
-   decision rationale or superseded choices. Use Git and Plane for implementation and work-item
-   history rather than mirroring it in docs.
+5. **Current state and release history.** Keep specs and non-ADR docs current-state only,
+   except `CHANGELOG.md`, the release-history SSOT. Collect pending changes under `[Unreleased]`,
+   preserve published release entries, and group them by actual version and release date.
+   Never invent prior releases or unverified changes. Keep historical decision rationale in
+   `docs/adr/`; use Git and Plane for commit/task detail and link instead of copying history.
 6. **ADR lifecycle.** During unreleased work, related ADRs may be edited, merged, or squashed
    to retain the latest decision before release. Once a release is cut, published ADRs are
    historical records: preserve them and record later decisions in a new ADR with `supersedes`.
@@ -70,6 +70,7 @@ agent-fabric/
 ├── CLAUDE.md                        # Thin pointer to AGENTS.md
 ├── CONTEXT.md                       # Domain glossary
 ├── README.md                        # Human-facing overview
+├── CHANGELOG.md                     # Full release history + unreleased changes
 └── docs/
     ├── index.md                     # Wiki landing page / document map
     ├── docs-organization-blueprint.md  # This file
@@ -105,9 +106,9 @@ distinctions. **When two folders could plausibly hold a document, this table dec
 
 Two tie-breakers worth stating explicitly:
 
-* **ADR vs. spec** — an ADR records a *choice between alternatives* and freezes at the moment of
-  decision; a spec records the *current required behavior* and is updated whenever behavior
-  changes. If it would need editing after a code change, it is a spec.
+* **ADR vs. spec** — an ADR records a *choice between alternatives*. Before release, apply
+  the ADR lifecycle rule above; after release, preserve the published decision. A spec records
+  *current required behavior* and changes with that behavior.
 * **Workflow vs. runbook** — a workflow explains the *path and its transitions*; a runbook gives
   the *commands*. If a reader could copy-paste it, it is a runbook.
 
