@@ -6,8 +6,16 @@ canonical workflows into native configurations for OpenCode, Kilo, Antigravity C
 > [!IMPORTANT]
 > **AGENTS.md CRITICAL RULES:**
 > **No Fluff:** Minimum characters. Concise but 100% complete.
-> **No History:** No changelogs. Reflect ONLY the current "Source of Truth".
+> **Documentation:** Keep specs and non-ADR docs current-state only, except `CHANGELOG.md`.
+> Maintain `CHANGELOG.md` as the release-history SSOT: collect changes under `[Unreleased]`,
+> preserve published release entries, and use actual versions/dates; never invent prior releases.
+> Keep historical decision rationale in `docs/adr/`; use Git and Plane for commit/task detail.
+> **ADR Lifecycle:** Before release, ADRs may be edited, merged, or squashed to retain the latest decision; after
+> release, preserve published ADRs and use a new superseding ADR. Full filing rules:
+> [`docs/docs-organization-blueprint.md`](docs/docs-organization-blueprint.md).
 > **Live Sync:** Keep this file updated with relevant code changes in the same commit.
+> **Context Hygiene:** Apply the `context-hygiene` skill before writing or revising any
+> documentation or spec; keep each fact in its SSOT and link instead of repeating it.
 
 > [!WARNING]
 > **Avoid Redundant Documentation.** AGENTS.md is the Single Source of Truth. Do NOT create
