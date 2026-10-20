@@ -12,13 +12,13 @@ for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; d
   name="agent-fabric_${version}_${os}_${arch}"
   work="$(mktemp -d)"
   GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$work/agent-fabric${suffix}" "$root/cmd/agent-fabric"
-  cp -R "$root/agents" "$root/adapters" "$root/hooks" "$root/assets" "$work/"
-  # The retrospective hooks package ships its runtime plugin file and npm
-  # metadata only; its developer tooling (tests, record tools, fixtures,
-  # compiled build output, installed node_modules) stays out of the archive.
+  # Exclude retired native observers, including any untracked local scratch.
+  tar -C "$root" --exclude=hooks/retrospective -cf - agents adapters hooks assets | tar -C "$work" -xf -
+  mkdir -p "$work/skills/task-review/scripts"
+  cp "$root/skills/task-review/SKILL.md" "$work/skills/task-review/"
+  cp "$root/skills/task-review/scripts/audit.py" "$work/skills/task-review/scripts/"
   find -P "$work" \( -name '__pycache__' -o -name '*.pyc' -o -name 'node_modules' -o -name 'dist' -o -name '*.tsbuildinfo' -o -name '.record-captures.jsonl' \) -prune -exec rm -rf {} +
-  rm -rf "$work/hooks/retrospective/tests" "$work/hooks/retrospective/tools"
-  tar -C "$work" -czf "$out/${name}.tar.gz" "agent-fabric${suffix}" agents adapters hooks assets
+  tar -C "$work" -czf "$out/${name}.tar.gz" "agent-fabric${suffix}" agents adapters hooks assets skills
   rm -rf "$work"
 done
 if command -v sha256sum >/dev/null; then

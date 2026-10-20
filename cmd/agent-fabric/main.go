@@ -112,7 +112,7 @@ func main() {
 	fs.BoolVar(&o.strict, "strict", false, "warnings are failures")
 	fs.BoolVar(&o.force, "force", false, "replace modified managed files")
 	fs.BoolVar(&o.json, "json", false, "machine-readable output")
-	fs.StringVar(&o.assets, "assets", "", "optional assets to own (retrospective); omit to opt out")
+	fs.StringVar(&o.assets, "assets", "", "optional assets (none); retrospective retired in favor of task-review")
 	if err := fs.Parse(args); err != nil {
 		fail(err)
 	}
@@ -844,66 +844,27 @@ func managedFileKey(file manifest.File) string {
 	return file.Target + "\x00" + file.Agent
 }
 
-func optionalAssetWrites(o options, source string) ([]pendingWrite, error) {
+func optionalAssetWrites(o options, _ string) ([]pendingWrite, error) {
 	spec := strings.TrimSpace(o.assets)
 	if spec == "" || spec == "none" {
 		return nil, nil
 	}
-	var writes []pendingWrite
 	for _, name := range strings.Split(spec, ",") {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			continue
 		}
-		if name != "retrospective" {
-			return nil, fmt.Errorf("unknown asset %q", name)
+		if name == "retrospective" {
+			return nil, errors.New("retrospective hooks are retired; use the model-invoked task-review skill")
 		}
-		assetPath := filepath.Join(source, "assets", "retrospective", "learning-origin.json")
-		info, err := os.Lstat(assetPath)
-		if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-			return nil, fmt.Errorf("packaged retrospective asset is missing or not a regular file")
-		}
-		body, err := os.ReadFile(assetPath)
-		if err != nil {
-			return nil, err
-		}
-		scope, _, err := scopeRoot(o)
-		if err != nil {
-			return nil, err
-		}
-		writes = append(writes, pendingWrite{
-			path:     filepath.Join(scope, "retrospective", "learning-origin.json"),
-			body:     string(body),
-			target:   "retrospective",
-			resource: manifest.ResourceLearningOrigin,
-		})
-		pluginPath := filepath.Join(source, "hooks", "retrospective", "opencode.ts")
-		pluginInfo, err := os.Lstat(pluginPath)
-		if err != nil || pluginInfo.Mode()&os.ModeSymlink != 0 || !pluginInfo.Mode().IsRegular() {
-			return nil, fmt.Errorf("packaged retrospective plugin is missing or not a regular file")
-		}
-		pluginBody, err := os.ReadFile(pluginPath)
-		if err != nil {
-			return nil, err
-		}
-		destination, err := retrospectivePluginDestination(o)
-		if err != nil {
-			return nil, err
-		}
-		writes = append(writes, pendingWrite{
-			path:     destination,
-			body:     string(pluginBody),
-			target:   "retrospective",
-			resource: manifest.ResourceRetrospectivePlugin,
-		})
+		return nil, fmt.Errorf("unknown asset %q", name)
 	}
-	return writes, nil
+	return nil, nil
 }
 
-// retrospectivePluginDestination is the opt-in owned plugin path for the
-// selected scope: global <home>/.config/opencode/plugins/retrospective.ts,
-// project <project>/.opencode/plugins/retrospective.ts.
-// Spec: docs/specs/task-retrospective.md via optionalAssetWrites
+// retrospectivePluginDestination retains the legacy owned plugin path for
+// manifest validation and safe uninstall only. No installer writes it.
+// Spec: docs/specs/task-retrospective.md
 func retrospectivePluginDestination(o options) (string, error) {
 	if o.project != "" {
 		project, err := filepath.Abs(o.project)

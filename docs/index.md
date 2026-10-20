@@ -35,9 +35,9 @@ document's home is ambiguous, and apply the frontmatter from §4.
 ## Specs
 
 - [`specs/agent-fabric.md`](specs/agent-fabric.md) — Portable agent schema, multi-harness adapter rendering, and manifest tracking.
-- [`specs/task-retrospective.md`](specs/task-retrospective.md) — Task retrospective replay, report schema v1, dispatch/repair, and the Phase 3 OpenCode observation loop.
+- [`specs/task-retrospective.md`](specs/task-retrospective.md) — Model-invoked independent task review, worktree correction and one JSONL audit per engine.
 
 ## Runbooks
 
 - [`runbooks/pi.md`](runbooks/pi.md) — Pi subagent runtime, Fabric agents/hooks, and PiChamber setup.
-- [`runbooks/task-retrospective.md`](runbooks/task-retrospective.md) — Opt-in OpenCode observation loop: setup, disable, status, recovery.
+- [`runbooks/task-retrospective.md`](runbooks/task-retrospective.md) — Invoke task review, inspect its audit and retire native observation hooks.

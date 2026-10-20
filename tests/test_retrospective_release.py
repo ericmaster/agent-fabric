@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-# Spec: docs/specs/task-retrospective.md — release/bootstrap fixture tests of
-# the Phase 3 observation plugin and runtime assets. Everything runs against
+# Spec: docs/specs/task-retrospective.md — retired hooks stay out of releases.
+# Everything runs against
 # disposable HOME/config/data directories and local archives only: a fake
 # `curl` in a fixture bin dir serves the release bytes (the release.sh
 # checksum gate verifies real archive bytes), no network, no real OpenCode
 # server, and existing live sessions are never activated.
 #
-# Timing: heavy IO is once per class (~60s for two 5-way cross-compile
-# release archives); per-test work installs one local tree each.
+# One five-target release build per class; no runtime/provider activation.
 
+import hashlib
 import json
 import os
 import pathlib
@@ -53,11 +53,6 @@ class FixtureBase(unittest.TestCase):
         cls.archive = cls.release / f"agent-fabric_{VERSION}_linux_amd64.tar.gz"
         if not cls.archive.is_file():
             raise AssertionError("release archive missing")
-        # Fixture source tree: only what install --source needs
-        # (agents/, adapters/, hooks/, assets/).
-        cls.source = cls.base / "source"
-        for name in ("agents", "adapters", "hooks", "assets"):
-            shutil.copytree(REPO / name, cls.source / name)
         cls.install_fake_curl()
 
     @classmethod
@@ -139,18 +134,18 @@ class FixtureBase(unittest.TestCase):
         path = self.home / ".config" / "agent-fabric" / ".agent-fabric-manifest.json"
         return json.loads(path.read_text())
 
-    def install_all_opencode_retrospective(self):
+    def install_all_opencode(self):
         self.stage_release_payload()
         run([self.cli(), "install",
              "--source", str(self.installdir),
-             "--all", "--tools", "opencode", "--assets", "retrospective",
+             "--all", "--tools", "opencode",
              "--yes"],
             env=self.base_env())
 
     def install_from_bootstrap(self):
         result = subprocess.run(
             [str(REPO / "scripts/bootstrap.sh"), "--all", "--tools", "opencode",
-             "--assets", "retrospective", "--yes"],
+             "--yes"],
             env=self.base_env({"AGF_INSTALL_DIR": str(self.installdir)}),
             cwd=str(REPO), text=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -162,35 +157,32 @@ class FixtureBase(unittest.TestCase):
             )
         return result
 
-    def assert_plugin_and_asset_installed(self):
+    def assert_no_observer_installed(self):
         plugin = self.home / ".config" / "opencode" / "plugins" / "retrospective.ts"
         origin = self.home / ".config" / "agent-fabric" / "retrospective" / "learning-origin.json"
-        hooks_copy = self.installdir / "hooks" / "retrospective" / "opencode.ts"
-        self.assertTrue(hooks_copy.is_file(), "the packaged source root must ship hooks/")
-        self.assertTrue(plugin.is_file(), "the opt-in owned plugin asset must install")
-        self.assertTrue(origin.is_file(), "the optional runtime asset must install")
+        self.assertFalse((self.installdir / "hooks" / "retrospective").exists())
+        self.assertFalse(plugin.exists())
+        self.assertFalse(origin.exists())
         managed = {entry["path"] for entry in self.manifest_of()["files"]}
-        self.assertIn(str(plugin), managed)
-        self.assertIn(str(origin), managed)
+        self.assertNotIn(str(plugin), managed)
+        self.assertNotIn(str(origin), managed)
         self.assertEqual(
             (self.home / ".config" / "opencode" / "plugins" / "unrelated-user-plugin.ts").read_text(),
             UNRELATED_PLUGIN,
         )
-        return plugin, origin
 
 
 class ReleaseAndBootstrapFixtureTests(FixtureBase):
-    # Spec: docs/specs/task-retrospective.md — DoD: fixture tests install the
-    # plugin + runtime assets into a disposable HOME, exercise
-    # enable/disable/sync/doctor/uninstall, retain modified and unrelated
-    # files, and never activate existing live sessions.
-
-    def test_release_archive_ships_plugin_source_without_devtools(self):
+    def test_release_archive_ships_skill_not_native_hooks(self):
         with tarfile.open(self.archive) as archive:
             names = archive.getnames()
-        self.assertIn("hooks/retrospective/opencode.ts", names)
-        self.assertIn("hooks/retrospective/package.json", names)
-        self.assertIn("assets/retrospective/learning-origin.json", names)
+        self.assertFalse(any(name == "hooks/retrospective" or name.startswith("hooks/retrospective/") for name in names))
+        self.assertIn("skills/task-review/SKILL.md", names)
+        self.assertIn("skills/task-review/scripts/audit.py", names)
+        for path in (REPO / "hooks").rglob("*"):
+            if path.is_file() and "retrospective" not in path.relative_to(REPO / "hooks").parts:
+                if not any(part == "__pycache__" for part in path.parts) and path.suffix != ".pyc":
+                    self.assertIn(path.relative_to(REPO).as_posix(), names)
         self.assertFalse(any("node_modules" in name for name in names), names)
         self.assertFalse(any(name.endswith("/dist") or "/dist/" in name for name in names), names)
         self.assertFalse(any(name.endswith(".test.js") or name.endswith(".test.ts") for name in names), names)
@@ -202,9 +194,9 @@ class ReleaseAndBootstrapFixtureTests(FixtureBase):
         self.assertEqual(manifest["version"], VERSION)
         self.assertTrue(manifest["artifacts"])
 
-    def test_bootstrap_installs_plugin_and_assets_without_activation(self):
+    def test_bootstrap_installs_agents_without_observers(self):
         self.install_from_bootstrap()
-        plugin, origin = self.assert_plugin_and_asset_installed()
+        self.assert_no_observer_installed()
         # No activation or observation side effects anywhere: no state tree,
         # no extra plugin content, and no session artefacts (the fixture HOME
         # holds no live sessions at all, and bootstrap never starts one).
@@ -213,13 +205,11 @@ class ReleaseAndBootstrapFixtureTests(FixtureBase):
         plugin_dir = self.home / ".config" / "opencode" / "plugins"
         self.assertEqual(
             sorted(entry.name for entry in plugin_dir.iterdir()),
-            ["retrospective.ts", "unrelated-user-plugin.ts"],
+            ["unrelated-user-plugin.ts"],
         )
-        self.assertIn("Spec: docs/specs/task-retrospective.md", plugin.read_text()[:2000])
-        _ = origin
 
     def test_enable_disable_and_local_status(self):
-        self.install_all_opencode_retrospective()
+        self.install_all_opencode()
         env = self.base_env()
         run([self.cli(), "retrospective", "enable"], env=env, cwd=str(self.base))
         config = json.loads((self.home / ".config" / "agent-fabric" / "config.json").read_text())
@@ -246,33 +236,49 @@ class ReleaseAndBootstrapFixtureTests(FixtureBase):
         )
         self.assertNotEqual(result.returncode, 0)
 
-    def test_sync_and_doctor_preserve_modified_and_unrelated_files(self):
-        self.install_all_opencode_retrospective()
-        origin = self.home / ".config" / "agent-fabric" / "retrospective" / "learning-origin.json"
-        plugin = self.home / ".config" / "opencode" / "plugins" / "retrospective.ts"
-        env = self.base_env()
-        origin.write_text('{"schema":1,"user":"edit"}\n')
-        # Sync's guarded write refuses to clobber a user edit (exit 1) and
-        # retains the modified file unchanged.
-        result = run([self.cli(), "sync",
-                      "--source", str(self.installdir),
-                      "--all", "--tools", "opencode", "--assets", "retrospective",
-                      "--yes"],
-                     env=env, check=False)
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertIn("modified managed file preserved", result.stderr)
-        self.assertEqual(origin.read_text(), '{"schema":1,"user":"edit"}\n')
-        # The unchanged plugin stays managed with an unchanged hash.
-        managed = {entry["path"]: entry.get("sha256", "") for entry in self.manifest_of()["files"]}
-        self.assertIn(str(plugin), managed)
-        doctor = run([self.cli(), "doctor"], env=env, cwd=str(self.base))
-        self.assertEqual(doctor.returncode, 0, doctor.stderr)
+    def test_retired_asset_flag_is_rejected_by_cli_and_bootstrap(self):
+        self.stage_release_payload()
+        flags = ["--all", "--tools", "opencode", "--assets", "retrospective", "--yes"]
+        for command in ([self.cli(), "install", "--source", str(self.installdir)],
+                        [str(REPO / "scripts/bootstrap.sh")]):
+            result = run(command + flags, env=self.base_env({"AGF_INSTALL_DIR": str(self.installdir)}), check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("retired", result.stderr)
+            self.assertIn("task-review", result.stderr)
+        self.assertFalse((self.home / ".config" / "agent-fabric" / ".agent-fabric-manifest.json").exists())
 
-    def test_uninstall_removes_owned_and_keeps_user_edits_and_unrelated(self):
-        self.install_all_opencode_retrospective()
+    def test_normal_install_sync_preserve_legacy_and_foreign_files(self):
+        self.install_all_opencode()
+        self.assert_no_observer_installed()
         origin = self.home / ".config" / "agent-fabric" / "retrospective" / "learning-origin.json"
         plugin = self.home / ".config" / "opencode" / "plugins" / "retrospective.ts"
+        agents = self.home / ".config" / "opencode" / "AGENTS.md"
+        hook = self.home / ".agent-hooks" / "custom.sh"
+        for path in (origin, plugin, agents, hook):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("user-owned content\n")
         env = self.base_env()
+        for command in ("install", "sync"):
+            run([self.cli(), command, "--source", str(self.installdir), "--all", "--tools", "opencode", "--assets", "none", "--yes"], env=env)
+            for path in (origin, plugin, agents, hook):
+                self.assertEqual(path.read_text(), "user-owned content\n")
+        run([self.cli(), "doctor"], env=env, cwd=str(self.base))
+
+    def test_legacy_manifest_uninstall_keeps_modified_and_unrelated(self):
+        self.install_all_opencode()
+        origin = self.home / ".config" / "agent-fabric" / "retrospective" / "learning-origin.json"
+        plugin = self.home / ".config" / "opencode" / "plugins" / "retrospective.ts"
+        origin.parent.mkdir(parents=True)
+        manifest_path = self.home / ".config" / "agent-fabric" / ".agent-fabric-manifest.json"
+        manifest = self.manifest_of()
+        for path, resource in ((origin, "retrospective-learning-origin"), (plugin, "retrospective-opencode-plugin")):
+            path.write_text("legacy owned content\n")
+            manifest["files"].append({"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "target": "retrospective", "resource": resource})
+        manifest_path.write_text(json.dumps(manifest))
+        env = self.base_env()
+        run([self.cli(), "install", "--source", str(self.installdir), "--all", "--tools", "opencode", "--yes"], env=env)
+        self.assertEqual(plugin.read_text(), "legacy owned content\n")
+        self.assertEqual(origin.read_text(), "legacy owned content\n")
         origin.write_text('{"schema":1,"user":"edit"}\n')
         run([self.cli(), "uninstall"], env=env, cwd=str(self.base))
         self.assertFalse(plugin.exists(), "unchanged owned plugin must uninstall")

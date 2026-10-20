@@ -1485,7 +1485,7 @@ func TestPersistTicketTemplateResolvesFromExplicitSourceRoot(t *testing.T) {
 	}
 }
 
-func TestOptionalRetrospectiveAssetOwnership(t *testing.T) {
+func TestRetiredRetrospectiveAssetOwnership(t *testing.T) {
 	temp := t.TempDir()
 	fabricSource, err := filepath.Abs("../..")
 	if err != nil {
@@ -1504,11 +1504,29 @@ func TestOptionalRetrospectiveAssetOwnership(t *testing.T) {
 		t.Fatal("optional asset was installed without opt-in")
 	}
 	opts.assets = "retrospective"
-	if err := install(opts, false); err != nil {
+	if err := install(opts, false); err == nil || !strings.Contains(err.Error(), "retired") {
+		t.Fatalf("retired hooks were accepted for installation: %v", err)
+	}
+	if _, err := os.Stat(asset); !os.IsNotExist(err) {
+		t.Fatal("retired asset was installed")
+	}
+	// Existing ownership is still understood: a normal sync preserves old data,
+	// and uninstall only removes unchanged owned files, never user edits.
+	opts.assets = "none"
+	first := []byte("legacy asset\n")
+	if err := os.MkdirAll(filepath.Dir(asset), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	first, err := os.ReadFile(asset)
+	if err := os.WriteFile(asset, first, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(project, ".agent-fabric", ".agent-fabric-manifest.json")
+	owned, err := manifest.Read(manifestPath)
 	if err != nil {
+		t.Fatal(err)
+	}
+	owned.Files = append(owned.Files, manifest.File{Path: asset, Hash: manifest.Hash(first), Target: "retrospective", Resource: manifest.ResourceLearningOrigin})
+	if err := manifest.WriteAtomic(manifestPath, owned); err != nil {
 		t.Fatal(err)
 	}
 	if err := install(opts, true); err != nil {
@@ -1540,8 +1558,8 @@ func TestOptionalRetrospectiveAssetOwnership(t *testing.T) {
 	if err := os.WriteFile(asset, []byte("user kept this\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := install(opts, true); err == nil || !strings.Contains(err.Error(), "modified managed file preserved") {
-		t.Fatalf("modified asset was not preserved: %v", err)
+	if err := install(opts, true); err != nil {
+		t.Fatalf("normal sync failed while preserving omitted legacy asset: %v", err)
 	}
 	kept, err := os.ReadFile(asset)
 	if err != nil || string(kept) != "user kept this\n" {
@@ -1563,6 +1581,21 @@ func TestOptionalRetrospectiveAssetOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	cleanAsset := filepath.Join(clean, ".agent-fabric", "retrospective", "learning-origin.json")
+	if err := os.MkdirAll(filepath.Dir(cleanAsset), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cleanAsset, first, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cleanManifestPath := filepath.Join(clean, ".agent-fabric", ".agent-fabric-manifest.json")
+	cleanManifest, err := manifest.Read(cleanManifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanManifest.Files = append(cleanManifest.Files, manifest.File{Path: cleanAsset, Hash: manifest.Hash(first), Target: "retrospective", Resource: manifest.ResourceLearningOrigin})
+	if err := manifest.WriteAtomic(cleanManifestPath, cleanManifest); err != nil {
+		t.Fatal(err)
+	}
 	if err := uninstall(options{project: clean}); err != nil {
 		t.Fatal(err)
 	}

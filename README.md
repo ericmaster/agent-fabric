@@ -206,46 +206,22 @@ Declared Root, locator, hook, and inspection boundaries live only in
 that those safeguards render through every adapter; they do not prove model
 compliance or add runtime transport.
 
-## Task Retrospective (opt-in)
+## Task review
 
-Agent Fabric's opt-in retrospective observes OpenCode tasks and supports
-guarded instruction repair in separate visible roots. The approved replacement
-contract detects deterministic friction first and uses bounded GLiDE evidence
-interpretation only for candidates, not modeled task success or every call.
-Analyze/drain replace the old success/per-call evaluator. Controlled Phase 3 tests
-exercise a real file-task before/after repair with explicitly mocked native roles;
-independent review and supervisor live/UI acceptance remain pending. The
-[canonical plan](.artifacts-manager/plan-task-retrospective.md) owns acceptance.
-Nothing is activated by this change. `--signals-only` and old success/rate config
-keys are retired with explicit errors; v1 reports cannot start new repairs.
+Invoke [`task-review`](skills/task-review/SKILL.md) after a completed task.
+The model decides when to use it, or the user can request `/task-review`.
+An independent visible root receives the original session ID, reads actual
+history and follows a fixed checklist. Verified corrections run autonomously in
+worktrees with real tests and independent patch review.
 
-Evaluation defaults to Fastino GLiDE using host `FASTINO_API_KEY` (never
-persisted). Jev is unavailable pending a verified current contract. Local
-synthetic tests do not certify live model calibration or autonomous repair;
-OpenCode prompt delivery alone is not proof of correction completion.
-Native OpenCode 2.0.24 uses its default plugin setup/event subscription API.
-Configure an available `dispatch_model` and installed independent reviewer:
-session creation selects the canonical learning-corrector role, followed by
-separate visible reviewer and QA roots. Completed role/model history and
-digest-bound verdicts, not ignored prompt extras, gate hash-safe text repair.
+There are no native retrospective hooks, GLiDE calls, automatic capture/context
+injection or background review jobs. The same skill uses the host's existing
+session tools and configured model in OpenCode/OpenChamber and Pi/PiChamber.
+One private append-only JSONL per engine records review and correction actions;
+agent reports and dispatch receipts are not proof of successful delivery.
 
-```sh
-agf install --all --tools opencode --assets retrospective --yes
-agf retrospective enable
-```
-
-The observation loop is `hooks/retrospective/opencode.ts` (a thin
-self-contained OpenCode plugin that forwards versioned event envelopes to the
-packaged CLI over stdin) plus `agf retrospective ingest` (spooled staging) and
-`agf retrospective drain` (a daemon-less detached worker). Detection/interpretation,
-dispatch, suppression of its own learning sessions, and every
-business rule live in the Go CLI; the OpenCode server is contacted only for
-the visible correcting root and terminal reconciliation. A
-`.retrospective-disabled` marker file in a project tree scopes it off.
-Setup, status, disable, and recovery are documented in
-[`docs/runbooks/task-retrospective.md`](docs/runbooks/task-retrospective.md);
-the full contract in
-[`docs/specs/task-retrospective.md`](docs/specs/task-retrospective.md).
+See the [runbook](docs/runbooks/task-retrospective.md) for audit and old-hook
+removal, and the [contract](docs/specs/task-retrospective.md) for safety boundaries.
 
 ## Release And Maintainer Checks
 
