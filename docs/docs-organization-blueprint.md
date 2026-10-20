@@ -30,6 +30,18 @@ Two environments, deliberately separated:
    copy), synthesize, then commit.
 4. **Cite, don't inline.** When a `docs/` file distills something large, it states the takeaway
    and links back to the full source rather than pasting it in.
+5. **Current state, decision history in ADRs.** Specs and all other non-ADR docs describe
+   current truth or reusable guidance; update them in place. Do not use them as changelogs,
+   timelines, release notes, or historical change logs. Only `docs/adr/` retains historical
+   decision rationale or superseded choices. Use Git and Plane for implementation and work-item
+   history rather than mirroring it in docs.
+6. **ADR lifecycle.** During unreleased work, related ADRs may be edited, merged, or squashed
+   to retain the latest decision before release. Once a release is cut, published ADRs are
+   historical records: preserve them and record later decisions in a new ADR with `supersedes`.
+7. **Context hygiene before writes.** Apply the `context-hygiene` skill before adding or
+   revising any documentation or spec. Find the existing owner, write only the information
+   delta, and link to detailed SSOT material instead of duplicating it; complete the skill's
+   verification gate before finishing.
 
 Where the scratch space physically lives is deliberately unspecified — a wiki, a notes app, a
 shared drive, or a `scratch/` directory listed in `.gitignore` all satisfy the contract.
