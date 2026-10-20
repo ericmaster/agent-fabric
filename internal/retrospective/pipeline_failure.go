@@ -121,8 +121,9 @@ func pipelineSourceRevision(root string) string {
 }
 
 // recordPipelineFailure reuses the durable incident/native review path, not the
-// incomplete original task's eligibility. Its ONLY outcome is reviewed advice;
-// it never enters a text/code repair sink or starts another retrospective.
+// incomplete original task's eligibility. Diagnosis is advisory; a separately
+// enrolled operator policy can transition accepted advice into ordinary scoped
+// maintenance, never the protected instruction-repair sink.
 func recordPipelineFailure(ctx context.Context, opts DrainOptions, store *Store, job *DrainJob) error {
 	code := "retrospective_job_failed"
 	for _, item := range []struct{ match, code string }{
@@ -137,24 +138,29 @@ func recordPipelineFailure(ctx context.Context, opts DrainOptions, store *Store,
 			break
 		}
 	}
-	// One incident per failure class and installed source root, not one root
-	// per failed task or model attempt. No task content enters the key/prompt.
-	identity, _ := json.Marshal([]string{"pipeline-failure-v1", opts.SourceRoot, code})
+	// One incident per failure class and installed source root, not per task or
+	// model attempt. Enrolled standing maintenance also binds the host-observed
+	// source revision: a new version needs a fresh diagnosis, not stale approval.
+	revision := ""
+	if opts.Config != nil && withinAny(opts.Config.CanonicalRoots, opts.SourceRoot) {
+		revision = pipelineSourceRevision(opts.SourceRoot)
+	}
+	key := []string{"pipeline-failure-v1", opts.SourceRoot, code}
+	if opts.Config != nil && opts.Config.MaintenancePolicy != "" && revision != "" {
+		key = []string{"pipeline-failure-maintenance-v1", opts.SourceRoot, code, revision}
+	}
+	identity, _ := json.Marshal(key)
 	id := "pipeline-" + sha256hex(identity)
 	job.MaintenanceIncident = id
 	receipt, err := store.ReadReceipt(id)
 	if err == nil {
-		return nil
+		return resumePipelineMaintenance(ctx, opts, receipt)
 	} // including ambiguous/pending: never auto-retry creation
 	if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	stamp := time.Now().UTC().Format(time.RFC3339)
 	marker := learningOrigin(id)
-	revision := ""
-	if opts.Config != nil && withinAny(opts.Config.CanonicalRoots, opts.SourceRoot) {
-		revision = pipelineSourceRevision(opts.SourceRoot)
-	}
 	report := &Report{SignalReport: SignalReport{SchemaVersion: ReportSchemaVersion, Mode: "pipeline_failure",
 		Trace:    ReportTrace{Identities: Identities{TaskID: id, ExecutionRoot: opts.SourceRoot, SourceRevision: revision}, InputSHA256: sha256hex(identity)},
 		Evidence: []evidenceRecord{{ID: "pipeline-diagnostic", Kind: RecordSyntheticContext, SourceKind: "agf.pipeline_failure", Text: "Original report locator: " + job.ReportPath + "\nObserved job locator: " + jobsPath(store, job.SessionID)}}},
@@ -173,7 +179,7 @@ func recordPipelineFailure(ctx context.Context, opts DrainOptions, store *Store,
 	cfg := opts.Config
 	// No new model selection, fallback target, or authority to change runtime
 	// hooks/executables. Missing explicit capability leaves a visible queue.
-	if cfg == nil || cfg.DispatchServer == "" || cfg.DispatchModel == "" || !filepath.IsAbs(opts.SourceRoot) || !withinAny(cfg.CanonicalRoots, opts.SourceRoot) {
+	if cfg == nil || (cfg.DispatchServer == "" && cfg.PiRuntime == nil) || cfg.DispatchModel == "" || !filepath.IsAbs(opts.SourceRoot) || !withinAny(cfg.CanonicalRoots, opts.SourceRoot) {
 		return nil
 	}
 	if revision == "" {
@@ -219,5 +225,16 @@ func recordPipelineFailure(ctx context.Context, opts DrainOptions, store *Store,
 		receipt.ReviewVerdict, receipt.Status, receipt.NativeCompleted = verdict, StatusSuggested, true
 	}
 	_, err = save(store, receipt)
+	if err == nil {
+		err = resumePipelineMaintenance(ctx, opts, receipt)
+	}
+	return err
+}
+
+func resumePipelineMaintenance(ctx context.Context, opts DrainOptions, receipt *Receipt) error {
+	if opts.Config == nil || opts.Config.MaintenancePolicy == "" || receipt.Status != StatusSuggested || !receipt.NativeCompleted {
+		return nil
+	}
+	_, err := RunMaintenance(ctx, MaintenanceOptions{Config: opts.Config, SettingsPath: opts.ConfigPath, IncidentID: receipt.IncidentID})
 	return err
 }

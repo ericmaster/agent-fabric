@@ -91,6 +91,12 @@ const RubricVersion = SignalDetectorVersion
 // Later phases (dispatch, OpenCode decoding) read the same struct; adapters
 // must not duplicate the values.
 type Config struct {
+	// MaintenancePolicy names an operator-owned standing authority document.
+	// Empty retains advisory-only pipeline diagnostics.
+	MaintenancePolicy string `json:"maintenance_policy,omitempty"`
+	// PiRuntime explicitly selects the pinned read-only native Pi transport.
+	// It never falls back to HTTP or changes the configured model.
+	PiRuntime *PiRuntimeConfig `json:"pi_runtime,omitempty"`
 	SignalConfig
 	InterpretationSignalCap     int     `json:"interpretation_signal_cap,omitempty"`
 	MinActionabilityProbability float64 `json:"minimum_actionability_probability,omitempty"`
@@ -199,6 +205,14 @@ func DefaultConfig() *Config {
 // default rails are not user-configurable.
 // Spec: docs/specs/task-retrospective.md via Config
 func (c *Config) Validate() error {
+	if c.PiRuntime != nil {
+		if err := validatePiEnrollment(c); err != nil {
+			return err
+		}
+	}
+	if c.MaintenancePolicy != "" && maintenancePrivate(c.MaintenancePolicy) != nil {
+		return fmt.Errorf("maintenance_policy must be an existing private operator-owned nonsymlink file at a clean absolute path")
+	}
 	if err := c.SignalConfig.validate(); err != nil {
 		return err
 	}
@@ -291,7 +305,9 @@ func (c *Config) Validate() error {
 // configJSONKeys are the only keys a config file may set. Duration keys are
 // decoded as unit-suffixed strings, never as bare nanosecond integers.
 var configJSONKeys = map[string]struct{}{
-	"endpoint": {}, "request_limit_bytes": {}, "state_question_limit_bytes": {},
+	"maintenance_policy": {},
+	"pi_runtime":         {},
+	"endpoint":           {}, "request_limit_bytes": {}, "state_question_limit_bytes": {},
 	"request_budget": {}, "http_timeout": {}, "max_attempts_per_request": {},
 	"backoff_base": {}, "backoff_max": {}, "retry_after_max_seconds": {}, "redact_patterns": {},
 	"repeat_min_calls": {}, "repeat_window_calls": {}, "helper_min_calls": {}, "helper_window_calls": {}, "search_min_calls": {}, "search_window_calls": {}, "broad_search_min_calls": {}, "early_context_window_calls": {}, "early_context_search_min_calls": {}, "signal_cap": {}, "signal_evidence_cap": {}, "interpretation_signal_cap": {}, "context_neighbor_calls": {}, "evidence_limit_bytes": {}, "minimum_actionability_probability": {}, "minimum_actionability_confidence": {},
@@ -337,6 +353,18 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("%s: %w", key, err)
 		}
 		return nil
+	}
+	if err := assign("maintenance_policy", &c.MaintenancePolicy); err != nil {
+		return err
+	}
+	if value, ok := raw["pi_runtime"]; ok {
+		var runtime PiRuntimeConfig
+		decoder := json.NewDecoder(bytes.NewReader(value))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&runtime); err != nil {
+			return fmt.Errorf("pi_runtime: %w", err)
+		}
+		c.PiRuntime = &runtime
 	}
 	if err := assign("evaluator", &c.Evaluator); err != nil {
 		return err
@@ -494,6 +522,11 @@ func LoadConfig(path string) (*Config, error) {
 	var trailing struct{}
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return nil, fmt.Errorf("decode retrospective config %s: trailing data", path)
+	}
+	if cfg.PiRuntime != nil {
+		if err := maintenancePrivate(path); err != nil {
+			return nil, fmt.Errorf("Pi enrollment config must be private, operator-owned and nonsymlink: %w", err)
+		}
 	}
 	return cfg, cfg.Validate()
 }

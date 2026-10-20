@@ -42,8 +42,9 @@ const (
 	SpoolLockName = "spool.lock."
 	// ScopedDisableMarker disables capture inside its directory tree.
 	ScopedDisableMarker = ".retrospective-disabled"
-	// HarnessOpenCode is the only supported observation harness.
+	// Harness names select collection contracts, never credential destinations.
 	HarnessOpenCode = "opencode"
+	HarnessPi       = "pi"
 )
 
 // Ingest exit codes (the adapter reacts to them without parsing output).
@@ -86,30 +87,31 @@ type EnvelopeRecord struct {
 	ReadBracket *ReadBracket `json:"read_bracket,omitempty"`
 	Revision    string       `json:"revision,omitempty"`
 
-	Kind       string `json:"kind"` // session | message | part | removed | event | source | source_gap | read_bracket | source_revision
-	SessionID  string `json:"session_id,omitempty"`
-	RecordID   string `json:"record_id,omitempty"`
-	ParentID   string `json:"parent_id,omitempty"`
-	MessageID  string `json:"message_id,omitempty"`
-	CallID     string `json:"call_id,omitempty"`
-	Role       string `json:"role,omitempty"`
-	PartType   string `json:"part_type,omitempty"`
-	Title      string `json:"title,omitempty"`
-	Directory  string `json:"directory,omitempty"`
-	Text       string `json:"text,omitempty"`
-	Synthetic  bool   `json:"synthetic,omitempty"`
-	Reasoning  bool   `json:"reasoning,omitempty"`
-	NonFinal   bool   `json:"non_final,omitempty"`
-	Tool       string `json:"tool,omitempty"`
-	ToolStatus string `json:"tool_status,omitempty"`
-	Input      string `json:"input,omitempty"`
-	Output     string `json:"output,omitempty"`
-	Error      string `json:"error,omitempty"`
-	Event      string `json:"event,omitempty"`
-	Status     string `json:"status,omitempty"`
-	Detail     string `json:"detail,omitempty"`
-	Path       string `json:"path,omitempty"`
-	SHA256     string `json:"sha256,omitempty"`
+	Kind        string `json:"kind"` // session | message | part | removed | event | source | source_gap | read_bracket | source_revision
+	SessionID   string `json:"session_id,omitempty"`
+	RecordID    string `json:"record_id,omitempty"`
+	ParentID    string `json:"parent_id,omitempty"`
+	MessageID   string `json:"message_id,omitempty"`
+	CallID      string `json:"call_id,omitempty"`
+	Role        string `json:"role,omitempty"`
+	InputSource string `json:"input_source,omitempty"`
+	PartType    string `json:"part_type,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Directory   string `json:"directory,omitempty"`
+	Text        string `json:"text,omitempty"`
+	Synthetic   bool   `json:"synthetic,omitempty"`
+	Reasoning   bool   `json:"reasoning,omitempty"`
+	NonFinal    bool   `json:"non_final,omitempty"`
+	Tool        string `json:"tool,omitempty"`
+	ToolStatus  string `json:"tool_status,omitempty"`
+	Input       string `json:"input,omitempty"`
+	Output      string `json:"output,omitempty"`
+	Error       string `json:"error,omitempty"`
+	Event       string `json:"event,omitempty"`
+	Status      string `json:"status,omitempty"`
+	Detail      string `json:"detail,omitempty"`
+	Path        string `json:"path,omitempty"`
+	SHA256      string `json:"sha256,omitempty"`
 }
 
 // validate checks one envelope against the versioned contract; malformed data
@@ -119,8 +121,11 @@ func (e *Envelope) validate() error {
 	if e.Version != EnvelopeSchemaVersion {
 		return fmt.Errorf("unsupported observation envelope version %d", e.Version)
 	}
-	if e.Harness != HarnessOpenCode {
+	if e.Harness != HarnessOpenCode && e.Harness != HarnessPi {
 		return fmt.Errorf("unsupported observation harness %q", e.Harness)
+	}
+	if e.Harness == HarnessPi && (e.ServerURL != "" || e.SDKVersion != "1.0.0") {
+		return errors.New("Pi observation requires pinned SDK 1.0.0 and no HTTP collection URL")
 	}
 	if e.SessionID == "" {
 		return errors.New("observation envelope requires session_id")
@@ -130,6 +135,9 @@ func (e *Envelope) validate() error {
 	}
 	for i := range e.Records {
 		record := &e.Records[i]
+		if record.InputSource != "" && (e.Harness != HarnessPi || record.Kind != "message" || record.Role != "user") {
+			return fmt.Errorf("record %d: native input source outside Pi prompt", i)
+		}
 		if record.SessionID == "" {
 			record.SessionID = e.SessionID
 		}
@@ -144,6 +152,9 @@ func (e *Envelope) validate() error {
 			}
 			if record.Role != "user" && record.Role != "assistant" && record.Role != "context" {
 				return fmt.Errorf("record %d: message role %q is not observable", i, record.Role)
+			}
+			if e.Harness == HarnessPi && record.Role == "user" && record.InputSource != "interactive" && record.InputSource != "rpc" && record.InputSource != "extension" {
+				return fmt.Errorf("record %d: Pi prompt requires an observed input source", i)
 			}
 		case "part":
 			if record.RecordID == "" || record.MessageID == "" {
@@ -211,8 +222,9 @@ type SpoolSession struct {
 // SpoolMessage is the role map row of one observed message id.
 // Spec: docs/specs/task-retrospective.md via Spool
 type SpoolMessage struct {
-	Role     string `json:"role,omitempty"`
-	ParentID string `json:"parent_id,omitempty"` // observed opening user message of an assistant
+	Role        string `json:"role,omitempty"`
+	ParentID    string `json:"parent_id,omitempty"` // observed opening user message of an assistant
+	InputSource string `json:"input_source,omitempty"`
 }
 
 // StartupGap binds missing intake to the first observed work in one interval.
@@ -263,6 +275,7 @@ type Spool struct {
 
 	Schema           int                      `json:"schema"`
 	SessionID        string                   `json:"session_id"`
+	Harness          string                   `json:"harness,omitempty"`
 	LastSeq          int                      `json:"last_seq"`
 	AcceptedAfterSeq int                      `json:"accepted_after_seq,omitempty"`
 	Overflows        int                      `json:"overflows,omitempty"`
@@ -337,6 +350,22 @@ func IngestEnvelope(opts IngestOptions, envelope *Envelope) (*IngestResult, erro
 	if err != nil {
 		return nil, err
 	}
+	// Legacy spools were OpenCode-only. Never combine identities or authorize
+	// OpenCode HTTP backfill from a Pi collector's session identifier.
+	previousHarness := firstNonEmpty(spool.Harness, HarnessOpenCode)
+	_, retainedErr := os.Lstat(spoolPath(store, envelope.SessionID))
+	if retainedErr != nil && !errors.Is(retainedErr, os.ErrNotExist) {
+		return nil, retainedErr
+	}
+	if retainedErr == nil && previousHarness != envelope.Harness {
+		return nil, errors.New("observation harness conflicts with retained session")
+	}
+	if envelope.Harness == HarnessPi {
+		if err := envelope.validate(); err != nil {
+			return nil, err
+		}
+	}
+	spool.Harness = envelope.Harness
 	staged := stageRecords(redactor, envelope.Records, spool)
 	serverURLRejected := false
 	for _, location := range []string{spool.ServerURL, envelope.ServerURL} {
@@ -650,6 +679,11 @@ func (spool *Spool) upsert(record *EnvelopeRecord) {
 			entry = &SpoolMessage{}
 			spool.Messages[record.RecordID] = entry
 		}
+		if entry.InputSource != "" && entry.InputSource != record.InputSource {
+			spool.recordGap("partial_stream", "native input source changed for retained prompt", record.SessionID, record.RecordID)
+			return
+		}
+		entry.InputSource = record.InputSource
 		entry.Role = record.Role
 		if entry.ParentID == "" && record.Role == "assistant" {
 			entry.ParentID = record.ParentID

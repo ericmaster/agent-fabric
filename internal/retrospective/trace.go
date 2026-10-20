@@ -101,7 +101,7 @@ type SourceRef struct {
 type Message struct {
 	ID     string            `json:"id"`
 	Seq    int               `json:"seq"`
-	Role   string            `json:"role"`           // user | assistant | context (only kind synthetic)
+	Role   string            `json:"role"`           // logical user | assistant | context; user does not establish human origin
 	Kind   string            `json:"kind,omitempty"` // "" | final | action | reasoning | unsupported | synthetic
 	Text   string            `json:"text,omitempty"`
 	Hidden bool              `json:"hidden,omitempty"`

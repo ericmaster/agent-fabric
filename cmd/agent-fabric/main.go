@@ -74,6 +74,12 @@ func main() {
 		os.Exit(2)
 	}
 	cmd, args := os.Args[1], os.Args[2:]
+	if cmd == "maintenance" {
+		if err := runMaintenance(args); err != nil {
+			fail(err)
+		}
+		return
+	}
 	if cmd == "hub" {
 		if len(args) == 0 || args[0] != "install" {
 			usage()
@@ -139,7 +145,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "agent-fabric install|sync|hub install SOURCE|list|validate|doctor|uninstall|retrospective analyze|dispatch|status|enable|disable|lessons [flags]")
+	fmt.Fprintln(os.Stderr, "agent-fabric install|sync|hub install SOURCE|list|validate|doctor|uninstall|maintenance|retrospective analyze|dispatch|status|enable|disable|lessons [flags]")
 }
 func fail(err error) { fmt.Fprintln(os.Stderr, "agent-fabric:", err); os.Exit(1) }
 

@@ -1421,8 +1421,9 @@ With an explicit source root inside configured canonical roots, existing enabled
 native dispatch/model capability runs the existing read-only corrector followed
 by the configured independent reviewer. Only an empty-findings actionable diagnosis
 and proposed regression check can become `suggested`; any proposed write is refused.
-This path never calls a repair sink. Implementation of executable/hook fixes uses
-ordinary scoped change authority. Missing capabilities retain `queued`; ambiguous
+This diagnostic path never calls an instruction-repair sink. Implementation of
+executable/hook fixes uses ordinary scoped change authority, including an explicit
+operator-enrolled standing maintenance policy as defined below. Missing capabilities retain `queued`; ambiguous
 attempts retain `pending` without automatic root retries. Learning-origin binding
 suppresses capture of diagnosis/review roots and descendants, preventing recursion.
 
@@ -1443,6 +1444,126 @@ revision or required diagnostic evidence still blocks. Generic reviewer JSON can
 be treated as typed acceptance, and a wrong candidate digest cannot become suggested
 advice. Focused checks: `TestNativeDigestReviewRoleAndPackets` and `TestPipelineProtocol`.
 
+#### Standing maintenance authority
+
+The operator may authorize autonomous repair and measured optimization of declared
+AGF implementation and integration roots. This authorization is distinct from
+learned advice: a candidate, report, lesson or model verdict cannot enroll, extend
+or rewrite the policy. Without an applicable explicit policy, reviewed pipeline
+diagnosis remains `suggested` and grants no write authority.
+
+An authorized actionable diagnosis must transition to a durable executable task,
+not terminate as advice for the operator to implement. The task binds its incident,
+source revision, allowed paths, definition of done, runnable regression checks,
+attempt budget, release target and rollback to operator authority. Preserve prior
+attempts, negative findings and native continuation identifiers across recovery.
+Implementation uses an isolated ordinary worker, not broader permissions for the
+read-only corrector or instruction-repair sink. Deduplicate incidents and suppress
+learning-origin workers, reviewers and descendants from recursive capture.
+
+Require actual bounded checks and independent review of the frozen patch before
+integration. Approval of a diagnosis is not approval of a patch; a proposed test
+is not an executed test. Do not accept generic prose, stale digests, missing native
+role/model completion, incomplete checks or an unrelated working-tree revision as
+delivery evidence. Integration must preserve concurrent work and verify the exact
+accepted candidate. Activation is restricted to the named release target, waits
+for authoritative runtime quiescence and verifies the running release and health;
+never interrupt unrelated sessions. Failed activation or regression requires
+guarded rollback of owned changes only and retains an unresolved incident.
+
+For optimization, bind a measurable objective and comparable baseline/candidate
+inputs; observed speed or cost improvement must not bypass regression or safety
+gates. Deliberately elicited QA contrasts are pipeline evidence, not proof of
+naturally occurring productivity benefit. Missing evidence triggers bounded
+investigation, not speculative editing. Escalate only for unavailable external
+capabilities/credentials, product decisions, explicit scope limits or documented
+recovery exhaustion. Never modify model selection, credentials, policy authority,
+permissions or historical reports to manufacture success. No additional daemon,
+recurring model schedule or second memory owner is introduced.
+
+#### Pi native observation
+
+The Pi extension uses the same bounded envelope and private Store with
+`harness:pi`, exact `sdk_version:1.0.0` and no HTTP collection URL. Persist the
+harness with the spool; an existing session identity cannot change harnesses.
+Pi observation never invokes OpenCode history reconciliation, even when an
+OpenCode execution server is configured. Missing or truncated native evidence
+remains a collection gap, not invented history or successful task completion.
+
+Pi read prerequisites use the existing bounded read-bracket contract with
+`runtime:pi:1.0.0`, exact native call/message identity, actual before/after file
+observations and observed Git revision. Runtime must match the retained harness
+and SDK. Failed reads do not acquire loaded-source provenance. This remains
+bracket stability only, not proof of absence of transient mutation or causality.
+Native execution, role/model selection, retry-aware idle boundaries and contextual
+delivery require separate verification against the installed Pi/PiChamber
+versions; rendering portable Pi agents alone is not that verification.
+
+Read-only Pi generation/review stages use an operator-selected, absolute pinned
+SDK entrypoint and an AGF-owned runner, not the global `pi` binary or PiChamber
+session-create HTTP fields that cannot establish the selected role/tool profile.
+Only host-receipt-bound exact evidence files are readable inside the Store. Native
+lesson generation additionally admits its one exact retained typed Trace at
+`preimages/<incident>/lesson-evidence`, with raw-byte digest, incident/origin and
+stage identity checks; this grants no directory or other preimage access.
+Use existing Pi credentials in place; neither export/copy credentials nor modify
+provider/model settings. Role identity binds the exact rendered role body selected
+by the host, its native non-context metadata, and a protected dispatch receipt.
+Verify effective callable tools and the actual completed assistant provider/model,
+not merely requested model metadata or assistant prose. Disable ambient extensions
+and resource discovery for these independent read-only roles; enforce declared
+read roots in actual tool operations rather than system-prompt instructions.
+
+Require a new assistant result from the dispatched invocation and authoritative
+settlement; `agent_end`, acceptance of a prompt, an old last-assistant text, an
+aborted turn or an incomplete journal is not completion. Native session identity
+is recorded before dispatch, and completed native JSONL evidence is corroborated
+before reusing a protected result. A lost/incomplete stage retains its original
+identity and is never blindly replayed or replaced by a stateless fresh root.
+Active continuation/reconciliation must be verified separately before claiming
+autonomous crash recovery. SDK tool restrictions do not establish an OS sandbox.
+
+For ordinary Pi maintenance, retain the same read-only SDK tools but select the
+operator's ordinary implementation role. The role returns bounded typed
+`{summary,edits:[{path,before,after}]}` proposals; `before:null` means a new file,
+otherwise one unique exact observed text snippet must match. The host, not the
+model's tool permissions, applies those edits under the separate standing policy
+in the exact isolated worktree. This never relaxes the instruction-repair sink.
+Require operator-allowed nonsecret relative paths, pre-existing canonical parents,
+regular nonsymlink files, matching preimages and preserved file modes. No deletes,
+renames or binary edits are supported by this narrow transport.
+
+Persist a private proposal-bound pre/postimage intent before the first source
+write; fsync both the intent file and its directory first. Linux host writes use
+anchored no-follow directory handles, no-replace new-file installation and kernel
+write leases for existing single-link regular files. Unsupported leases/platforms
+fail closed. Revalidate directory/file identity and lease breaks around writes;
+never overwrite a racing destination or follow a swapped parent symlink.
+Resume only unchanged preimages or exact already-applied postimages;
+conflicting content/modes remain unresolved rather than overwritten. Reserve
+`.agf-pi-edit-*` host temporary names from candidate scope so interrupted temporary
+files cannot become an accepted patch. Host execution of the real regression and
+checks, independent review of the complete frozen patch, integration/activation
+and rollback gates remain identical to ordinary maintenance. Supply a bounded
+complete patch inline to the Pi reviewer; inability to fit is a blocker, not
+permission to expose the private Store or substitute a digest-only approval.
+
+Operator configuration selects `pi_runtime` explicitly; it must agree with
+`dispatch_model` and resolve the pinned SDK, node, runner, role, agent and private
+session paths without symlinks. Its keys are `sdk_path`, `runner_path`, `agent_dir`,
+`roles_dir`, `session_dir`, `model`, `node` and `read_roots`. Pi enrollment never
+falls back to OpenCode HTTP or a global CLI/model when a capability fails.
+
+Pi native prompts require an exactly joined observed `input_source` of
+`interactive`, `rpc` or `extension`. Preserve it as
+`Message.env.native_input_source=pi.<source>` throughout projection. These are
+transport labels, not human-origin or permission claims: PiChamber 1.0.5 sends
+ordinary UI text through `extension`, while automation may use the same source.
+Known automation prompts still bound execution episodes; unknown, absent,
+transformed or ambiguous input joins remain gapped nonhuman context without
+prompt-revision authority. A retained prompt's transport label cannot be changed
+by a later upsert. Synthetic advisory context never becomes an execution prompt.
+
 ### Drain jobs and lifecycle
 
 `<state>/jobs/<session-id>.json` (schema `1`): `{session_id, server_url?,
@@ -1459,7 +1580,7 @@ worker. The worker:
 - iterates pending jobs oldest-first under `drain_max_jobs` per pass,
   re-scanning after the last pass to pick up jobs created while it ran
   (bounded re-check), then exits — there is no always-on daemon;
-- per job: reconciles the terminal snapshot from the server when
+- per OpenCode job: reconciles the terminal snapshot from the server when
   `server_url` is known (the owner's history fetched exactly once per job;
   every spool load+stage+write — owner and children — holds that session's
   spool lock in drain.lock → spool.lock order, the same lock ingest holds,

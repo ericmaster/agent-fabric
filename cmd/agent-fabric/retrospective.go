@@ -108,7 +108,7 @@ func runRetrospectiveIngest(args []string) error {
 	fs := flag.NewFlagSet("retrospective ingest", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var harness, configPath string
-	fs.StringVar(&harness, "harness", "", "observation harness (opencode)")
+	fs.StringVar(&harness, "harness", "", "observation harness (opencode or pi)")
 	fs.StringVar(&configPath, "config", "", "optional retrospective config JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -116,8 +116,8 @@ func runRetrospectiveIngest(args []string) error {
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected arguments: %s", fs.Args()[0])
 	}
-	if harness != retrospective.HarnessOpenCode {
-		return fmt.Errorf("unsupported observation harness %q (supported: %s)", harness, retrospective.HarnessOpenCode)
+	if harness != retrospective.HarnessOpenCode && harness != retrospective.HarnessPi {
+		return fmt.Errorf("unsupported observation harness %q (supported: opencode, pi)", harness)
 	}
 	enabled, err := retrospective.Enabled("")
 	if err != nil {
@@ -143,14 +143,18 @@ func runRetrospectiveIngest(args []string) error {
 		fmt.Fprintf(os.Stderr, "retrospective ingest: %v\n", err)
 		os.Exit(retrospective.IngestExitError)
 	}
+	if envelope.Harness != harness {
+		return errors.New("observation CLI harness differs from envelope")
+	}
 	spawn := retrospective.SpawnDetachedDrain
 	if os.Getenv("AGF_RETROSPECTIVE_NO_SPAWN") == "1" {
 		spawn = func() error { return errors.New("spawn disabled by AGF_RETROSPECTIVE_NO_SPAWN") }
 	}
 	result, err := retrospective.IngestEnvelope(retrospective.IngestOptions{
-		Config:      cfg,
-		Store:       store,
-		SpawnWorker: spawn,
+		Config: cfg,
+		Store:  store,
+		// CLI owns exactly one handoff after the ingest spool lock is released.
+		SpawnWorker: nil,
 		Now:         func() time.Time { return time.Now().UTC() },
 	}, envelope)
 	if err != nil {
@@ -163,7 +167,7 @@ func runRetrospectiveIngest(args []string) error {
 	}
 	spawned := false
 	if result.Triggered && result.JobCreated {
-		if err := retrospective.SpawnDetachedDrain(); err == nil {
+		if err := spawn(); err == nil {
 			spawned = true
 		} else {
 			fmt.Fprintf(os.Stderr, "retrospective ingest: drain worker spawn deferred: %v\n", err)

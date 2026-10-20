@@ -215,6 +215,18 @@ func nativePacket(opts DispatchOptions, receipt *Receipt, report *Report, object
 // nativeStage creates/reconciles one independently selected parentless review/QA root.
 // Spec: docs/specs/task-retrospective.md via finishNativeLearning
 func nativeStage(ctx context.Context, opts DispatchOptions, store *Store, receipt *Receipt, report *Report, marker, role, kind, prompt string, client *HTTPSessionClient) (string, error) {
+	if opts.Config != nil && opts.Config.PiRuntime != nil {
+		if err := validatePiEnrollment(opts.Config); err != nil {
+			return "", err
+		}
+		return PiNativeStage(ctx, *opts.Config.PiRuntime, opts, store, receipt, report, marker, role, kind, prompt)
+	}
+	return nativeStageWithRoot(ctx, opts, store, receipt, report, marker, role, kind, prompt, client, client.CreateRoot)
+}
+
+// nativeStageWithRoot preserves write-ahead creation/prompt reconciliation for
+// ordinary maintenance workers without broadening CreateRoot's read-only policy.
+func nativeStageWithRoot(ctx context.Context, opts DispatchOptions, store *Store, receipt *Receipt, report *Report, marker, role, kind, prompt string, client *HTTPSessionClient, create func(context.Context, CreateRootRequest) (Session, error)) (string, error) {
 	id, created, posted := &receipt.ReviewerRootID, &receipt.ReviewerCreateAttempted, &receipt.ReviewerPromptAttempted
 	if kind == "generate" {
 		id, created, posted = &receipt.RootID, &receipt.CreateAttempted, &receipt.PromptAttempted
@@ -245,7 +257,10 @@ func nativeStage(ctx context.Context, opts DispatchOptions, store *Store, receip
 			if _, err = save(store, receipt); err != nil {
 				return "", err
 			}
-			session, err = client.CreateRoot(ctx, CreateRootRequest{Title: title, Directory: receipt.Directory, Agent: role, Model: opts.Config.DispatchModel})
+			if err = syncNativeStage(store, receipt); err != nil {
+				return "", err
+			}
+			session, err = create(ctx, CreateRootRequest{Title: title, Directory: receipt.Directory, Agent: role, Model: opts.Config.DispatchModel})
 		}
 		if err != nil {
 			return "", err
@@ -259,6 +274,11 @@ func nativeStage(ctx context.Context, opts DispatchOptions, store *Store, receip
 		*id = session.ID
 		if err = store.BindOrigin(*id, marker); err != nil {
 			return "", err
+		}
+		for _, path := range []string{filepath.Join(store.Dir, "origins", *id), filepath.Join(store.Dir, "origins")} {
+			if err := syncPath(path); err != nil {
+				return "", err
+			}
 		}
 		if _, err = save(store, receipt); err != nil {
 			return "", err
@@ -279,11 +299,23 @@ func nativeStage(ctx context.Context, opts DispatchOptions, store *Store, receip
 		if _, err = save(store, receipt); err != nil {
 			return "", err
 		}
+		if err = syncNativeStage(store, receipt); err != nil {
+			return "", err
+		}
 		if err = client.Prompt(ctx, *id, PromptRequest{Text: prompt}); err != nil {
 			return "", err
 		}
 	}
 	return nativeFinal(ctx, client, *id, role, opts.Config.DispatchModel)
+}
+
+func syncNativeStage(store *Store, receipt *Receipt) error {
+	for _, path := range []string{filepath.Join(store.Dir, "receipts", receipt.IncidentID+".json"), filepath.Join(store.Dir, "receipts"), store.Dir} {
+		if err := syncPath(path); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // finishNativeLearning executes proposal -> independent review -> hash-safe apply/QA.

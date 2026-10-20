@@ -97,7 +97,7 @@ type ObservedReadBracket struct {
 }
 
 func (b *ReadBracket) valid() bool {
-	if b.Tool != "read" || !validSignalHash(b.Binding) || len(b.Input) > 8192 || len(b.Runtime) > 512 || !strings.HasPrefix(b.Runtime, "opencode:") || len(b.Directory) > 4096 || !filepath.IsAbs(b.Directory) {
+	if b.Tool != "read" || !validSignalHash(b.Binding) || len(b.Input) > 8192 || len(b.Runtime) > 512 || !(strings.HasPrefix(b.Runtime, "opencode:") || b.Runtime == "pi:1.0.0") || len(b.Directory) > 4096 || !filepath.IsAbs(b.Directory) {
 		return false
 	}
 	if !b.Before.valid(b.Directory) || !b.After.valid(b.Directory) {
@@ -140,7 +140,7 @@ func readPrerequisite(spool *Spool, id string, part *SpoolPart) string {
 	b := row.ReadBracket
 	before, _ := json.Marshal(b.Before)
 	after, _ := json.Marshal(b.After)
-	if !b.valid() || b.Runtime != "opencode:"+spool.ObservedSDK || b.Before == nil || b.After == nil || string(before) != string(after) {
+	if !b.valid() || b.Runtime != firstNonEmpty(spool.Harness, HarnessOpenCode)+":"+spool.ObservedSDK || b.Before == nil || b.After == nil || string(before) != string(after) {
 		return ""
 	}
 	if b.BeforeRevision != b.AfterRevision {

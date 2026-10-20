@@ -299,9 +299,14 @@ the digest gate. Missing VCS evidence remains a real blocker. Pipeline maintenan
 uses an observed HEAD of the configured implementation root (loose/detached or
 owned worktree layout), not the original failed task's version; unsupported Git
 metadata leaves a pending incident without dispatch. Its approval covers only
-diagnosis/proposed checks, never repair or executed coverage. Preserve existing
-receipts; role/schema fixes do not authorize blind root retries. Contract: spec
-**Retrospective failure feedback**. Regression: `go test ./internal/retrospective -run 'TestNativeDigestReviewRoleAndPackets|TestPipelineProtocol|TestPipelineFailure'`.
+diagnosis/proposed checks, never repair or executed coverage. A separately enrolled
+standing maintenance policy authorizes the subsequent implementation task; learned
+text cannot grant that authority. Completion requires the actual patch, executed
+regression checks, independent patch review and verified safe delivery, not the
+diagnostic approval. Preserve existing receipts and cumulative attempt budgets;
+role/schema fixes do not authorize blind root retries. Contract: spec
+**Retrospective failure feedback** and **Standing maintenance authority**.
+Regression: `go test ./internal/retrospective -run 'TestNativeDigestReviewRoleAndPackets|TestPipelineProtocol|TestPipelineFailure'`.
 
 ```bash
 agf retrospective lessons generate --config /absolute/operator/retrospective.json --trust /absolute/operator/trust.json --input /absolute/evidence/identity-template.json
@@ -333,6 +338,48 @@ identity template. Blank versions or prerequisites are blockers, not fields to f
 See spec **Narrow native read brackets** for supported paths/layouts and limits.
 Run `npm test --prefix hooks/retrospective` for collector→reflection regression;
 independent live acceptance and later consumption still require their own evidence.
+
+### Autonomous maintenance under standing authority
+
+Enroll `maintenance_policy` in the retrospective operator configuration as an
+absolute existing 0600, current-owner, non-symlink JSON file outside implementation,
+worktree and release roots. Its authority comes from the operator, not a lesson or
+diagnostic response. An empty setting preserves diagnosis-only behavior. Enroll
+only explicit allowed source/test paths, a private existing `worktree_parent`, an
+ordinary `worker` distinct from corrector/reviewer/QA, and a named release checkout
+and branch. `source_revision` may pin one revision; when omitted, the independently
+diagnosed host-observed implementation revision freezes the incident's baseline.
+
+Policy schema: `MaintenancePolicy` in `internal/retrospective/maintenance.go`.
+Require `allow_protected_self_repair`, `allow_commit`, and a bounded attempt budget;
+this implementation supports one cumulative attempt per incident/source version.
+Repair `regression` must actually fail with `regression_failure` before editing,
+then pass after a changed test in `regression_paths`. `checks` execute fixed
+operator argv with 1–3600-second limits, in a non-inherited private environment.
+Inline credentials/preload environments are not supported. Policy commands/argv
+remain private; roles receive only safe descriptions and check evidence.
+
+`release` names `target`, `branch`, `allow_fast_forward`, `allow_revert`, and fixed
+`quiescence`, `activate`, `verify`, `rollback`, `verify_rollback` command groups.
+Use real activity/health probes, never a placeholder success command for a live
+runtime. Integration verifies the exact clean branch/base and takes a target
+lease/CAS; unrelated work, failed quiescence or target drift prevents delivery.
+Activation failures require owned-candidate rollback and rollback-health evidence.
+Do not reset attempts, repeat ambiguous activation/rollback, or call a blocked job
+successful. Existing global/scoped disablement and learning-origin exclusions apply.
+
+Accepted pipeline diagnosis automatically enters this flow when enrolled. Explicit
+reconciliation uses the same durable incident and identity, not a new dispatch:
+
+```bash
+agf maintenance --config /absolute/operator/retrospective.json --incident pipeline-<incident-sha256>
+```
+
+Jobs, frozen patches and bounded command evidence remain under the existing private
+Store's reports/receipts, not a new service or model schedule. Native model repair,
+measured optimization, runtime activation and later lesson consumption each require
+their own actual acceptance evidence. Deterministic/protocol-mock tests alone do
+not satisfy those gates.
 
 ### Optional native contextual recall / portable fallback
 

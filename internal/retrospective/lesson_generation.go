@@ -146,8 +146,8 @@ func GenerateLesson(ctx context.Context, cfg *Config, trust *LessonTrust, reques
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	if cfg.DispatchEndpoint != EndpointMessage || cfg.DispatchServer == "" || !reviewerOK(cfg.Reviewer) || cfg.Reviewer == "qa-runner" {
-		return nil, errors.New("native message transport and independent reviewer required")
+	if (cfg.PiRuntime == nil && (cfg.DispatchEndpoint != EndpointMessage || cfg.DispatchServer == "")) || !reviewerOK(cfg.Reviewer) || cfg.Reviewer == "qa-runner" {
+		return nil, errors.New("explicit native transport and independent reviewer required")
 	}
 	if _, err := nativeModel(cfg.DispatchModel); err != nil {
 		return nil, err

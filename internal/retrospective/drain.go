@@ -593,6 +593,14 @@ func reconcileServer(ctx context.Context, cfg *Config, store *Store, spool *Spoo
 }
 
 func reconcileServerSnapshot(ctx context.Context, cfg *Config, store *Store, spool *Spool, serverURL string) ([]Gap, *Spool) {
+	if spool.Harness == HarnessPi {
+		// Pi records are captured by its pinned native extension. A configured
+		// execution server does not authorize cross-harness history requests.
+		if spool.ServerURL != "" || serverURL != "" || spool.ObservedSDK != "1.0.0" {
+			return []Gap{{Kind: "partial_stream", Detail: "Pi collector binding unavailable or inconsistent; no cross-harness history request sent"}}, nil
+		}
+		return nil, nil
+	}
 	base := firstNonEmpty(serverURL, cfg.DispatchServer, spool.ServerURL)
 	if base == "" {
 		return nil, nil
@@ -688,6 +696,9 @@ func backfillLoadStage(ctx context.Context, client *HTTPSessionClient, store *St
 	spool, err := loadSpool(store, sessionID)
 	if err != nil {
 		return nil, []Gap{{Kind: "partial_stream", Detail: "spool " + sessionID + ": " + boundedGapDetail(err.Error())}}
+	}
+	if firstNonEmpty(spool.Harness, HarnessOpenCode) != HarnessOpenCode {
+		return nil, []Gap{{Kind: "partial_stream", Detail: "descendant belongs to another observation harness; no history request or merge permitted"}}
 	}
 	if spool.ServerURL != "" && (!collectionServerURL(spool.ServerURL, cfg) || !trustedServerURL(spool.ServerURL, cfg.DispatchServer)) {
 		gap := Gap{Kind: "partial_stream", Detail: "persisted descendant/server origin rejected; no backfill request sent"}
@@ -975,6 +986,11 @@ func assembleTrace(store *Store, spool *Spool, sessionID string) *Trace {
 		trace.Messages = append(trace.Messages, Message{
 			ID: "m:" + id, Seq: entry.minSeq, Role: role, Kind: kind, Text: strings.Join(entry.texts, "\n"),
 		})
+		if spool.Harness == HarnessPi && role == "user" {
+			if message := spool.Messages[id]; message != nil && message.InputSource != "" {
+				trace.Messages[len(trace.Messages)-1].Env = map[string]string{"native_input_source": "pi." + message.InputSource}
+			}
+		}
 	}
 	// Calls: every tool part maps into the trace call schema; the compound
 	// tool attempt is one call (callID identity).
@@ -1213,6 +1229,9 @@ func childTraces(store *Store, sessionID string, depth int) ([]string, []*Trace)
 		child, err := loadSpool(store, id)
 		if err != nil {
 			continue
+		}
+		if firstNonEmpty(child.Harness, HarnessOpenCode) != firstNonEmpty(leafSpool.Harness, HarnessOpenCode) {
+			continue // Retain the unresolved reference, never mix native histories.
 		}
 		descendants = append(descendants, assembleTrace(store, child, id))
 	}
