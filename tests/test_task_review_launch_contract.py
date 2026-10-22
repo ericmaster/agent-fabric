@@ -39,6 +39,35 @@ class TaskReviewLaunchContractTests(unittest.TestCase):
         recipe = RECIPE.read_text()
         self.assertIn('execution-quality', recipe)
 
+    def test_quoting_failures_require_scoped_ssot_scripts(self):
+        # Spec: docs/specs/task-retrospective.md — durable executable prevention.
+        skill = SKILL.read_text()
+        for requirement in ('### Durable remediation', 'project `scripts/` or `tools/`',
+                            "corresponding skill's `scripts/`", 'Reuse an existing helper',
+                            'arguments or structured stdin', 'regression test',
+                            'secret-management/human-pull rules'):
+            self.assertIn(requirement, skill)
+
+    def test_resolved_detours_require_discoverable_guidance(self):
+        # Spec: docs/specs/task-retrospective.md — recovery must leave reusable learning.
+        skill = SKILL.read_text()
+        for requirement in ('Every resolved broad/repeated search or tool-call detour',
+                            'project context or corresponding skill', 'verified entry point',
+                            'Audit-only notes are not durable learning',
+                            'link adequate existing guidance'):
+            self.assertIn(requirement, skill)
+        self.assertIn('durable remediation', skill.split('| `improvement_actions` |')[1].split('\n')[0])
+
+    def test_unknown_causes_get_one_bounded_diagnosis_then_disposition(self):
+        # Spec: docs/specs/task-retrospective.md — one diagnosis, not serial investigation.
+        skill = SKILL.read_text()
+        for requirement in ('exactly one diagnostic subagent', 'per original source and distinct issue',
+                            'before dispatch', 'native child ID', 'read-only',
+                            'must not delegate', 'no replacement diagnosis',
+                            'supported fix path', 'proceed with authorized correction',
+                            '`not remediated`', 'does not reset', 'two cumulative correction starts'):
+            self.assertIn(requirement, skill)
+
     def test_asynchronous_launch_keeps_audit_and_independence(self):
         # Spec: docs/specs/task-retrospective.md via module
         skill = SKILL.read_text()

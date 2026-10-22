@@ -89,7 +89,7 @@ Evaluate every row, with evidence locators and an explicit outcome:
 | `failed_tools` | Account for failed calls and recoveries, then assess their causes. Recovery closes the immediate error, not a repeated misuse or guidance defect; retain that finding in the execution rows. |
 | `execution_efficiency` | Inspect repeated calls/searches/reads, unchanged retries, progress-only loops, delegation/waiting and escalation. Explain which were justified and identify avoidable waste or missed stall intervention, including after eventual success. |
 | `context_alignment` | Compare available/loaded skills, instructions, runbooks and tool docs with the observed sequence. Distinguish missing/stale/ambiguous/conflicting guidance from guidance ignored, tool/harness defects and uncertain causes. Trace installed copies to their canonical owner. |
-| `improvement_actions` | Every material pattern has a causal finding, owner, smallest preventive correction and validation/replay plan, or evidence-backed no-change justification. Unresolved actionable findings remain FAIL; missing evidence/authority is BLOCKED. |
+| `improvement_actions` | Apply durable remediation below: record each finding's cause, owner, diagnostic evidence if needed, actual script/guidance correction and validation, or explicit not-remediated/no-change disposition. A plan alone is not remediation. Unresolved actionable findings remain FAIL; missing evidence/authority is BLOCKED. |
 | `verification` | Validate the suspected cause or execution-system patch with focused actual checks. Reuse source evidence; run business tests/live probes only when needed for that hypothesis. Distinguish unrun or mocked checks. NOT_APPLICABLE needs a concrete reason. |
 | `safe_delivery` | Verify any claimed execution-system correction reached its authorized canonical and installed targets, preserving foreign work and rollback. NOT_APPLICABLE when no correction delivery is claimed; original deployment evidence is context, not a required redeployment. |
 
@@ -99,7 +99,7 @@ A failed call alone is not a defect: bounded research, red tests and retries wit
 new evidence can be justified. Check guidance before changing it; clear guidance
 ignored calls for adherence/orchestration correction, not another duplicate rule.
 Route a reproducible tool bug to its implementation owner. If causality is
-uncertain, say what evidence is missing instead of prescribing speculative edits.
+uncertain, use the single diagnostic subagent below instead of speculative edits.
 Do not rerun an unchanged command or broad search to manufacture review evidence.
 
 Use PASS, FAIL, BLOCKED or NOT_APPLICABLE for each row. Permit NOT_APPLICABLE only
@@ -111,6 +111,39 @@ This checklist and its recorder establish consistency, not cryptographic proof
 that the reviewer read history or that native execution succeeded.
 
 ## 3. Correct real findings
+
+### Durable remediation
+
+- **Quoting failures → SSOT script.** Reuse an existing helper first; implement
+  repeated shell/Python quoting repairs as a reusable script in project `scripts/` or `tools/`
+  for project operations, or the corresponding skill's `scripts/` for host/global
+  operations. Work in its canonical source. Accept arguments or structured stdin
+  instead of rebuilding nested shell code; add a regression test and an invocation
+  pointer in the owning context/skill. Follow secret-management/human-pull rules;
+  putting code in a script does not authorize secret access.
+- **Resolved detours → reusable guidance.** Every resolved broad/repeated search or tool-call detour
+  must leave a discoverable path in project context or corresponding skill:
+  verified entry point, prerequisites, successful procedure and misleading path
+  to avoid. Update the existing owner or link adequate existing guidance; keep
+  transcript detail in evidence. Audit-only notes are not durable learning.
+- **Unknown cause → one diagnosis.** Dispatch exactly one diagnostic subagent
+  per original source and distinct issue, using native delegation and a read-only
+  brief with frozen evidence, canonical roots, a concrete causal question,
+  permitted safe probes and a bounded stop condition. It must not delegate or edit.
+  Record dispatch intent in native review history before dispatch; capture the
+  native child ID, outcome and evidence locators, including failed dispatches.
+  Check this history on resume/reviewer changes: no replacement diagnosis, no
+  renaming the same issue and no recursive review. This does not reset the
+  two cumulative correction starts. A supported fix path means proceed with authorized correction,
+  validation and delivery below. No supported path, failed dispatch or unavailable
+  diagnosis capability means record `not remediated`, evidence and the exact
+  limiting reason; never loop on diagnosis or invent a fix. Missing authority or
+  capability remains BLOCKED; other unresolved actionable findings stay FIX_NEEDED.
+
+Close each finding as remediated, `not remediated`, or justified no-change in
+`findings`/`improvement_actions` evidence. Include diagnostic locators where used,
+canonical script/context paths, actual checks and installed-target verification.
+Do not label a recommendation or an unvalidated edit remediated.
 
 For a confirmed execution-system defect under executable maintenance authority,
 autonomously create a scoped correction worktree in the owning repository and

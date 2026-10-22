@@ -6,7 +6,11 @@ independent visible root review of execution quality: harness/tool use,
 orchestration, skills and context clarity. Successful task delivery does not
 clear repeated errors or avoidable stalls. Apply its checklist and correct
 verified execution-system problems in worktrees under maintenance authority;
-this is not a second business-task acceptance/deployment-QA pass.
+this is not a second business-task acceptance/deployment-QA pass. For quoting
+failures, resolved search/tool detours and unknown causes, follow
+[durable remediation](../specs/task-retrospective.md#durable-remediation): scoped
+SSOT scripts, discoverable guidance and one bounded diagnostic subagent before
+fixing or explicitly recording not remediated.
 
 The same skill works with OpenCode/OpenChamber and Pi/PiChamber using their normal
 session tools and active model. No GLiDE key, event plugin, pinned Pi SDK, automatic

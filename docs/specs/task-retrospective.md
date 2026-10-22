@@ -63,6 +63,39 @@ its findings and manages correction/delivery in its own session. Do not poll to
 completion or copy the verdict back unless requested. Acceptance is not a passed
 review. Reuse the existing review for a checkpoint rather than duplicate it.
 
+## Durable remediation
+
+Repeated shell/Python quoting failures require a reusable SSOT script, reusing an
+existing helper first: project-specific operations live in project `scripts/` or
+`tools/`; host/global operations live in the corresponding canonical skill's
+`scripts/`. Pass arguments or structured stdin rather than reconstruct nested
+shell code; add a regression test and a discoverable invocation pointer. Preserve
+secret-management/human-pull rules; scripts do not grant new secret access.
+
+Every resolved broad/repeated search or tool-call detour must leave a reusable
+path in project context or the corresponding skill: verified entry point,
+prerequisites, successful procedure and the misleading path to avoid. Update the
+existing owner or link adequate existing guidance, not a transcript or duplicate
+rule. Audit-only notes do not satisfy this requirement.
+
+For an unidentified cause, dispatch exactly one bounded read-only native diagnostic
+subagent per original source and distinct issue. Record dispatch intent before
+launch in native review history, then the child ID and result/evidence; reuse
+this evidence across resumes/reviewer changes. Supply frozen history, canonical
+roots, a concrete question, permitted probes and a bounded stop condition. The
+child cannot delegate or edit. No replacement diagnosis or relabeling the same
+issue to reset the budget. If dispatch fails or diagnosis finds no supported fix
+path, record `not remediated` with evidence and the limiting reason. If it finds
+a supported path, proceed with authorized correction, tests and delivery rather
+than leave a suggestion. Missing authority/capability remains BLOCKED; unresolved
+findings never become PASS. Diagnosis does not reset the correction budget.
+
+Final review findings must distinguish remediated, not remediated and justified
+no-change outcomes. Include diagnostic locators where applicable, canonical
+script/context paths, actual validation and installed-target evidence; planned
+work is not remediation. Use existing findings/evidence fields and native session
+history; no new audit schema, dispatcher, role or persistent side ledger is needed.
+
 ## Autonomous correction
 
 Correct verified, actionable execution-system problems under the user's standing
