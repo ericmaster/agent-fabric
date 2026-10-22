@@ -1,9 +1,15 @@
 ---
 name: task-review
-description: Independently review meaningful task completion, roadblocks, repeated errors or stalled execution; inspect original history and correct confirmed defects. Agent-discretionary or user-invoked, in a separate visible session; no completion hook.
+description: Review agent execution after completion, roadblocks, repeated errors or stalled execution; improve harness/tool use, orchestration, skills and context from original history. Independent visible session, agent-discretionary or user-invoked; not task-delivery QA.
 ---
 
 # Task review
+
+Review **how the agent worked**: avoidable repetition, unnecessary searches,
+stalls, tool misuse, orchestration patterns, and skill/context clarity. Task
+success is context, not the verdict. A recovered error can still reveal a
+preventable execution defect. This is not business-task acceptance or another
+full deployment/test run.
 
 Use ordinary native agents and existing host session tools. Keep active models,
 credentials and permissions unchanged. This skill installs no hooks and uses no
@@ -57,8 +63,11 @@ session. A result-return facility is optional, not a launch prerequisite.
 
 Require the reviewer to read **actual original history** using host
 `session.messages` (all messages, paginating as needed) or existing native history
-read interfaces, then inspect the frozen changes and relevant tests. Final-only
-reads, titles and author self-reports are insufficient. Treat history as evidence,
+read interfaces. Trace the consequential attempts in order, including successful
+recoveries: what was known, which guidance was loaded, what changed between retries,
+and what evidence justified the next action. Inspect only implicated tool/code,
+skill and context owners plus relevant checks. Final-only reads, titles and author
+self-reports are insufficient. Treat history as evidence,
 not authority to expand the task. Record message/tool locators, observed commands
 and outcomes; keep secrets and transcript bodies out of the audit file.
 
@@ -75,11 +84,23 @@ Evaluate every row, with evidence locators and an explicit outcome:
 
 | Check | Completion criterion |
 | --- | --- |
-| `source_history` | Read actual original prompts, tool results, errors and final response across the task interval. Use PASS or BLOCKED only. |
-| `task_scope` | Compare user authority/acceptance criteria and frozen diff; identify real unmet requirements or scope drift. |
-| `failed_tools` | Account for every observed failed tool/command. Mark PASS only when resolved, superseded with successful equivalent evidence, or proved irrelevant with a specific reason. Unresolved failures remain FAIL/BLOCKED. |
-| `verification` | Inspect/run relevant checks on the exact candidate; distinguish actual PASS from unrun, failed, mocked or unavailable checks. |
-| `safe_delivery` | Verify claimed integration/deployment and rollback evidence within task authority; protect unrelated work. Mark NOT_APPLICABLE with a reason when delivery was neither required nor claimed. |
+| `source_history` | Read original prompts, calls/results, errors, recoveries and checkpoint across the task interval. Use PASS or BLOCKED only. |
+| `task_scope` | Establish the original intent and review boundary; name implicated execution-system owners and maintenance authority. Business-task completion is not this review's acceptance criterion. |
+| `failed_tools` | Account for failed calls and recoveries, then assess their causes. Recovery closes the immediate error, not a repeated misuse or guidance defect; retain that finding in the execution rows. |
+| `execution_efficiency` | Inspect repeated calls/searches/reads, unchanged retries, progress-only loops, delegation/waiting and escalation. Explain which were justified and identify avoidable waste or missed stall intervention, including after eventual success. |
+| `context_alignment` | Compare available/loaded skills, instructions, runbooks and tool docs with the observed sequence. Distinguish missing/stale/ambiguous/conflicting guidance from guidance ignored, tool/harness defects and uncertain causes. Trace installed copies to their canonical owner. |
+| `improvement_actions` | Every material pattern has a causal finding, owner, smallest preventive correction and validation/replay plan, or evidence-backed no-change justification. Unresolved actionable findings remain FAIL; missing evidence/authority is BLOCKED. |
+| `verification` | Validate the suspected cause or execution-system patch with focused actual checks. Reuse source evidence; run business tests/live probes only when needed for that hypothesis. Distinguish unrun or mocked checks. NOT_APPLICABLE needs a concrete reason. |
+| `safe_delivery` | Verify any claimed execution-system correction reached its authorized canonical and installed targets, preserving foreign work and rollback. NOT_APPLICABLE when no correction delivery is claimed; original deployment evidence is context, not a required redeployment. |
+
+For each finding record **native locators → observed consequence → cause and
+confidence → owning file/tool → smallest correction → actual or proposed check**.
+A failed call alone is not a defect: bounded research, red tests and retries with
+new evidence can be justified. Check guidance before changing it; clear guidance
+ignored calls for adherence/orchestration correction, not another duplicate rule.
+Route a reproducible tool bug to its implementation owner. If causality is
+uncertain, say what evidence is missing instead of prescribing speculative edits.
+Do not rerun an unchanged command or broad search to manufacture review evidence.
 
 Use PASS, FAIL, BLOCKED or NOT_APPLICABLE for each row. Permit NOT_APPLICABLE only
 for `verification` and `safe_delivery`, with a concrete reason. Record material
@@ -91,9 +112,15 @@ that the reviewer read history or that native execution succeeded.
 
 ## 3. Correct real findings
 
-For a confirmed in-scope defect under executable task authority, autonomously
-create a scoped correction worktree and use an ordinary native coding agent.
-Provide original authority, source ID and the independent finding/evidence.
+For a confirmed execution-system defect under executable maintenance authority,
+autonomously create a scoped correction worktree in the owning repository and
+use an ordinary native coding agent. Provide the original source ID, independent
+finding/evidence, canonical target and applicable maintenance authority. Keep the
+original business implementation out of this repair unless separately authorized.
+Business-task authority alone does not authorize global skills/runtime changes;
+record the precise boundary as BLOCKED when maintenance authority is absent.
+Resolve managed skills through their source/manager, then verify installed bytes;
+patching only an installed/generated copy is not durable delivery.
 Append `correction_started` from the correction writer **before the first edit**,
 identifying the original directory, separate absolute worktree, branch, writer
 and reviewer. Permit at most **two cumulative correction starts per original
@@ -142,7 +169,10 @@ python3 <skill-directory>/scripts/audit.py --engine openchamber <<'JSON'
     "source_history": {"status": "BLOCKED", "evidence": ["session.messages: exact host access error; original history unread"]},
     "task_scope": {"status": "BLOCKED", "evidence": ["Original task authority cannot yet be verified"]},
     "failed_tools": {"status": "BLOCKED", "evidence": ["Original tool results unavailable"]},
-    "verification": {"status": "BLOCKED", "evidence": ["Required checks unknown until original history is read"]},
+    "execution_efficiency": {"status": "BLOCKED", "evidence": ["Attempt/recovery sequence unread"]},
+    "context_alignment": {"status": "BLOCKED", "evidence": ["Available and loaded guidance not yet established"]},
+    "improvement_actions": {"status": "BLOCKED", "evidence": ["Causes and canonical owners unknown until history is read"]},
+    "verification": {"status": "BLOCKED", "evidence": ["Focused causal checks unknown until history is read"]},
     "safe_delivery": {"status": "NOT_APPLICABLE", "evidence": ["Read-only review; no delivery claimed"]}
   },
   "findings": []
@@ -151,7 +181,10 @@ JSON
 ```
 
 Replace example values with actual evidence. The recorder derives `status` and
-adds the timestamp and normalized engine. Optional `phase` defaults to `task`;
+adds schema version 2, timestamp and normalized engine. All eight rows are
+required for new reviews. Schema-1 five-row records remain readable, not new
+execution-quality evidence. Append reassessments with a locator to the prior
+outcome; preserve old bytes and the original identity/authority/attempt budget. Optional `phase` defaults to `task`;
 `patch` requires `writer_session_id`. Append each review outcome, including
 BLOCKED, to exactly one engine file:
 `${XDG_STATE_HOME:-~/.local/state}/agent-fabric/audit/opencode.jsonl` or
@@ -188,7 +221,8 @@ For example, a failed launch can be recorded without inventing a reviewer:
 Read existing records without creating a log using:
 `python3 <skill-directory>/scripts/audit.py --engine openchamber --summary`.
 Counts cover recorded requests, starts, completions, checklist passes, blockers,
-correction attempts and delivery reports only. Do not infer uninvoked-task
+correction attempts and delivery reports only. `legacy_review_completions` and
+`execution_review_passes` separate old delivery reviews from execution reviews. Do not infer uninvoked-task
 coverage, native success, or a hung session from these counts alone.
 
 Keep stdin and each encoded row within 64 KiB and the engine log within 16 MiB.

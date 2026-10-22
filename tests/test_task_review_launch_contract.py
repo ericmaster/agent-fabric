@@ -22,6 +22,23 @@ class TaskReviewLaunchContractTests(unittest.TestCase):
         self.assertIn("checkpoint as incomplete", skill)
         self.assertIn("never trigger recursive reviews", skill)
 
+    def test_review_targets_execution_not_delivery_certification(self):
+        # Spec: docs/specs/task-retrospective.md — task success cannot erase execution waste.
+        skill = SKILL.read_text()
+        description = next(line for line in skill.splitlines() if line.startswith("description:"))
+        for concept in ('harness/tool use', 'orchestration', 'skills and context', 'not task-delivery QA'):
+            self.assertIn(concept, description)
+        for row in ('execution_efficiency', 'context_alignment', 'improvement_actions'):
+            self.assertIn(f'| `{row}` |', skill)
+            self.assertIn(f'"{row}":', skill)
+        for guard in ('Task\nsuccess is context, not the verdict',
+                      'Recovery closes the immediate error, not a repeated misuse',
+                      'clear guidance\nignored', 'maintenance authority',
+                      'installed/generated copy is not durable delivery'):
+            self.assertIn(guard, skill)
+        recipe = RECIPE.read_text()
+        self.assertIn('execution-quality', recipe)
+
     def test_asynchronous_launch_keeps_audit_and_independence(self):
         # Spec: docs/specs/task-retrospective.md via module
         skill = SKILL.read_text()

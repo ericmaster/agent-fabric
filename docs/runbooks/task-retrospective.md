@@ -2,8 +2,11 @@
 
 Load `skills/task-review/SKILL.md` after a completed task or invoke `/task-review`.
 Supply the original native session ID and project directory. The skill creates an
-independent visible root review, applies its checklist, and corrects verified
-problems autonomously in worktrees under existing authority.
+independent visible root review of execution quality: harness/tool use,
+orchestration, skills and context clarity. Successful task delivery does not
+clear repeated errors or avoidable stalls. Apply its checklist and correct
+verified execution-system problems in worktrees under maintenance authority;
+this is not a second business-task acceptance/deployment-QA pass.
 
 The same skill works with OpenCode/OpenChamber and Pi/PiChamber using their normal
 session tools and active model. No GLiDE key, event plugin, pinned Pi SDK, automatic
@@ -23,7 +26,10 @@ schema. Its default private files are:
 respective engine's file. Inspect the summary and evidence-linked entries to see
 whether reviews actually start, finish, request correction and verify delivery.
 An absent skill invocation is not observable; a recorded event is agent-reported,
-not independently verified just because it was appended.
+not independently verified just because it was appended. Schema-2 completion
+records require execution-efficiency, context-alignment and improvement-action
+outcomes. Summary separates legacy schema-1 completions from execution-review
+passes; retain old records and append a reassessment rather than rewrite them.
 
 ## Remove old observation
 

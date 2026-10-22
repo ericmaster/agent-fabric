@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Append bounded, agent-reported task-review actions; summarize the existing log."""
+"""Append bounded execution-review actions; retain legacy delivery-review history."""
+# Spec: docs/specs/task-retrospective.md
 
 import argparse
 from datetime import datetime, timezone
@@ -14,7 +15,8 @@ import sys
 
 ENGINES = {'opencode': 'opencode', 'openchamber': 'opencode',
            'pi': 'pi', 'pichamber': 'pi'}
-CHECKS = {'source_history', 'task_scope', 'failed_tools', 'verification', 'safe_delivery'}
+LEGACY_CHECKS = {'source_history', 'task_scope', 'failed_tools', 'verification', 'safe_delivery'}
+CHECKS = LEGACY_CHECKS | {'execution_efficiency', 'context_alignment', 'improvement_actions'}
 EVENTS = {'review_requested', 'review_started', 'review_completed', 'correction_started',
           'correction_completed', 'delivery', 'blocked', 'hook_retirement'}
 ROW_LIMIT, LOG_LIMIT = 64 * 1024, 16 * 1024 * 1024
@@ -48,7 +50,8 @@ def safe(value):
         raise ValueError('credential-bearing text rejected')
 
 
-def validate(report):
+def validate(report, *, legacy=False):
+    # Spec: docs/specs/task-retrospective.md — schema-1 is read-only compatibility.
     if not isinstance(report, dict):
         raise ValueError('report must be an object')
     safe(report)
@@ -112,8 +115,8 @@ def validate(report):
             raise ValueError('completion/delivery requires commit and actual checks')
         return dict(report, event=event)
     checks = report['checks']
-    if not isinstance(checks, dict) or checks.keys() != CHECKS:
-        raise ValueError('checks must contain exactly the five checklist rows')
+    if not isinstance(checks, dict) or checks.keys() != (LEGACY_CHECKS if legacy else CHECKS):
+        raise ValueError('checks must contain every execution-review checklist row')
     statuses = []
     for name, check in checks.items():
         if not isinstance(check, dict) or check.keys() != {'status', 'evidence'}:
@@ -186,10 +189,11 @@ def scan(output, engine):
         if len(line) > ROW_LIMIT:
             raise ValueError('history row exceeds 64 KiB')
         row = json.loads(line)
-        if (not isinstance(row, dict) or row.get('schema_version') != 1 or row.get('engine') != engine
+        if (not isinstance(row, dict) or row.get('schema_version') not in (1, 2) or row.get('engine') != engine
                 or row.get('agent_reported') is not True or not text(row.get('recorded_at'))):
             raise ValueError('malformed audit history')
-        checked = validate({key: value for key, value in row.items() if key not in META})
+        checked = validate({key: value for key, value in row.items() if key not in META},
+                           legacy=row['schema_version'] == 1)
         if any(row.get(key) != value for key, value in checked.items()):
             raise ValueError('incomplete/noncanonical audit history row')
         if row['event'] == 'correction_started':
@@ -216,7 +220,7 @@ def audit(engine, report=None):
         rows = scan(output, engine)
         if report is None:
             return summary(rows)
-        record = dict(report, schema_version=1, engine=engine, agent_reported=True,
+        record = dict(report, schema_version=2, engine=engine, agent_reported=True,
                       recorded_at=datetime.now(timezone.utc).isoformat())
         if report['event'] == 'correction_started':
             prior = [row for row in rows if row['source_session_id'] == report['source_session_id']]
@@ -240,6 +244,10 @@ def summary(rows):
         ('review_requests', 'review_requested'), ('review_starts', 'review_started'),
         ('review_completions', 'review_completed'), ('correction_attempts', 'correction_started'), ('deliveries', 'delivery'))}
     return dict(counts, agent_reported=True, recorded_events=len(rows),
+                legacy_review_completions=sum(row['event'] == 'review_completed' and
+                                              row['schema_version'] == 1 for row in rows),
+                execution_review_passes=sum(row.get('status') == 'PASS' and
+                                           row['schema_version'] == 2 for row in rows),
                 checklist_passes=sum(row.get('status') == 'PASS' for row in rows),
                 blocked=sum(row['event'] == 'blocked' or row.get('status') == 'BLOCKED' for row in rows),
                 coverage='Recorded invocations only; uninvoked tasks and native success are unknown.')

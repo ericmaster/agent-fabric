@@ -1,5 +1,25 @@
 # Task review
 
+## Purpose and review boundary
+
+Review **how the agent executed**, not whether the business task can be certified
+Done. Use actual task history to find avoidable repetition, stalls, tool/API
+misuse, orchestration mistakes, and missing, stale, conflicting or unclear skills
+and context. Successful delivery and recovered errors do not erase these signals.
+Task output is supporting evidence, not the primary verdict or an invitation to
+repeat deployment QA. Reuse existing evidence; run only checks needed to establish
+a suspected cause or validate its correction.
+
+For each material pattern, record native locators, observed consequence, causal
+classification (missing/stale/ambiguous guidance, guidance ignored, tool/harness
+defect, orchestration misuse, justified exploration, or uncertain), the canonical
+owner, and the smallest preventive correction with a runnable or replay check.
+A failed call alone is not proof of avoidability. Inspect what guidance was
+available and actually followed; when evidence is insufficient, preserve the
+uncertainty rather than inventing a rule or blaming the harness. Do not add a
+reminder when clear existing guidance was merely ignored. Route proven tool bugs
+to their implementation owner instead of disguising them as documentation fixes.
+
 ## Entry point
 
 `skills/task-review/SKILL.md` is the executable workflow. The executor chooses
@@ -25,9 +45,12 @@ files; the executor's summary alone is insufficient. Missing native
 history is `blocked`, never a passing review. Preserve native identity and resume
 the same review/correction session when continuing its work.
 
-Follow the fixed checklist in the skill. Distinguish observed checks from unrun
-suggestions and unsupported deployment/benefit claims. Record `no_change`,
-`changes_requested` or `blocked` with evidence. Reviewer and source session IDs
+Follow the fixed checklist in the skill. Every new review includes
+`execution_efficiency`, `context_alignment` and `improvement_actions` alongside
+the five source/boundary/evidence/safety rows. Delivery-only evidence cannot
+satisfy these execution rows. Distinguish observed checks from unrun suggestions
+and unsupported benefit claims. Record `PASS`, `FIX_NEEDED` or `BLOCKED` with
+evidence; an unresolved execution finding cannot accompany `PASS`. Reviewer and source session IDs
 must differ. Prefer a normal root session over a hidden subagent so the user can
 follow the review. Use existing roles/models/authentication; no private SDK runner
 or version-specific provider registration is required.
@@ -42,8 +65,14 @@ review. Reuse the existing review for a checkpoint rather than duplicate it.
 
 ## Autonomous correction
 
-Correct verified, actionable problems under the user's standing scoped authority
-without a new per-incident permission prompt. Create an isolated worktree from a
+Correct verified, actionable execution-system problems under the user's standing
+scoped maintenance authority without a new per-incident permission prompt. Target
+the owning harness, agent tooling, orchestration, canonical skill or context source;
+leave the original business implementation alone unless explicitly authorized.
+Original task authority does not automatically authorize global skill, runtime or
+cross-repository changes. Name the owning root and applicable maintenance authority;
+without them, record the exact write boundary and actionable finding as blocked.
+Installed/generated copies are delivery targets, not alternate sources of truth. Create an isolated worktree from a
 known revision, record its branch/path and native correction session, preserve
 foreign work, implement a regression and run actual bounded checks. Require
 independent review of the frozen patch before integration. Verify authorized
@@ -73,6 +102,14 @@ and raw tool output out of this audit. Append under a lock and fsync; retain
 negative, interrupted and incomplete actions. A summary reports recorded outcomes
 and missing completions, not proof of model benefit or a denominator of all tasks:
 tasks for which the model never invokes the skill are unobserved.
+
+New records use schema version 2. New completed reports require all eight rows;
+the recorder rejects five-row delivery-only submissions. Existing schema-1 records
+remain readable and byte-preserved, including negative records and cumulative
+correction counts. Summary reports legacy completions separately from schema-2
+execution-review passes; old PASS does not establish execution quality. Reassessment
+appends a new outcome with prior-record and source-history locators, never rewrites
+history or resets original source identity/authority/budgets.
 
 Audit records are explicitly agent-reported. Independent session/history and
 command evidence must corroborate consequential success claims. No signatures,

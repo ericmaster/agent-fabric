@@ -43,7 +43,9 @@ no installed dispatcher is needed.
    `text`, the **new session's** `streamEpoch`, and a fresh UUID `operationId`.
    `text` contains only the original source ID/history locator, directory,
    frozen revision/history cutoff, scope/authority and instruction to execute
-   task-review. Require `review_started` as the reviewer's first action before
+   task-review as an execution-quality retrospective (harness/tool use,
+   orchestration, skills/context), not task-delivery certification. Require
+   `review_started` as the reviewer's first action before
    history reads. Label a blocked/in-progress checkpoint honestly. Do not pass
    writer diagnoses, summaries or transcript copies as evidence.
 5. Require HTTP 202 with `accepted: true` and `messageId`, then verify the root

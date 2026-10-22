@@ -9,7 +9,8 @@ import unittest
 
 
 CLI = Path(__file__).resolve().parents[1] / 'skills/task-review/scripts/audit.py'
-CHECKS = ('source_history', 'task_scope', 'failed_tools', 'verification', 'safe_delivery')
+CHECKS = ('source_history', 'task_scope', 'failed_tools', 'verification', 'safe_delivery',
+          'execution_efficiency', 'context_alignment', 'improvement_actions')
 
 
 def report():
@@ -65,7 +66,7 @@ class TaskReviewAuditTests(unittest.TestCase):
             rows = self.rows(engine)
             self.assertEqual(len(rows), 2)
             self.assertTrue(all(row['engine'] == engine and row['status'] == 'PASS' for row in rows))
-            self.assertEqual(rows[0]['schema_version'], 1)
+            self.assertEqual(rows[0]['schema_version'], 2)
             self.assertIn('recorded_at', rows[0])
             self.assertIs(rows[0]['agent_reported'], True)
             self.assertEqual((directory / f'{engine}.jsonl').stat().st_mode & 0o777, 0o600)
@@ -100,6 +101,63 @@ class TaskReviewAuditTests(unittest.TestCase):
         value['checks']['verification']['status'] = 'BLOCKED'
         self.assertEqual(self.run_cli(value)['status'], 'BLOCKED')
         self.assertEqual(self.rows()[-1]['findings'], value['findings'])
+
+    def test_successful_delivery_cannot_hide_execution_findings(self):
+        # Spec: docs/specs/task-retrospective.md — recovered errors retain causal review.
+        value = report()
+        value['checks']['failed_tools']['evidence'] = ['call 8 recovered after repeated identical syntax failures']
+        value['checks']['execution_efficiency'] = dict(
+            status='FAIL', evidence=['calls 2, 4, 6 repeated unchanged failing command; call 8 succeeded'])
+        value['findings'] = ['calls 2/4/6: unchanged retry loop; owner skills/tool/SKILL.md; add bounded diagnostic branch']
+        self.assertEqual(self.run_cli(value)['status'], 'FIX_NEEDED')
+        value['status'] = 'PASS'
+        self.run_cli(value, ok=False)
+
+    def test_new_reviews_require_execution_rows(self):
+        # Spec: docs/specs/task-retrospective.md — delivery-only reports are legacy.
+        value = report()
+        for key in ('execution_efficiency', 'context_alignment', 'improvement_actions'):
+            value['checks'].pop(key)
+        self.run_cli(value, ok=False)
+        self.assertFalse(self.state.exists())
+
+    def test_legacy_reports_remain_readable_without_execution_pass_credit(self):
+        # Spec: docs/specs/task-retrospective.md — append-only schema compatibility.
+        self.run_cli()
+        path = self.state / 'agent-fabric/audit/opencode.jsonl'
+        row = self.rows()[0]
+        row['schema_version'] = 1
+        for key in ('execution_efficiency', 'context_alignment', 'improvement_actions'):
+            row['checks'].pop(key)
+        original = (json.dumps(row) + '\n').encode()
+        path.write_bytes(original)
+        summary = self.run_cli(summary=True)
+        self.assertEqual(summary['legacy_review_completions'], 1)
+        self.assertEqual(summary['execution_review_passes'], 0)
+        self.run_cli()
+        self.assertTrue(path.read_bytes().startswith(original))
+        self.assertEqual(self.run_cli(summary=True)['execution_review_passes'], 1)
+
+    def test_legacy_negative_outcomes_are_preserved(self):
+        # Spec: docs/specs/task-retrospective.md — do not lose failures during schema transition.
+        value = report()
+        value['checks']['failed_tools'] = dict(status='FAIL', evidence=['call 9 unresolved misuse'])
+        value['findings'] = ['call 9: unresolved misuse']
+        self.run_cli(value)
+        value['checks']['source_history'] = dict(status='BLOCKED', evidence=['history unavailable'])
+        self.run_cli(value)
+        path = self.state / 'agent-fabric/audit/opencode.jsonl'
+        rows = self.rows()
+        for row in rows:
+            row['schema_version'] = 1
+            for key in ('execution_efficiency', 'context_alignment', 'improvement_actions'):
+                row['checks'].pop(key)
+        original = ''.join(json.dumps(row) + '\n' for row in rows).encode()
+        path.write_bytes(original)
+        self.assertEqual(self.run_cli(summary=True)['blocked'], 1)
+        self.run_cli()
+        self.assertTrue(path.read_bytes().startswith(original))
+        self.assertEqual([row['status'] for row in self.rows()[:2]], ['FIX_NEEDED', 'BLOCKED'])
 
     def test_independent_session_id_required(self):
         value = report()
@@ -197,11 +255,19 @@ class TaskReviewAuditTests(unittest.TestCase):
             value = dict(bad, **{key: invalid})
             self.run_cli(value, ok=False)
         self.run_cli(bad)
+        # Spec: docs/specs/task-retrospective.md — legacy starts consume the same budget.
+        path = self.state / 'agent-fabric/audit/opencode.jsonl'
+        legacy_rows = self.rows()
+        for row in legacy_rows:
+            row['schema_version'] = 1
+        original = ''.join(json.dumps(row) + '\n' for row in legacy_rows).encode()
+        path.write_bytes(original)
         bad['review_session_id'] = 'ses_another_review'
         self.run_cli(bad)
         self.run_cli(bad, ok=False)
         attempts = [row['attempt'] for row in self.rows() if row['event'] == 'correction_started']
         self.assertEqual(attempts, [1, 2])
+        self.assertTrue(path.read_bytes().startswith(original))
         # Independent engine log, but simultaneous writers on that engine still share the cap.
         def start(_):
             result = subprocess.run([sys.executable, str(CLI), '--engine', 'pi'], input=json.dumps(bad),
