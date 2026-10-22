@@ -1,13 +1,29 @@
 ---
 name: task-review
-description: Independent review after a completed task, with original native-session history, a deterministic checklist, and scoped correction when evidence warrants it. Invoked at the agent's discretion, not by event hooks.
+description: Independently review meaningful task completion, roadblocks, repeated errors or stalled execution; inspect original history and correct confirmed defects. Agent-discretionary or user-invoked, in a separate visible session; no completion hook.
 ---
 
 # Task review
 
 Use ordinary native agents and existing host session tools. Keep active models,
 credentials and permissions unchanged. This skill installs no hooks and uses no
-GLiDE, provider dispatcher, HTTP/SDK runner, spool, job, daemon or schedule.
+GLiDE, provider dispatcher, custom HTTP/SDK runner, spool, job, daemon or schedule.
+Direct requests to the existing host's native session API are allowed; they use
+its existing UI/session runtime rather than creating another runner.
+
+## When to invoke
+
+Invoke at your discretion when a meaningful task reaches its completion checkpoint,
+or when a roadblock, repeated errors, or stalled execution warrants an independent
+look. Repeated attempts or status-only turns without new evidence are a stall
+signal: stop the unproductive loop and invoke before repeating it. A user request
+also invokes this skill. Do not require the user to notice trouble or ask first.
+A single recovered, irrelevant tool error need not launch another review.
+
+Freeze the relevant commit and task-history cutoff. For an unfinished task, identify
+that checkpoint as incomplete; inspect the roadblock without certifying completion.
+Reuse an existing review for the same checkpoint rather than creating duplicates.
+Review/correction episodes never trigger recursive reviews of themselves.
 
 ## 1. Start an independent review
 
@@ -17,11 +33,13 @@ through corrections; a review or correction session is not the source task.
 Do not review this skill's own review/correction episodes recursively.
 
 Create a fresh, visible **root session**, without inherited writer
-context. Use OpenChamber `session.create` with `returnResult: true`, or existing
-PiChamber/native session-creation tools with the equivalent result return. Do not
-fork the writer or silently substitute a hidden child. If the host cannot create
-a visible independent root, record the precise capability blocker rather than
-quietly changing the review's visibility or independence.
+context. Use OpenChamber `session.create` without `returnResult`, or the existing
+PiChamber/native session interface. In PiChamber, use the verified
+[native API launch procedure](references/pichamber.md) when no dedicated session
+tool is exposed; tool discovery alone does not prove session creation unavailable.
+Do not fork the writer or silently substitute a hidden child. If the available
+native interfaces cannot create a visible independent root, record the exact
+failed request/capability rather than changing visibility or independence.
 Pass only the source session ID, directory, commit/scope, task authority and the
 instruction to execute this skill's checklist. Do not pass the author's diagnosis,
 final answer or a hand-written transcript as evidence. Immediately after receiving
@@ -29,6 +47,13 @@ the real review ID, append `review_requested` from the source session. Make
 `review_started` the reviewer's first action, **before reading history**. These
 records expose requested/started reviews with no completion; they do not prove a
 session is still running.
+
+Verify the session is listed in the intended project and its prompt was accepted,
+then leave the review running independently in the UI. Return only its real ID/link
+and launch state; do not wait for its verdict, poll to completion, or copy results
+back unless the user asks. Creation/acceptance is not a passed review. The reviewer
+owns recording its outcome and driving authorized correction/delivery in its own
+session. A result-return facility is optional, not a launch prerequisite.
 
 Require the reviewer to read **actual original history** using host
 `session.messages` (all messages, paginating as needed) or existing native history
@@ -75,8 +100,12 @@ and reviewer. Permit at most **two cumulative correction starts per original
 source session**, across reviewer changes; keep directory, scope and authority
 fixed. The locked recorder assigns the attempt number and rejects further starts.
 If the cap is exhausted, append `blocked`; do not change IDs to reset it.
-Preserve dirty and unrelated work. Plan-only/report-only authority permits a
-finding, not a patch; record the precise execution boundary as BLOCKED.
+Preserve dirty and unrelated work. Before integration or deployment, re-read the
+target HEAD and working-tree state. If the source task has advanced, reassess the
+finding and patch against that state; never overwrite newer work or treat an old
+checkpoint's acceptance as approval for changed code. Plan-only/report-only
+authority permits a finding, not a patch; record the precise execution boundary
+as BLOCKED.
 
 Run focused regression checks and repository-required tests. Freeze the candidate
 commit and append `correction_completed` with actual command/exit-code/evidence
