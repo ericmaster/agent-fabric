@@ -12,6 +12,12 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+      - name: Stage private Node for strict Pi fixtures
+        shell: bash
+        run: |
+          node_dir="$(mktemp -d)"
+          install -m 0700 "$(command -v node)" "$node_dir/node"
+          echo "$node_dir" >> "$GITHUB_PATH"
       - run: go test ./...
       - run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_supervisor_ledger.py'
       - run: scripts/release.sh "${GITHUB_REF_NAME#v}" dist
