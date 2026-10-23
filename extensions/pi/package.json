@@ -1,0 +1,8 @@
+{
+  "name": "agent-fabric-pi-modes",
+  "private": true,
+  "keywords": ["pi-package"],
+  "pi": { "extensions": ["./index.ts"] },
+  "peerDependencies": { "@earendil-works/pi-coding-agent": "*" },
+  "scripts": { "test": "node --test modes.test.mjs" }
+}

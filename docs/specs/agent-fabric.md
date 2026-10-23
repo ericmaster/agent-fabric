@@ -69,8 +69,10 @@ or non-regular prior files as unmanaged artifacts.
 `--tools pi` renders Markdown for Pi's official optional `subagent` example
 extension: global `${PI_CODING_AGENT_DIR:-~/.pi/agent}/agents/<id>.md`, project
 `<project>/.pi/agents/<id>.md`. Install/sync/doctor/uninstall use the same manifest
-ownership checks as other adapters. The extension itself is host-installed, not
-vendored or silently fetched by Fabric; see [Pi setup](../runbooks/pi.md).
+ownership checks as other adapters. The upstream subagent extension is
+host-installed, not vendored or silently fetched by Fabric. The optional Fabric
+mode extension lives in `extensions/pi` and is installed explicitly as a local Pi
+package; see [Pi setup](../runbooks/pi.md).
 Only `name`, `description`, `model`, and comma-separated `tools` are emitted.
 Bundled profiles use the explicit mapping sentinel `model: inherit`, omitting the
 native model field so the child inherits the active parent model and thinking.
@@ -82,7 +84,18 @@ the dispatcher must supply required hook evidence or report the capability gap.
 Pi tools do not enforce filesystem isolation, resource permissions, or visibility;
 rendering records this limitation and the extension dependency as an omission,
 so `--strict` refuses installation rather than claiming sandbox equivalence.
-Retrospective capture remains OpenCode-only.
+
+The Fabric mode extension uses global rendered definitions as current-session
+roles, selected by `/agf-mode` or `--agf-mode`. It appends the selected
+body to the host system prompt, preserves session history and model/thinking,
+and enforces the definition's exact tool allowlist at tool-call time, including
+nested and third-party tools. Unknown host tools are omitted. It never loads
+project definitions implicitly. Switching requires idle execution; `off` restores
+the pre-mode active tool set, not every registered tool. Selection and baseline
+are session entries restored from the active branch on start/tree navigation;
+an unavailable restored role fails closed at tool execution until explicitly
+replaced or disabled. Mode switching provides neither child-session isolation
+nor independent review. Rendered model fields remain subagent-only overrides.
 
 Hub sources must be local directories, local `.tar.gz` archives, or HTTPS. GitHub
 repository/tree/tag URLs are converted to archive URLs; HTTPS Git URLs are
@@ -937,7 +950,9 @@ Release archives are static cross-platform builds accompanied by
 `sha256sums.txt` and a machine-readable `release-manifest.json`. Bootstrap verifies
 archive member paths and types before extraction, installs `agent-fabric` and a
 copied `agf` alias, removes only its bundled source directories, and never edits
-shell profiles.
+shell profiles. Archives include the optional Pi mode package at `extensions/pi`;
+bootstrap stages it under the install directory but never enables it or edits Pi
+settings. Pi package installation remains explicit.
 
 `AGF_INSTALL_DIR` is a bootstrap setting for the executable location; the CLI
 does not expose a no-op self-install flag.

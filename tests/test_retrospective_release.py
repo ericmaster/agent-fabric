@@ -179,6 +179,9 @@ class ReleaseAndBootstrapFixtureTests(FixtureBase):
         self.assertFalse(any(name == "hooks/retrospective" or name.startswith("hooks/retrospective/") for name in names))
         self.assertIn("skills/task-review/SKILL.md", names)
         self.assertIn("skills/task-review/scripts/audit.py", names)
+        self.assertIn("extensions/pi/index.ts", names)
+        self.assertIn("extensions/pi/package.json", names)
+        self.assertNotIn("extensions/pi/modes.test.mjs", names)
         for path in (REPO / "hooks").rglob("*"):
             if path.is_file() and "retrospective" not in path.relative_to(REPO / "hooks").parts:
                 if not any(part == "__pycache__" for part in path.parts) and path.suffix != ".pyc":
@@ -197,6 +200,12 @@ class ReleaseAndBootstrapFixtureTests(FixtureBase):
     def test_bootstrap_installs_agents_without_observers(self):
         self.install_from_bootstrap()
         self.assert_no_observer_installed()
+        self.assertEqual(
+            (self.installdir / "extensions/pi/index.ts").read_bytes(),
+            (REPO / "extensions/pi/index.ts").read_bytes(),
+        )
+        self.assertTrue((self.installdir / "extensions/pi/package.json").is_file())
+        self.assertFalse((self.home / ".pi/agent/settings.json").exists())
         # No activation or observation side effects anywhere: no state tree,
         # no extra plugin content, and no session artefacts (the fixture HOME
         # holds no live sessions at all, and bootstrap never starts one).

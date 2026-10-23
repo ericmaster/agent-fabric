@@ -5,6 +5,12 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-23
+
+### Added
+
+- Optional Pi package with `/agf-mode` role selection from rendered agents, exact tool-call allowlists, branch-aware persistence and prior-tool restoration; included in release archives and staged by bootstrap without automatic activation.
+
 ### Changed
 
 - Require durable task-review remediation: scoped SSOT scripts for repeated quoting failures, reusable guidance for resolved search/tool detours, and one bounded diagnostic subagent for unknown causes followed by authorized repair or explicit not-remediated evidence.

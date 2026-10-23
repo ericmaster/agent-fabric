@@ -1,8 +1,53 @@
 # Pi
 
-Fabric renders portable agents for Pi's optional upstream subagent extension,
-not a built-in named-agent registry. Preserve existing extensions and use the
-installed Pi package's example when enabling that optional runtime:
+Fabric renders agent definitions for two optional runtimes: the Fabric role-mode
+extension for the current session, and Pi's upstream `subagent` extension for
+fresh-context delegation. Pi has no built-in named-agent registry.
+
+## Current-session roles
+
+From this checkout:
+
+```bash
+agf install --source "$PWD" --tools pi --all --yes
+pi install ./extensions/pi
+```
+
+Release archives also include `extensions/pi`; bootstrap stages it beside the
+binary without enabling it. With the default bootstrap location, opt in using
+`pi install "$HOME/.local/bin/extensions/pi"`.
+
+Reload an owned idle session, then use `/agf-mode` for the selector,
+`/agf-mode planner` (or any installed agent ID), and `/agf-mode off` to
+restore the tools active before mode entry. For one invocation without installing:
+
+```bash
+pi -e ./extensions/pi/index.ts --agf-mode planner
+```
+
+Modes load global rendered definitions only, honoring `PI_CODING_AGENT_DIR`.
+Project agent files are not implicitly trusted or loaded. Role instructions are
+appended to the existing system prompt; history is retained, so switching roles
+is not independent review or a fresh-context handoff. The current model/thinking
+remain unchanged; rendered `model` overrides apply to subagents, not modes.
+Selection follows the active session branch across resume and tree navigation.
+Missing or invalid restored definitions block all tools until a valid role or
+`off` is selected. Mode changes require an idle session.
+
+Each role's exact tool allowlist governs direct and nested tool calls, including
+extension/MCP tools. Tools absent from the host are omitted, not emulated.
+Do not combine this with another extension managing active tools. A denied edit
+role has no bash; no shell command regex claims read-only safety. This remains
+an in-process workflow guard, not an OS sandbox or filesystem boundary.
+
+Local tests reuse the installed Pi parser/loader without provider calls:
+`cd extensions/pi && npm test`. Set `PI_PACKAGE` to the actual Pi package root
+when testing a PiChamber-bundled host rather than the global installation.
+
+## Fresh-context subagents
+
+Preserve existing extensions and use the installed Pi package's example when
+enabling the delegation runtime:
 
 ```bash
 PI_PACKAGE="$(npm root -g)/@earendil-works/pi-coding-agent"
