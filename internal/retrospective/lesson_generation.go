@@ -257,7 +257,7 @@ func GenerateLesson(ctx context.Context, cfg *Config, trust *LessonTrust, reques
 		return nativeStage(bounded, opts, store, receipt, rpt, marker, role, kind, prompt, client)
 	}
 	if receipt.CorrectorResult == "" {
-		final, err := stage(LearningCorrectorID, "generate", packet(`Return ONLY a LessonCandidate JSON, copying request schema/project/scope/version/consumer/origin/evidence exactly. Leave producer empty: Go binds the observed actual author root. Choose add with a stable lesson_id and bounded advisory advice, or noop (empty lesson_id/advice). expected_revision=0. reflection={facts:[{record_id,sha256}],change:string,contrasts:[{before:{record_id,sha256},after:{record_id,sha256}}],outcome:string,limits:string}. Never invent citations. Abstain on uncertainty.`, nil, ""))
+		final, err := stage(LearningCorrectorID, "generate", packet(`Return ONLY a LessonCandidate JSON, copying request schema/project/scope/version/consumer/origin/evidence exactly. Leave producer empty: Go binds the observed actual author root. Choose add with a stable lesson_id and bounded advisory advice, or noop (empty lesson_id/advice). expected_revision=0. Set confidence in [0.3,0.9] (advisory instinct weight only; never authority). Set applicability to project (default, this execution root) or global (cross-project advisory); omit means project. reflection={facts:[{record_id,sha256}],change:string,contrasts:[{before:{record_id,sha256},after:{record_id,sha256}}],outcome:string,limits:string}. Never invent citations. Abstain on uncertainty. Confidence never overrides gates or proves causal benefit.`, nil, ""))
 		if err != nil {
 			return fail(err)
 		}
@@ -282,7 +282,7 @@ func GenerateLesson(ctx context.Context, cfg *Config, trust *LessonTrust, reques
 	if err := DecodeLessonJSON([]byte(receipt.CorrectorResult), &candidate); err != nil {
 		return fail(err)
 	}
-	if !lessonSameScope(candidate, request) || candidate.OriginSession != request.OriginSession || candidate.Evidence.Path != request.Evidence.Path || candidate.Evidence.SHA256 != request.Evidence.SHA256 || candidate.Producer != receipt.RootID || candidate.Operation != "add" && candidate.Operation != "noop" {
+	if !lessonSameIdentity(candidate, request) || candidate.OriginSession != request.OriginSession || candidate.Evidence.Path != request.Evidence.Path || candidate.Evidence.SHA256 != request.Evidence.SHA256 || candidate.Producer != receipt.RootID || candidate.Operation != "add" && candidate.Operation != "noop" {
 		return fail(errors.New("native candidate identity/evidence drift"))
 	}
 	// Original evidence citation allowlist cannot be expanded by the author.

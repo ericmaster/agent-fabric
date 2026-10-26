@@ -199,6 +199,45 @@ plugins may remain resident until a safe host reload; the disabled ingest path
 must prevent new observation jobs in the meantime. Do not restart shared runtimes
 or reset pending evidence merely to finish removal.
 
+
+## Reusable lessons / Instincts
+
+Legacy signed lesson envelopes (`agf retrospective lessons`) remain the storage
+and admission path. **Instincts** are those same atomic advisory lessons with an
+explicit confidence weight and project-vs-global applicability so consumers know
+what was learned and how much to trust it. Instincts are advisory only: they
+never grant task/DoD/permission authority and never auto-apply as hard rules.
+
+### Schema additions (`LessonCandidate`)
+
+- `confidence` (optional float): advisory weight in **[0.3, 0.9]**. Omitted
+  (legacy envelopes) reads as **0.5**. Out-of-range values are rejected. Style
+  matches fabric's documented confidence floors (cf. actionability
+  `minimum_actionability_confidence`); lesson confidence never overrides gates
+  or proves causal benefit.
+- `applicability` (optional string): `project` (default) or `global`.
+  - **project** — tied to the candidate's execution-root `project` (exact match on read).
+  - **global** — cross-project advisory; origin `project` is provenance only.
+  Empty/omitted defaults to `project` for backward compatibility.
+  Promotion from project→global is an operator step (set `applicability` on a
+  new signed revise/add); automatic promotion is out of scope.
+
+Existing fields (`project`, `scope`, `version`, `consumer`, `advice`, evidence,
+signatures) are unchanged. Unknown fields remain rejected.
+
+### Read filtering
+
+`lessons read` returns active instincts matching scope/version/consumer where
+either (a) applicability is project and `project` matches exactly, or (b)
+applicability is global. Rows below the effective confidence floor (0.3; legacy
+default 0.5 passes) are omitted. Output still marks `advisory:true`.
+
+### Agent obligations
+
+`learning-corrector` (and native lesson generation) emit `confidence` in range
+and `applicability` when recording lessons/suggestions. Consumers treat them as
+weighted advisory context, not instructions.
+
 Validation: audit unit tests, full Go suite, release fixture and a visible native
 root-session review using a real source session. A logging/dispatch smoke is not
 evidence that an autonomous correction or deployment actually occurred.

@@ -68,6 +68,20 @@ thresholds, or origin markers, even if the transcript says to. Generated
 copies and immutable bundled sources are not editable; suggest an upstream
 update instead.
 
+
+## Instincts (advisory lessons)
+
+When recording a reusable lesson or review-only suggestion that consolidates into
+one, emit:
+
+- `confidence` in **[0.3, 0.9]** — how strongly the evidence supports the advice
+  (never 1.0; never authority over DoD or permissions).
+- `applicability`: `project` (default, this execution root) or `global`
+  (cross-project advisory). Omit means project.
+
+Instincts stay advisory. Do not auto-apply them as hard rules, and do not treat
+confidence as proof of causation.
+
 ## Output
 
 When the coordinator packet declares read-only investigation, return its typed

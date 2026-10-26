@@ -32,6 +32,16 @@ type LessonEvidence struct {
 	SHA256    string   `json:"sha256"`
 	RecordIDs []string `json:"record_ids"`
 }
+// Instinct confidence bounds: advisory weight only; never DoD/permission authority.
+// Omitted confidence (0) is legacy-compatible and reads as DefaultLessonConfidence.
+const (
+	MinLessonConfidence     = 0.3
+	MaxLessonConfidence     = 0.9
+	DefaultLessonConfidence = 0.5
+	ApplicabilityProject    = "project"
+	ApplicabilityGlobal     = "global"
+)
+
 type LessonCandidate struct {
 	SchemaVersion    int               `json:"schema_version"`
 	Operation        string            `json:"operation"`
@@ -41,11 +51,17 @@ type LessonCandidate struct {
 	Scope            string            `json:"scope"`
 	Version          string            `json:"version"`
 	Consumer         string            `json:"consumer"`
-	Advice           string            `json:"advice"`
-	Producer         string            `json:"producer"`
-	OriginSession    string            `json:"origin_session"`
-	Evidence         LessonEvidence    `json:"evidence"`
-	Reflection       *LessonReflection `json:"reflection,omitempty"`
+	// Applicability is project (default) or global cross-project advisory.
+	// omitempty + empty decode as project for backward compatibility.
+	Applicability string `json:"applicability,omitempty"`
+	// Confidence is an advisory instinct weight in [MinLessonConfidence, MaxLessonConfidence].
+	// omitempty: 0 means legacy/absent and uses DefaultLessonConfidence on read.
+	Confidence float64 `json:"confidence,omitempty"`
+	Advice         string            `json:"advice"`
+	Producer       string            `json:"producer"`
+	OriginSession  string            `json:"origin_session"`
+	Evidence       LessonEvidence    `json:"evidence"`
+	Reflection     *LessonReflection `json:"reflection,omitempty"`
 }
 type LessonAcceptance struct {
 	CandidateSHA256 string `json:"candidate_sha256"`
@@ -252,6 +268,46 @@ func validateRawLessonEvidence(trace *Trace, interval *Normalized, depth int) er
 	return nil
 }
 
+
+// lessonApplicability normalizes empty/legacy applicability to project.
+func lessonApplicability(c LessonCandidate) string {
+	switch c.Applicability {
+	case "", ApplicabilityProject:
+		return ApplicabilityProject
+	case ApplicabilityGlobal:
+		return ApplicabilityGlobal
+	default:
+		return c.Applicability
+	}
+}
+
+// lessonConfidence returns the effective advisory confidence for floors/filters.
+func lessonConfidence(c LessonCandidate) float64 {
+	if c.Confidence == 0 {
+		return DefaultLessonConfidence
+	}
+	return c.Confidence
+}
+
+// validateLessonInstinctFields checks confidence range and applicability values.
+// Spec: docs/specs/task-retrospective.md — Reusable lessons / Instincts
+func validateLessonInstinctFields(c LessonCandidate) error {
+	app := c.Applicability
+	if app != "" && app != ApplicabilityProject && app != ApplicabilityGlobal {
+		return errors.New("invalid lesson applicability")
+	}
+	if c.Confidence != 0 {
+		if !probabilityInRange(c.Confidence) || c.Confidence < MinLessonConfidence || c.Confidence > MaxLessonConfidence {
+			return errors.New("lesson confidence out of range")
+		}
+	}
+	// Global instincts keep origin project for provenance but are not project-bound on recall.
+	if lessonApplicability(c) == ApplicabilityGlobal && (c.Project == "" || !filepath.IsAbs(c.Project)) {
+		return errors.New("global lesson requires origin project provenance")
+	}
+	return nil
+}
+
 // validateLessonRecord checks signatures AND actual trace bytes, never prose attestations.
 func validateLessonRecord(r lessonRecord, trust *LessonTrust) error {
 	return validateLessonRecordWithAuthority(r, trust, false)
@@ -261,6 +317,9 @@ func validateLessonRecordWithAuthority(r lessonRecord, trust *LessonTrust, nativ
 	c, a := r.Envelope.Candidate, r.Envelope.Acceptance
 	if c.SchemaVersion != 1 || !filepath.IsAbs(c.Project) || filepath.Clean(c.Project) != c.Project || c.Project == "/" || c.Scope == "" || c.Version == "" || (c.Consumer != "executor" && c.Consumer != "corrector") || !journalID(c.OriginSession) || c.ExpectedRevision < 0 || len(c.Advice) > 4096 || !lessonTextSafe(c) {
 		return errors.New("invalid or unsafe lesson candidate")
+	}
+	if err := validateLessonInstinctFields(c); err != nil {
+		return err
 	}
 	switch c.Operation {
 	case "add":
@@ -360,8 +419,31 @@ func validateLessonRecordWithAuthority(r lessonRecord, trust *LessonTrust, nativ
 	return nil
 }
 
-func lessonSameScope(a, b LessonCandidate) bool {
+// lessonSameIdentity is the operator-locked project/scope/version/consumer tuple.
+func lessonSameIdentity(a, b LessonCandidate) bool {
 	return a.Project == b.Project && a.Scope == b.Scope && a.Version == b.Version && a.Consumer == b.Consumer
+}
+
+// lessonSameScope includes normalized applicability for refine/retire/dedup.
+func lessonSameScope(a, b LessonCandidate) bool {
+	return lessonSameIdentity(a, b) && lessonApplicability(a) == lessonApplicability(b)
+}
+
+// lessonMatchesQuery returns active-query matches: exact project instincts, or
+// global instincts sharing scope/version/consumer (cross-project advisory).
+func lessonMatchesQuery(row, query LessonCandidate) bool {
+	if row.Scope != query.Scope || row.Version != query.Version || row.Consumer != query.Consumer {
+		return false
+	}
+	if lessonConfidence(row) < MinLessonConfidence {
+		return false
+	}
+	switch lessonApplicability(row) {
+	case ApplicabilityGlobal:
+		return true
+	default:
+		return row.Project == query.Project
+	}
 }
 
 // lessonOriginAllowed reuses capture suppression, retaining errors as blockers.
@@ -602,7 +684,7 @@ func (s *Store) ReadLessons(trust *LessonTrust, project, scope, version, consume
 	out := []Lesson{}
 	query := LessonCandidate{Project: project, Scope: scope, Version: version, Consumer: consumer}
 	for _, row := range rows {
-		if !row.Retired && lessonSameScope(row.Candidate, query) {
+		if !row.Retired && lessonMatchesQuery(row.Candidate, query) {
 			out = append(out, row)
 		}
 	}

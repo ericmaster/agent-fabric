@@ -5,6 +5,10 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ## [Unreleased]
 
+### Added
+
+- Instincts on reusable lessons: optional `confidence` in [0.3, 0.9] and `applicability` (`project` default | `global`) on `LessonCandidate`, with validation, read filtering, and advisory-only contracts (no auto-apply).
+
 ### Changed
 
 - Require a pinned measurable evaluation baseline before phase/atomic implementation and candidate-linked criterion evidence before acceptance; preserve change history, retry budgets and discretionary QA. Add canonical role and OpenCode rendering regression guards (instruction contracts, not runtime enforcement).
