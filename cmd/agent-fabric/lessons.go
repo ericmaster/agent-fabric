@@ -30,7 +30,7 @@ func runRetrospectiveLessons(args []string) error {
 		return errors.New("unknown lessons command")
 	}
 	fs := flag.NewFlagSet("retrospective lessons "+sub, flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	fs.SetOutput(os.Stderr)
 	var state, trustPath, input, project, scope, version, consumer string
 	var limit int
 	fs.StringVar(&state, "state-dir", "", "explicit private retrospective store")
@@ -102,7 +102,7 @@ func runRetrospectiveLessons(args []string) error {
 // are deliberately no CLI model/provider/permission overrides.
 func runLessonGenerate(args []string) error {
 	fs := flag.NewFlagSet("lessons generate", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	fs.SetOutput(os.Stderr)
 	var configPath, trustPath, input string
 	fs.StringVar(&configPath, "config", "", "explicit retrospective configuration")
 	fs.StringVar(&trustPath, "trust", "", "existing lesson trust file")
@@ -150,7 +150,7 @@ func runLessonGenerate(args []string) error {
 // runLessonContext keeps native delivery protocol out of load-task/human input.
 func runLessonContext(args []string) error {
 	fs := flag.NewFlagSet("lessons context", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	fs.SetOutput(os.Stderr)
 	var binding, ack string
 	fs.StringVar(&binding, "binding", "", "explicit operator context binding")
 	fs.StringVar(&ack, "ack", "", "digest of block appended by context hook")

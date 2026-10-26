@@ -45,6 +45,11 @@ source rather than flattening ordered resource scopes into an action map. Model/
 effort-only overrides preserve the rules byte-for-byte.
 legacy managed hub files retain their old format until refreshed from their owner.
 
+Root `--help`/`-h` lists commands and the subcommand-help entry point. Flag-bearing
+subcommands (including `sync` and `hub install`) print flags/defaults to stderr
+for `--help`/`-h` and exit zero before loading sources or writing state. Unknown
+flags still exit nonzero; help is not a blanket error exemption.
+
 When agent or tool selections are omitted from an interactive command, the CLI
 uses `/dev/tty`, preselects all canonical agents and PATH-detected tools, and
 accepts comma-separated replacements. Explicit flags or `--yes` are required

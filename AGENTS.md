@@ -50,6 +50,9 @@ go build -o agent-fabric ./cmd/agent-fabric
 
 ## Daily commands
 
+CLI discovery: `agf --help`; `agf sync --help` and `agf hub install --help`
+print flags/defaults without loading sources or writing state (exit 0).
+
 | Command | What it does |
 |---|---|
 | `go test ./...` | Runs all unit and golden fixture tests |

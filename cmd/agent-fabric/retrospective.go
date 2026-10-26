@@ -106,7 +106,7 @@ func loadObservationConfig(explicit string) (*retrospective.Config, error) {
 // Spec: docs/specs/task-retrospective.md
 func runRetrospectiveIngest(args []string) error {
 	fs := flag.NewFlagSet("retrospective ingest", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	fs.SetOutput(os.Stderr)
 	var harness, configPath string
 	fs.StringVar(&harness, "harness", "", "observation harness (opencode or pi)")
 	fs.StringVar(&configPath, "config", "", "optional retrospective config JSON")
@@ -182,7 +182,7 @@ func runRetrospectiveIngest(args []string) error {
 // Spec: docs/specs/task-retrospective.md
 func runRetrospectiveDrain(args []string) error {
 	fs := flag.NewFlagSet("retrospective drain", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	fs.SetOutput(os.Stderr)
 	var configPath string
 	fs.StringVar(&configPath, "config", "", "optional retrospective config JSON")
 	if err := fs.Parse(args); err != nil {
@@ -231,7 +231,7 @@ type retrospectiveAnalyzeOptions struct {
 // Spec: docs/specs/task-retrospective.md
 func runRetrospectiveAnalyze(args []string) error {
 	fs := flag.NewFlagSet("retrospective analyze", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	fs.SetOutput(os.Stderr)
 	options := &retrospectiveAnalyzeOptions{}
 	var retiredSignals bool
 	fs.StringVar(&options.input, "input", "", "task trace JSON file (schema v1)")
@@ -304,7 +304,7 @@ func buildRetrospectiveClient(cfg *retrospective.Config, apiKey string) retrospe
 // Spec: docs/specs/task-retrospective.md
 func runRetrospectiveDispatch(args []string) error {
 	fs := flag.NewFlagSet("retrospective dispatch", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	fs.SetOutput(os.Stderr)
 	var reportPath, configPath string
 	var retry bool
 	fs.StringVar(&reportPath, "report", "", "eligible retrospective report JSON")
@@ -373,7 +373,7 @@ func runRetrospectiveDispatch(args []string) error {
 // Spec: docs/specs/task-retrospective.md
 func runRetrospectiveStatus(args []string) error {
 	fs := flag.NewFlagSet("retrospective status", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	fs.SetOutput(os.Stderr)
 	var configPath string
 	fs.StringVar(&configPath, "config", "", "optional retrospective config JSON")
 	if err := fs.Parse(args); err != nil {

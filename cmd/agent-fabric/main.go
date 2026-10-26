@@ -74,6 +74,10 @@ func main() {
 		os.Exit(2)
 	}
 	cmd, args := os.Args[1], os.Args[2:]
+	if cmd == "--help" || cmd == "-h" || cmd == "-help" {
+		usage()
+		return
+	}
 	if cmd == "maintenance" {
 		if err := runMaintenance(args); err != nil {
 			fail(err)
@@ -102,7 +106,7 @@ func main() {
 	}
 	var o options
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	fs.SetOutput(os.Stderr)
 	fs.StringVar(&o.source, "source", "", "fabric checkout or release source")
 	fs.StringVar(&o.project, "project", "", "project-local scope")
 	fs.StringVar(&o.agents, "agents", "", "comma-separated agent IDs")
@@ -146,8 +150,15 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, "agent-fabric install|sync|hub install SOURCE|list|validate|doctor|uninstall|maintenance|retrospective analyze|dispatch|status|enable|disable|lessons [flags]")
+	fmt.Fprintln(os.Stderr, "Use agent-fabric <command> --help (or hub install --help) for flags and defaults.")
 }
-func fail(err error) { fmt.Fprintln(os.Stderr, "agent-fabric:", err); os.Exit(1) }
+func fail(err error) {
+	if errors.Is(err, flag.ErrHelp) {
+		os.Exit(0)
+	}
+	fmt.Fprintln(os.Stderr, "agent-fabric:", err)
+	os.Exit(1)
+}
 
 func sourceDir(o options) (string, error) {
 	if o.source != "" {
@@ -1512,7 +1523,7 @@ func runHub(args []string) error {
 	}
 	var o options
 	fs := flag.NewFlagSet("hub install", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	fs.SetOutput(os.Stderr)
 	fs.StringVar(&o.source, "source", "", "fabric checkout containing adapter mappings")
 	fs.StringVar(&o.project, "project", "", "project-local scope")
 	fs.StringVar(&o.agents, "agents", "", "comma-separated hub agent IDs")
