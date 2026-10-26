@@ -8,7 +8,8 @@ import tempfile
 import unittest
 
 
-CLI = Path(__file__).resolve().parents[1] / 'skills/task-review/scripts/audit.py'
+# Spec: docs/specs/task-retrospective.md
+CLI = Path(__file__).resolve().parents[1] / 'skills/harness-review/scripts/audit.py'
 CHECKS = ('source_history', 'task_scope', 'failed_tools', 'verification', 'safe_delivery',
           'execution_efficiency', 'context_alignment', 'improvement_actions')
 
@@ -19,6 +20,13 @@ def report():
                 scope=['requested fix'], task_authority='native user message 1',
                 checks={name: dict(status='PASS', evidence=[f'native message/tool: {name}'])
                         for name in CHECKS})
+
+
+def blocker(value):
+    # Spec: docs/specs/task-retrospective.md — supervisor validates worker blockers.
+    value.update(worker_session_id='ses_worker', reason='Host denies original history access; operator must restore it',
+                 check=[dict(command='native history read', exit_code=1, evidence=['native denial locator'])])
+    return value
 
 
 def event(name='review_requested'):
@@ -32,7 +40,7 @@ def event(name='review_requested'):
                      worktree='/task/correction', branch='fix-task')
     if name in ('correction_completed', 'delivery'):
         value['check'] = [dict(command='python3 -m unittest', exit_code=0, evidence=['native check result'])]
-    return value
+    return blocker(value) if name == 'blocked' else value
 
 
 class TaskReviewAuditTests(unittest.TestCase):
@@ -86,11 +94,41 @@ class TaskReviewAuditTests(unittest.TestCase):
     def test_unread_history_blocks_and_cannot_claim_pass(self):
         value = report()
         value['checks']['source_history'] = dict(status='BLOCKED', evidence=['session.messages denied: history unread'])
-        self.assertEqual(self.run_cli(value)['status'], 'BLOCKED')
+        self.run_cli(value, ok=False)
+        self.assertFalse(self.state.exists())
+        self.assertEqual(self.run_cli(blocker(value))['status'], 'BLOCKED')
         self.assertEqual(self.rows()[0]['checks']['source_history']['status'], 'BLOCKED')
         value['status'] = 'PASS'
         self.run_cli(value, ok=False)
         self.assertEqual(len(self.rows()), 1)
+
+    def test_blockers_require_distinct_worker_and_actual_supervisor_checks(self):
+        # Spec: docs/specs/task-retrospective.md
+        value = blocker(report())
+        value['checks']['source_history']['status'] = 'BLOCKED'
+        for key in ('worker_session_id', 'reason', 'check'):
+            missing = dict(value)
+            missing.pop(key)
+            self.run_cli(missing, ok=False)
+        for worker in ('ses_source', 'ses_review', ''):
+            self.run_cli(dict(value, worker_session_id=worker), ok=False)
+        self.run_cli(dict(value, check=[]), ok=False)
+        self.assertEqual(self.run_cli(value)['status'], 'BLOCKED')
+
+    def test_old_schema_two_blockers_remain_readable_and_unchanged(self):
+        # Spec: docs/specs/task-retrospective.md
+        value = blocker(report())
+        value['checks']['source_history']['status'] = 'BLOCKED'
+        self.run_cli(value)
+        path = self.state / 'agent-fabric/audit/opencode.jsonl'
+        row = self.rows()[0]
+        for key in ('worker_session_id', 'reason', 'check'):
+            row.pop(key)
+        original = (json.dumps(row) + '\n').encode()
+        path.write_bytes(original)
+        self.assertEqual(self.run_cli(summary=True)['blocked'], 1)
+        self.run_cli()
+        self.assertTrue(path.read_bytes().startswith(original))
 
     def test_failed_tool_requires_findings_and_stays_fix_needed(self):
         value = report()
@@ -99,7 +137,7 @@ class TaskReviewAuditTests(unittest.TestCase):
         value['findings'] = ['native tool 4: failing required regression not repaired']
         self.assertEqual(self.run_cli(value)['status'], 'FIX_NEEDED')
         value['checks']['verification']['status'] = 'BLOCKED'
-        self.assertEqual(self.run_cli(value)['status'], 'BLOCKED')
+        self.assertEqual(self.run_cli(blocker(value))['status'], 'BLOCKED')
         self.assertEqual(self.rows()[-1]['findings'], value['findings'])
 
     def test_successful_delivery_cannot_hide_execution_findings(self):
@@ -145,7 +183,7 @@ class TaskReviewAuditTests(unittest.TestCase):
         value['findings'] = ['call 9: unresolved misuse']
         self.run_cli(value)
         value['checks']['source_history'] = dict(status='BLOCKED', evidence=['history unavailable'])
-        self.run_cli(value)
+        self.run_cli(blocker(value))
         path = self.state / 'agent-fabric/audit/opencode.jsonl'
         rows = self.rows()
         for row in rows:

@@ -1,6 +1,32 @@
-# Task review
+# Harness review
 
-Load `skills/task-review/SKILL.md` after a completed task or invoke `/task-review`.
+Load `skills/harness-review/SKILL.md` on execution friction or invoke `/harness-review`.
+`/task-review` is a deprecated, model-disabled redirect; migrate external callers
+and remove it when none remain. It has no scripts or second workflow.
+
+## Lightweight activation and supervision
+
+Install the skill through skills-manager, then explicitly install its short pointer
+in the native global instruction files actually loaded by the host, for example:
+
+```bash
+python3 ~/.agents/skills/harness-review/scripts/install_context.py \
+  ~/.pi/agent/AGENTS.md ~/.config/opencode/AGENTS.md ~/.codex/AGENTS.md
+```
+
+Use the active override file instead if native context precedence selects one;
+verify its loader before claiming coverage. This manages only a marked block,
+preserving other context and modes. Repeat safely; use the same command with
+`--remove` to roll back the pointer. Reload only an owned idle session; existing
+sessions are not silently restarted or guaranteed to receive new instructions.
+
+The independent visible root supervises a persisted read-only investigation worker.
+Use the existing native session API, not ephemeral `--no-session` children. Worker
+blockers require supervisor probes, exact external boundary and alternatives;
+unread accessible ranges remain pending and must be resumed. New blocked audit
+records require distinct `worker_session_id`, `reason` and actual `check` entries.
+Audit structure alone does not prove the checks ran.
+
 Supply the original native session ID and project directory. The skill creates an
 independent visible root review of execution quality: harness/tool use,
 orchestration, skills and context clarity. Successful task delivery does not
@@ -55,7 +81,7 @@ legacy queued-job replay is part of removal.
 ## Checks
 
 ```bash
-timeout 120s python3 -m unittest discover -s tests -p 'test_task_review_audit.py'
+timeout 120s python3 -m unittest discover -s tests -p 'test_harness_review_audit.py'
 timeout 300s go test ./...
 timeout 900s python3 -m unittest discover -s tests -p 'test_retrospective_release.py'
 ```

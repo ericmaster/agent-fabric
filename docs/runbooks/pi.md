@@ -72,9 +72,9 @@ exposure. `pichamber status` and the UI describe the actual host, which may use 
 different Pi version from the global `pi` command. Do not patch installed packages
 or infer native child continuation from a new stateless child.
 
-## Task review
+## Harness review
 
-Invoke `skills/task-review/SKILL.md` after a completed task. Use the host's existing
+Invoke `skills/harness-review/SKILL.md` on execution friction or a meaningful checkpoint. Use the host's existing
 native session creation/history tools to start an independent visible root with
 the original session ID. No Pi retrospective extension, pinned SDK runner,
 GLiDE, hook-driven context or background drain is needed. Existing provider/model

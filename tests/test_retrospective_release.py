@@ -177,8 +177,13 @@ class ReleaseAndBootstrapFixtureTests(FixtureBase):
         with tarfile.open(self.archive) as archive:
             names = archive.getnames()
         self.assertFalse(any(name == "hooks/retrospective" or name.startswith("hooks/retrospective/") for name in names))
+        self.assertIn("skills/harness-review/SKILL.md", names)
+        self.assertIn("skills/harness-review/scripts/audit.py", names)
+        self.assertIn("skills/harness-review/scripts/install_context.py", names)
+        self.assertIn("skills/harness-review/references/pichamber.md", names)
+        self.assertIn("skills/harness-review/references/activation.md", names)
         self.assertIn("skills/task-review/SKILL.md", names)
-        self.assertIn("skills/task-review/scripts/audit.py", names)
+        self.assertNotIn("skills/task-review/scripts/audit.py", names)
         self.assertIn("extensions/pi/index.ts", names)
         self.assertIn("extensions/pi/package.json", names)
         self.assertNotIn("extensions/pi/modes.test.mjs", names)
@@ -253,7 +258,7 @@ class ReleaseAndBootstrapFixtureTests(FixtureBase):
             result = run(command + flags, env=self.base_env({"AGF_INSTALL_DIR": str(self.installdir)}), check=False)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("retired", result.stderr)
-            self.assertIn("task-review", result.stderr)
+            self.assertIn("harness-review", result.stderr)
         self.assertFalse((self.home / ".config" / "agent-fabric" / ".agent-fabric-manifest.json").exists())
 
     def test_normal_install_sync_preserve_legacy_and_foreign_files(self):

@@ -5,8 +5,8 @@ import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL = ROOT / "skills/task-review/SKILL.md"
-RECIPE = ROOT / "skills/task-review/references/pichamber.md"
+SKILL = ROOT / "skills/harness-review/SKILL.md"
+RECIPE = ROOT / "skills/harness-review/references/pichamber.md"
 
 
 class TaskReviewLaunchContractTests(unittest.TestCase):
@@ -67,6 +67,29 @@ class TaskReviewLaunchContractTests(unittest.TestCase):
                             'supported fix path', 'proceed with authorized correction',
                             '`not remediated`', 'does not reset', 'two cumulative correction starts'):
             self.assertIn(requirement, skill)
+
+    def test_persisted_worker_and_supervisor_blocker_verification(self):
+        # Spec: docs/specs/task-retrospective.md — incomplete reading is pending.
+        skill = ' '.join(SKILL.read_text().split())
+        for requirement in ('supervises one fresh read-only native worker',
+                            'persisted session/history locator',
+                            'worker may report **pending**',
+                            'supervisor independently inspects',
+                            'reduce page size', 'character offset',
+                            'checkpoint and resume the same review',
+                            'cancellation alone does not prove termination',
+                            'worker_session_id', 'supervisor probe evidence'):
+            self.assertIn(requirement, skill)
+
+    def test_old_name_is_only_a_model_disabled_deprecation(self):
+        # Spec: docs/specs/task-retrospective.md
+        deprecated = ROOT / 'skills/task-review'
+        text = (deprecated / 'SKILL.md').read_text()
+        self.assertIn('disable-model-invocation: true', text)
+        self.assertIn('Deprecated', text)
+        self.assertIn('/harness-review', text)
+        self.assertFalse((deprecated / 'scripts').exists())
+        self.assertEqual(SKILL.read_text().splitlines()[1], 'name: harness-review')
 
     def test_asynchronous_launch_keeps_audit_and_independence(self):
         # Spec: docs/specs/task-retrospective.md via module

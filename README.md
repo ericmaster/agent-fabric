@@ -206,16 +206,17 @@ Declared Root, locator, hook, and inspection boundaries live only in
 that those safeguards render through every adapter; they do not prove model
 compliance or add runtime transport.
 
-## Task review
+## Harness review
 
-Invoke [`task-review`](skills/task-review/SKILL.md) after a completed task.
-The model decides when to use it, or the user can request `/task-review`.
-An independent visible root receives the original session ID, reads actual
-history and follows a fixed checklist. Verified corrections run autonomously in
-worktrees with real tests and independent patch review.
+Invoke [`harness-review`](skills/harness-review/SKILL.md) for repeated tool errors,
+context searches without progress, misleading instructions or stalls. A visible
+supervisor delegates investigation to a persisted read-only worker, verifies
+blocker claims and owns authorized correction with tests and independent review.
+`/task-review` is deprecated; migrate callers to `/harness-review`.
 
-There are no native retrospective hooks, GLiDE calls, automatic capture/context
-injection or background review jobs. The same skill uses the host's existing
+Install the short activation pointer in native global instructions as described
+in the runbook; the full workflow stays on demand. There are no native retrospective
+hooks, GLiDE calls, automatic capture or background review jobs. The same skill uses the host's existing
 session tools and configured model in OpenCode/OpenChamber and Pi/PiChamber.
 One private append-only JSONL per engine records review and correction actions;
 agent reports and dispatch receipts are not proof of successful delivery.

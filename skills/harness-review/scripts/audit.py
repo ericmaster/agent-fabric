@@ -50,7 +50,16 @@ def safe(value):
         raise ValueError('credential-bearing text rejected')
 
 
-def validate(report, *, legacy=False):
+def validate_blocker(report):
+    # Spec: docs/specs/task-retrospective.md — evidence structure, not execution proof.
+    worker = report.get('worker_session_id')
+    if (not text(worker) or worker != worker.strip()
+            or worker in (report['source_session_id'], report.get('review_session_id'))
+            or not text(report.get('reason')) or not report.get('check')):
+        raise ValueError('blocked review requires distinct worker, external boundary and supervisor checks')
+
+
+def validate(report, *, legacy=False, historical=False):
     # Spec: docs/specs/task-retrospective.md — schema-1 is read-only compatibility.
     if not isinstance(report, dict):
         raise ValueError('report must be an object')
@@ -63,7 +72,7 @@ def validate(report, *, legacy=False):
     required |= {'review_session_id', 'commit', 'checks'} if final else {'session_id', 'evidence_refs'}
     if not required <= report.keys() or report.keys() - required - {
             'event', 'phase', 'writer_session_id', 'findings', 'status', 'review_session_id',
-            'worktree', 'branch', 'commit', 'reason', 'evidence_refs', 'check'}:
+            'worktree', 'branch', 'commit', 'reason', 'evidence_refs', 'check', 'worker_session_id'}:
         raise ValueError('missing required or unknown report fields')
     for key in (report.keys() & {'source_session_id', 'session_id', 'review_session_id', 'directory',
                                 'commit', 'task_authority', 'writer_session_id', 'worktree', 'branch', 'reason'}):
@@ -105,6 +114,8 @@ def validate(report, *, legacy=False):
             raise ValueError('review_started must identify the reviewer')
         if event in ('blocked', 'hook_retirement') and not text(report.get('reason')):
             raise ValueError('event requires a specific reason')
+        if event == 'blocked' and reviewer and not historical:
+            validate_blocker(report)
         if event.startswith('correction_'):
             if (not writer or writer in (reviewer, report['source_session_id'])
                     or report['session_id'] != writer or not text(report.get('branch'))
@@ -137,6 +148,8 @@ def validate(report, *, legacy=False):
     if 'FAIL' in statuses and not findings:
         raise ValueError('failed checks require concrete findings')
     status = 'BLOCKED' if 'BLOCKED' in statuses else 'FIX_NEEDED' if 'FAIL' in statuses else 'PASS'
+    if status == 'BLOCKED' and not historical:
+        validate_blocker(report)
     if status == 'PASS' and findings:
         raise ValueError('unresolved findings cannot accompany PASS')
     if 'status' in report and report['status'] != status:
@@ -193,7 +206,7 @@ def scan(output, engine):
                 or row.get('agent_reported') is not True or not text(row.get('recorded_at'))):
             raise ValueError('malformed audit history')
         checked = validate({key: value for key, value in row.items() if key not in META},
-                           legacy=row['schema_version'] == 1)
+                           legacy=row['schema_version'] == 1, historical=True)
         if any(row.get(key) != value for key, value in checked.items()):
             raise ValueError('incomplete/noncanonical audit history row')
         if row['event'] == 'correction_started':
@@ -264,7 +277,7 @@ def main():
             raise ValueError('stdin exceeds 64 KiB')
         result = audit(args.engine) if args.summary else audit(args.engine, validate(json.loads(data)))
     except (ValueError, OSError, TypeError, RecursionError):
-        print('task-review audit: invalid/unsafe input, history, size or destination; no success recorded', file=sys.stderr)
+        print('harness-review audit: invalid/unsafe input, history, size or destination; no success recorded', file=sys.stderr)
         return 1
     print(json.dumps(result))
     return 0

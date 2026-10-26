@@ -29,7 +29,7 @@ no installed dispatcher is needed.
    {
      "cwd": "/absolute/project",
      "engine": "pi",
-     "title": "Task review — <short scope/checkpoint>",
+     "title": "Harness review — <short scope/checkpoint>",
      "model": {"providerId": "<source provider>", "modelId": "<source model>"},
      "thinking": "<source thinking setting>"
    }
@@ -43,7 +43,7 @@ no installed dispatcher is needed.
    `text`, the **new session's** `streamEpoch`, and a fresh UUID `operationId`.
    `text` contains only the original source ID/history locator, directory,
    frozen revision/history cutoff, scope/authority and instruction to execute
-   task-review as an execution-quality retrospective (harness/tool use,
+   harness-review as an execution-quality retrospective (harness/tool use,
    orchestration, skills/context), not task-delivery certification. Require
    `review_started` as the reviewer's first action before
    history reads. Label a blocked/in-progress checkpoint honestly. Do not pass

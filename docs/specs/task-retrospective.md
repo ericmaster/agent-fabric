@@ -1,4 +1,4 @@
-# Task review
+# Harness review
 
 ## Purpose and review boundary
 
@@ -22,14 +22,24 @@ to their implementation owner instead of disguising them as documentation fixes.
 
 ## Entry point
 
-`skills/task-review/SKILL.md` is the executable workflow. The executor chooses
-whether to invoke it at meaningful task completion or when roadblocks, repeated
-errors or stalled execution warrant an independent look; the user may invoke
-`/task-review` explicitly. Repeated status-only turns without new evidence should
-trigger review rather than another unproductive attempt. Invocation is not
-guaranteed and is not a completion hook. No automatic observation, transcript
-import, context injection, GLiDE,
-drain worker, model schedule or additional service participates in this flow.
+`skills/harness-review/SKILL.md` is the executable workflow; `/task-review` is a
+deprecated redirect with no scripts or second workflow. Remove the redirect when
+its callers have migrated; all maintained entry points use `/harness-review`.
+
+Install the short `references/activation.md` pointer in native global instruction
+files using `scripts/install_context.py <file>...`. Only its marked block is
+managed; preserve unrelated bytes, reject symlinks/malformed blocks and replace
+atomically. Installation is explicit and idempotent, not a runtime hook. The
+pointer prompts autonomous invocation for repeated tool errors, context searches
+without progress, ambiguity/misleading context and stalls. Expected red tests and
+productive exploration alone are not triggers. Load the full workflow only on
+activation; no continuous supervisor, observer, transcript import, GLiDE, drain,
+model schedule or additional service. Invocation remains model-discretionary,
+not guaranteed; active sessions require their native context reload.
+
+Optimize recurrence, elapsed time and tokens including review overhead. Reuse
+existing evidence and owners, compare actual checks before/after a correction,
+and do not claim savings without measurements or weaken correctness gates.
 
 ## Independent review
 
@@ -44,6 +54,33 @@ claiming the main task is complete. Read the actual original history and changed
 files; the executor's summary alone is insufficient. Missing native
 history is `blocked`, never a passing review. Preserve native identity and resume
 the same review/correction session when continuing its work.
+
+The visible independent root is the **supervisor**. It dispatches one fresh native
+read-only **worker** with a distinct persisted session ID/history, the frozen
+source, authority and bounded investigation scope. Use the existing native session
+API for both roles; do not use ephemeral `--no-session` children for review evidence.
+The worker reads actual original history, checks guidance and safe recoveries,
+and returns findings, coverage locators and unresolved prerequisites. It does not
+write final audit outcomes, certify delivery, edit files or delegate again. Reuse
+that worker's continuation instead of replacing it on a pending response.
+
+A worker blocker is a claim, not a final outcome. The supervisor independently
+checks the worker's evidence and performs an applicable safe capability/recovery
+probe. Truncated output, unread accessible history, context pressure and unfinished
+work are **pending**, not external blockers: reduce pages/long lines, inspect the
+original retained output, keep exact covered/pending ranges and continue or resume.
+Never rerun unchanged failed reads. A hard budget/policy boundary remains a real
+limit; record its exhausted attempts rather than reset it. Native cancellation
+is not proof of child termination; isolate uncertain writers before recovery.
+
+Only close `BLOCKED` with an exact external-only action or verified authority,
+capability or hard-budget boundary, alternatives checked, worker identity and
+supervisor probe results. New blocked completion records and post-launch blocked
+actions require `worker_session_id`, a specific `reason` naming that boundary,
+and nonempty actual `check` entries. Worker, source and supervisor IDs must differ;
+pre-launch failures without a reviewer remain recordable. The recorder validates
+this evidence structure, not whether probes truly ran. Historical schema-1/2
+records remain readable and byte-preserved without retroactive requirements.
 
 Follow the fixed checklist in the skill. Every new review includes
 `execution_efficiency`, `context_alignment` and `improvement_actions` alongside
@@ -122,7 +159,7 @@ unavailable external capabilities or exhausted budgets remain explicit blockers.
 
 ## Audit
 
-Use `skills/task-review/scripts/audit.py`. Store one append-only JSONL file per
+Use `skills/harness-review/scripts/audit.py`. Store one append-only JSONL file per
 engine under `${XDG_STATE_HOME:-~/.local/state}/agent-fabric/audit/`:
 
 - `opencode.jsonl` for OpenCode and OpenChamber.
@@ -146,8 +183,9 @@ history or resets original source identity/authority/budgets.
 
 Audit records are explicitly agent-reported. Independent session/history and
 command evidence must corroborate consequential success claims. No signatures,
-indexes, per-task state files, automatic report ingestion or second memory store
-are required.
+indexes, automatic report ingestion or second memory store are required. Retain
+resume-critical evidence and coverage outside worktrees in the existing private
+Agent Fabric state root; native session history remains the primary record.
 
 ## Runtime boundary and compatibility
 

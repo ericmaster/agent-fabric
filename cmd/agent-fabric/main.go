@@ -112,7 +112,7 @@ func main() {
 	fs.BoolVar(&o.strict, "strict", false, "warnings are failures")
 	fs.BoolVar(&o.force, "force", false, "replace modified managed files")
 	fs.BoolVar(&o.json, "json", false, "machine-readable output")
-	fs.StringVar(&o.assets, "assets", "", "optional assets (none); retrospective retired in favor of task-review")
+	fs.StringVar(&o.assets, "assets", "", "optional assets (none); retrospective retired in favor of harness-review")
 	if err := fs.Parse(args); err != nil {
 		fail(err)
 	}
@@ -855,7 +855,7 @@ func optionalAssetWrites(o options, _ string) ([]pendingWrite, error) {
 			continue
 		}
 		if name == "retrospective" {
-			return nil, errors.New("retrospective hooks are retired; use the model-invoked task-review skill")
+			return nil, errors.New("retrospective hooks are retired; use the model-invoked harness-review skill")
 		}
 		return nil, fmt.Errorf("unknown asset %q", name)
 	}
