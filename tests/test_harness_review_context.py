@@ -84,6 +84,16 @@ class ContextTests(unittest.TestCase):
         self.assertIn('review/correction', text)
         self.assertNotIn('task-review', text)
 
+    def test_review_handoff_preserves_standing_authority(self):
+        # Spec: docs/specs/task-retrospective.md — Autonomous correction.
+        pointer = ACTIVATION.read_text()
+        skill = (ROOT / 'skills/harness-review/SKILL.md').read_text()
+        self.assertIn('Pass standing maintenance authority to the supervisor', pointer)
+        self.assertIn('only its investigation worker is read-only', pointer)
+        self.assertIn('checkout cleanup', pointer)
+        self.assertIn('integration/install targets and exclusions', skill)
+        self.assertIn('An explicit user\nreport-only restriction still wins', skill)
+
 
 if __name__ == '__main__':
     unittest.main()

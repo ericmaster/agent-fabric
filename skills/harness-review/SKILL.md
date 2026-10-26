@@ -63,6 +63,13 @@ the real review ID, append `review_requested` from the source session. Make
 records expose requested/started reviews with no completion; they do not prove a
 session is still running.
 
+Pass applicable standing maintenance authority with its native/global instruction
+locator, owning roots, integration/install targets and exclusions. Do not turn the
+supervisor's entire assignment into findings-only/read-only when that authority
+permits correction: only the investigation worker is read-only. An explicit user
+report-only restriction still wins; never invent maintenance authority from the
+business task. The supervisor must verify authority before its first write.
+
 Verify the session is listed in the intended project and its prompt was accepted,
 then leave the review running independently in the UI. Return only its real ID/link
 and launch state; do not wait for its verdict, poll to completion, or copy results

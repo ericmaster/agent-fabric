@@ -142,6 +142,11 @@ leave the original business implementation alone unless explicitly authorized.
 Original task authority does not automatically authorize global skill, runtime or
 cross-repository changes. Name the owning root and applicable maintenance authority;
 without them, record the exact write boundary and actionable finding as blocked.
+The review launch must preserve applicable standing maintenance authority, naming
+its instruction locator, owning roots, integration/install targets and exclusions.
+Read-only investigation applies to the worker, not the correction-owning supervisor.
+Do not add a findings-only restriction that cancels existing authority; explicit
+user report-only restrictions still win. Verify authority before writing.
 Installed/generated copies are delivery targets, not alternate sources of truth. Create an isolated worktree from a
 known revision, record its branch/path and native correction session, preserve
 foreign work, implement a regression and run actual bounded checks. Require
