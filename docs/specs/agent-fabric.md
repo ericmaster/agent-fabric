@@ -35,8 +35,10 @@ isolation/permission/tools/hooks frontmatter; resolved hook commands remain in t
 body. Tool flags restrict effective actions, with wildcard defaults first and
 explicit permission denies retained last. An allow flag cannot override a role deny.
 Normalize aliases before ordering; conflicting aliases resolve deny over ask over
-allow, independent of input-map iteration. Re-append only explicit action denies,
-never the wildcard default, so broad defaults do not erase deliberate exceptions.
+allow, independent of input-map iteration. Re-append explicit action denies and
+any explicit `external_directory` policy (allow/ask/deny): directory access is a
+non-tool guard, not subject to the tool allowlist. Never re-append the wildcard
+default or other policy allows, so tool restrictions and deliberate exceptions survive.
 Other harness output is unchanged. Exact overrides preserve native permission rules;
 tool overrides for an unselected native agent require re-rendering from its owning
 source rather than flattening ordered resource scopes into an action map. Model/

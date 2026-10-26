@@ -127,7 +127,7 @@ func TestRenderNonOpenCodeTargetsDoNotIncludeTools(t *testing.T) {
 func TestOpenCodeV2NativeContract(t *testing.T) {
 	d := agent.Definition{ID: "supervisor", Description: "Own delivery", Mode: "all", Body: "Run resolved hooks.\n",
 		Fabric: agent.Fabric{Profile: "supervisor", Visibility: "hidden", Effort: "high", Permissions: map[string]string{"task": "allow", "bash": "allow", "edit": "deny"}}}
-	m := Mapping{Profiles: map[string]Profile{"supervisor": {Model: "openai/gpt-6.1-sol", Tools: map[string]bool{"*": false, "read": true, "task": true, "patch": true}}}}
+	m := Mapping{Profiles: map[string]Profile{"supervisor": {Model: "openai/gpt-6.1-sol", Permissions: map[string]string{"external_directory": "allow"}, Tools: map[string]bool{"*": false, "read": true, "task": true, "patch": true}}}}
 	body, _, _, err := Render("opencode", d, m, false)
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestOpenCodeV2NativeContract(t *testing.T) {
 	}
 	// Evaluate the rendered ordered wildcard rules, rather than just field presence.
 	rules := strings.Split(body, "  - action: ")[1:]
-	for action, want := range map[string]string{"read": "allow", "subagent": "allow", "edit": "deny", "shell": "deny"} {
+	for action, want := range map[string]string{"read": "allow", "subagent": "allow", "edit": "deny", "shell": "deny", "external_directory": "allow"} {
 		got := ""
 		for _, rule := range rules {
 			lines := strings.Split(rule, "\n")
@@ -179,6 +179,11 @@ func TestOpenCodePermissionPrecedence(t *testing.T) {
 		{"tool shell/bash conflict", nil, map[string]bool{"shell": false, "bash": true}, "shell", "deny"},
 		{"policy alias conflict", map[string]string{"shell": "allow", "bash": "deny"}, nil, "shell", "deny"},
 		{"explicit role deny", map[string]string{"edit": "deny"}, map[string]bool{"*": false, "write": true}, "edit", "deny"},
+		{"directory allow survives tool wildcard", map[string]string{"external_directory": "allow"}, map[string]bool{"*": false, "read": true}, "external_directory", "allow"},
+		{"directory ask survives tool wildcard", map[string]string{"external_directory": "ask"}, map[string]bool{"*": false}, "external_directory", "ask"},
+		{"directory deny survives tool allow", map[string]string{"external_directory": "deny"}, map[string]bool{"*": true}, "external_directory", "deny"},
+		{"no implicit directory grant", nil, map[string]bool{"*": false, "read": true}, "external_directory", "deny"},
+		{"tool policy allow still restricted", map[string]string{"bash": "allow", "external_directory": "allow"}, map[string]bool{"*": false, "read": true}, "shell", "deny"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rules := strings.Split(openCodePermissionRules(tc.policies, tc.tools), "  - action: ")[1:]

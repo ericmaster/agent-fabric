@@ -67,13 +67,14 @@ func openCodePermissionRules(policies map[string]string, tools map[string]bool) 
 	}
 	writeOpenCodeRules(&b, flags)
 	if len(flags) > 0 {
-		denies := map[string]string{}
+		retained := map[string]string{}
 		for name, effect := range policies {
-			if name != "*" && effect == "deny" {
-				denies[name] = effect
+			// Directory access is a guard, not a tool in the allowlist.
+			if name == "external_directory" || (name != "*" && effect == "deny") {
+				retained[name] = effect
 			}
 		}
-		writeOpenCodeRules(&b, denies)
+		writeOpenCodeRules(&b, retained)
 	}
 	return b.String()
 }
