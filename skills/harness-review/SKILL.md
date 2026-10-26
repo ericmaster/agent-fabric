@@ -213,8 +213,11 @@ patching only an installed/generated copy is not durable delivery.
 Append `correction_started` from the correction writer **before the first edit**,
 identifying the original directory, separate absolute worktree, branch, writer
 and reviewer. Permit at most **two cumulative correction starts per original
-source session**, across reviewer changes; keep directory, scope and authority
-fixed. The locked recorder assigns the attempt number and rejects further starts.
+source session**, across reviewer changes. Keep the original directory fixed;
+the first correction start freezes correction scope and verified authority for
+later starts. Earlier review descriptions may differ, and later user approval may
+authorize that first correction; cite its native locator without rewriting history.
+The locked recorder assigns the attempt number and rejects further starts.
 If the cap is exhausted, append `blocked`; do not change IDs to reset it.
 Preserve dirty and unrelated work. Before integration or deployment, re-read the
 target HEAD and working-tree state. If the source task has advanced, reassess the

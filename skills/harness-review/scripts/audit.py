@@ -237,9 +237,13 @@ def audit(engine, report=None):
                       recorded_at=datetime.now(timezone.utc).isoformat())
         if report['event'] == 'correction_started':
             prior = [row for row in rows if row['source_session_id'] == report['source_session_id']]
-            if any(any(row[key] != report[key] for key in ('directory', 'scope', 'task_authority')) for row in prior):
+            # Review prose can differ and a later user message may grant repair authority.
+            # The first correction freezes its contract; all starts share the source cap.
+            starts = [row for row in prior if row['event'] == 'correction_started']
+            if (any(row['directory'] != report['directory'] for row in prior)
+                    or any(any(row[key] != report[key] for key in ('scope', 'task_authority')) for row in starts)):
                 raise ValueError('original source scope/authority cannot change for correction')
-            attempts = sum(row['event'] == 'correction_started' for row in prior)
+            attempts = len(starts)
             if attempts >= 2:
                 raise ValueError('original source correction limit (2) exhausted')
             record['attempt'] = attempts + 1

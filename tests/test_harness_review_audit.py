@@ -288,11 +288,13 @@ class TaskReviewAuditTests(unittest.TestCase):
     def test_correction_cap_is_locked_and_survives_new_review_ids(self):
         self.run_cli(event())
         bad = event('correction_started')
-        for key, invalid in (('worktree', '/task/checkout/../checkout'), ('writer_session_id', 'ses_source'),
-                             ('scope', ['different scope']), ('task_authority', 'changed authority')):
+        for key, invalid in (('worktree', '/task/checkout/../checkout'), ('writer_session_id', 'ses_source')):
             value = dict(bad, **{key: invalid})
             self.run_cli(value, ok=False)
         self.run_cli(bad)
+        for key, invalid in (('directory', '/another/checkout'), ('scope', ['different scope']),
+                             ('task_authority', 'changed authority')):
+            self.run_cli(dict(bad, **{key: invalid}), ok=False)
         # Spec: docs/specs/task-retrospective.md — legacy starts consume the same budget.
         path = self.state / 'agent-fabric/audit/opencode.jsonl'
         legacy_rows = self.rows()
@@ -315,6 +317,29 @@ class TaskReviewAuditTests(unittest.TestCase):
             codes = list(pool.map(start, range(6)))
         self.assertEqual(sorted(codes), [0, 0, 1, 1, 1, 1])
         self.assertEqual([row['attempt'] for row in self.rows('pi')], [1, 2])
+
+    def test_first_correction_accepts_later_authority_and_varied_review_prose(self):
+        self.run_cli(event())
+        started = event('review_started')
+        started.update(scope=['Independent investigation at frozen checkpoint'],
+                       task_authority='Read-only review launch')
+        self.run_cli(started)
+        completed = blocker(report())
+        completed['checks']['improvement_actions']['status'] = 'BLOCKED'
+        completed.update(scope=['Execution-quality findings, not business acceptance'],
+                         task_authority='Read-only review launch; original business user message')
+        self.run_cli(completed)
+        before = (self.state / 'agent-fabric/audit/opencode.jsonl').read_bytes()
+        correction = event('correction_started')
+        correction.update(scope=['Repair confirmed renderer defect only'],
+                          task_authority='Later native user message: Proceed with the repair')
+        self.run_cli(dict(correction, directory='/different/source'), ok=False)
+        self.run_cli(correction)
+        self.assertEqual(self.rows()[-1]['attempt'], 1)
+        self.assertTrue((self.state / 'agent-fabric/audit/opencode.jsonl').read_bytes().startswith(before))
+        self.run_cli(dict(correction, review_session_id='ses_replacement'))
+        self.run_cli(correction, ok=False)
+        self.assertEqual([r['attempt'] for r in self.rows() if r['event'] == 'correction_started'], [1, 2])
 
     def test_malformed_and_truncated_history_are_unchanged(self):
         self.run_cli()
