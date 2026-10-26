@@ -143,6 +143,30 @@ Design the smallest coherent approach that satisfies the grounded brief.
 - Reserve an operator-required phase for a genuinely non-delegable runtime action,
   never for plan approval, evidence review, or an unresolved design choice.
 
+## Evaluation Baseline
+
+During design, before review, projection or dispatch, declare a nonempty evaluation
+baseline for each phase: stable criterion IDs, observable pass/fail predicates
+with expected results, exact commands or reproducible inspection procedures with
+expected observations, and required evidence types and locations. Command-free
+criteria still require reproducible inspection. Pin an inspectable immutable
+version/digest and authoritative locator or inline snapshot before the first
+implementation mutation; carry baseline identity and criteria in implementation
+packets and final reconciliation requirements. Results must map criterion IDs to
+actual outcomes, executed commands/procedures, inspectable evidence locators and
+evaluated candidate revision/digest; assertions or command names alone are not proof.
+
+Missing, empty, ambiguous or unresolvable criteria block implementation dispatch
+and edits, never PASS. Repair only from authoritative predeclared inputs; report
+unresolved product intent, never derive acceptance from a finished patch. Changed
+criteria require an explicit revised baseline, traceable reason and authority,
+and applicable plan re-review before further implementation. Retain original
+criteria and change history, invalidate affected evidence, and forbid retroactive
+weakening to turn failure into PASS. Retry preserves baseline identity and budgets.
+Discover ordinary setup within authorized roots, not new acceptance criteria.
+Publication in Publish mode or after the review cap does not waive these execution
+gates. Direct atomic work may establish its baseline without a parent planner.
+
 ## Independent Review
 
 Record child continuation IDs, review disposition, and projection/dispatch receipts

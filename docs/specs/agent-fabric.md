@@ -158,6 +158,55 @@ valid. Static structural and rendering tests verify that this contract is presen
 and survives adapter mappings; they do not prove model compliance or provide
 runtime transport or filesystem enforcement.
 
+## Pre-implementation evaluation baseline
+
+Every phase or atomic task requires a nonempty evaluation baseline before the
+first implementation mutation. Each criterion declares a stable criterion ID,
+observable pass/fail predicate with expected result, exact command or explicit
+reproducible inspection procedure with expected observation, and required evidence
+type and location. A command-free criterion still requires reproducible inspection.
+Ordinary setup mechanics may be discovered within authorized roots; they cannot
+invent or weaken acceptance criteria after implementation.
+
+Identify the baseline by an inspectable immutable version/digest and authoritative
+locator or inline snapshot. Capture it before the first implementation mutation;
+carry that identity and criteria in implementation packets and final reconciliation.
+Use existing packet/report/evidence patterns, not a new storage engine or persisted
+ledger schema. Results map each criterion ID to actual outcome, executed command
+or inspection procedure, inspectable evidence locator, and evaluated candidate
+revision/digest. A command name or implementor assertion alone is not execution
+evidence.
+
+- Planner declares the baseline during design, before review, projection or dispatch.
+- Plan-supervisor validates baseline completeness before phase dispatch and
+  independently reconciles every criterion before phase PASS.
+- Loop-supervisor validates before initial, retry and remediation implementation
+  dispatch and independently reconciles every criterion before final PASS.
+- Implementor validates before editing and reports results against the supplied
+  baseline; missing criteria produce a precise gap, not manufactured criteria.
+- Direct atomic invocations also establish a baseline from authoritative task inputs
+  before mutation; a coherent atomic task does not require a parent planner.
+
+Missing, empty, ambiguous or unresolvable criteria block implementation dispatch
+and edits, never PASS. Supervisors may repair packets only from authoritative
+predeclared inputs; unresolved product intent follows existing escalation rules.
+Never derive acceptance silently from a finished patch. Changed criteria require
+an explicit revised baseline, traceable reason and authority, and applicable plan
+re-review before further implementation. Retain original criteria and change
+history, invalidate affected evidence, and forbid retroactive weakening to turn a
+failure into PASS. Retry preserves baseline identity and cumulative budgets.
+
+Acceptance requires every declared criterion and existing mandatory gate to pass
+with inspectable evidence tied to the evaluated candidate. Independently validate
+evidence existence, content and candidate freshness, not merely matching report
+text. Absent, failed, stale, contradictory, skipped, deferred or unrun mandatory
+evidence cannot PASS. Discretionary QA remains discretionary; `implementation_ready`
+is provisional readiness, not acceptance, and neither bypasses mandatory evidence.
+The baseline establishes predicates up front; it does not require full failing
+product tests before every docs/prompt edit or that every new test fail before
+every edit. Static contract/rendering tests do not prove live model compliance
+or provide runtime transport enforcement.
+
 ## Autonomous Execution Contract
 
 An approved task or plan authorizes every in-scope, safe, reversible local or

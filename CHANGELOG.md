@@ -7,6 +7,7 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ### Changed
 
+- Require a pinned measurable evaluation baseline before phase/atomic implementation and candidate-linked criterion evidence before acceptance; preserve change history, retry budgets and discretionary QA. Add canonical role and OpenCode rendering regression guards (instruction contracts, not runtime enforcement).
 - Rename the active review skill to `harness-review`; deprecate `task-review` as a model-disabled redirect without scripts. Add a persisted supervisor–worker investigation, supervisor evidence gates for new blocked audits, and an opt-in short native-context activation pointer; preserve historical audits and correction budgets.
 
 ## [0.2.1] - 2026-10-23

@@ -60,6 +60,7 @@ go build -o agent-fabric ./cmd/agent-fabric
 
 - **Canonical Definitions as SSOT:** Canonical agent workflows live exclusively in `agents/<id>.md` and contain full portable behavior, permissions, and declarative hook placeholders. Spec: `docs/specs/agent-fabric.md`.
 - **Self-Locating Delegation:** Fresh-context handoffs use the fail-closed Delegation Packet contract defined normatively in `docs/specs/agent-fabric.md`; hooks only enrich or validate it.
+- **Eval before implementation:** Pin measurable criteria before mutation; reconcile candidate-linked evidence before PASS, including direct atomic work. Contract: [`Pre-implementation evaluation baseline`](docs/specs/agent-fabric.md#pre-implementation-evaluation-baseline).
 - **Harness-Isolated Rendering:** Adapters (`adapters/<target>.json` + `internal/adapter/`) map abstract profiles (`planner`, `worker`, `reviewer`, `supervisor`) to harness-specific models and tool syntax without contaminating canonical bodies.
 - **Pi:** `extensions/pi` adds current-session Fabric role modes from global rendered agents; optional upstream `subagent` provides fresh-context delegation. Modes retain the active model and enforce exact tool lists, not OS isolation. Post-task review uses `harness-review`; setup/tests: `docs/runbooks/pi.md`.
 - **OpenCode 2:** Native ordered permissions (`bash`→`shell`, `task`→`subagent`), `model#variant`, `hidden`; portable hooks render as explicit body commands, not plugin frontmatter. Compatibility/rollout: `docs/runbooks/opencode2-supervision.md`.

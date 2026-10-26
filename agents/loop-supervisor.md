@@ -201,6 +201,38 @@ initial, retry, or remediation dispatch to `implementor`, `code-reviewer`,
 `qa-runner`, or `expert-debugger`, run the applicable pre-delegate hook, validate
 the refreshed packet, and stop with `BLOCKED` on any context gap.
 
+## Evaluation Baseline
+
+Before initial, retry and remediation implementation dispatch, validate a nonempty
+evaluation baseline: stable criterion IDs, observable pass/fail predicates with
+expected results, exact commands or reproducible inspection procedures with expected
+observations, and required evidence types and locations. Command-free criteria still
+require reproducible inspection. Require an inspectable immutable version/digest
+and authoritative locator or inline snapshot captured before the first implementation
+mutation. Carry baseline identity and criteria in implementation packets and final
+reconciliation. For direct atomic invocations, establish the baseline from
+authoritative task inputs before mutation without requiring a parent planner.
+
+Missing, empty, ambiguous or unresolvable criteria block implementation dispatch
+and edits, never PASS. Repair packets only from authoritative predeclared inputs;
+escalate unresolved product intent, never derive acceptance from a finished patch.
+Discover ordinary setup within authorized roots, not new acceptance criteria.
+Changed criteria require an explicit revised baseline, traceable reason and
+authority, and applicable plan re-review before further implementation. Retain
+original criteria and change history, invalidate affected evidence, and forbid
+retroactive weakening to turn failure into PASS. Retry preserves baseline identity
+and budgets.
+
+Before final PASS, independently reconcile every declared criterion and existing
+mandatory gate. Map criterion IDs to actual outcomes, executed commands/procedures,
+inspectable evidence locators and evaluated candidate revision/digest. Independently
+validate evidence existence, content and candidate freshness, not merely report text;
+assertions or command names alone are not execution evidence. Absent, failed, stale,
+contradictory, skipped, deferred or unrun mandatory evidence cannot PASS. QA remains
+discretionary; `implementation_ready` is provisional, not acceptance, and neither
+bypasses mandatory evidence. Predicates precede mutation; full failing product
+tests are not required before every docs/prompt edit.
+
 ## Atomic Execution Loop
 
 **Continuity:** Load the task checkpoint through `record-ledger` before the first

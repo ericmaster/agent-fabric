@@ -270,3 +270,36 @@ func TestRenderMatchesRepresentativeGoldenFixtures(t *testing.T) {
 		}
 	}
 }
+
+// Instruction preservation only; rendering is not runtime dispatch enforcement.
+func TestEvalDoDOpenCodeRendering(t *testing.T) {
+	for _, role := range []string{"implementor", "loop-supervisor"} {
+		t.Run(role, func(t *testing.T) {
+			d, err := agent.ParseFile(filepath.Join("..", "..", "agents", role+".md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, _, _, err := Render("opencode", d, Mapping{Profiles: map[string]Profile{
+				d.Fabric.Profile: {Model: "provider/test"},
+			}}, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body = strings.Join(strings.Fields(body), " ")
+			wants := []string{"inspectable immutable version/digest", "evaluated candidate revision/digest"}
+			if role == "implementor" {
+				wants = append(wants, "Before editing, validate the supplied nonempty evaluation baseline",
+					"Missing, empty, ambiguous or unresolvable criteria: return the precise gap before editing")
+			} else {
+				wants = append(wants, "Before initial, retry and remediation implementation dispatch, validate",
+					"Before final PASS, independently reconcile every declared criterion and existing mandatory gate",
+					"Absent, failed, stale, contradictory, skipped, deferred or unrun mandatory evidence cannot PASS")
+			}
+			for _, want := range wants {
+				if !strings.Contains(body, want) {
+					t.Errorf("rendered %s lost EvalDoD guard %q", role, want)
+				}
+			}
+		})
+	}
+}

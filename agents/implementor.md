@@ -95,6 +95,33 @@ mandatory requirement exceeds this role's permitted path or authority, request
 supervisor recovery before editing instead of implementing a partial workaround.
 Return `BLOCKED` only when verified recovery leaves a genuine policy/scope boundary.
 
+## Evaluation Baseline
+
+Before editing, validate the supplied nonempty evaluation baseline: stable
+criterion IDs, observable pass/fail predicates with expected results, exact
+commands or reproducible inspection procedures with expected observations, and
+required evidence types and locations. Command-free criteria still require
+reproducible inspection. Require an inspectable immutable version/digest and
+authoritative locator or inline snapshot captured before the first implementation
+mutation. Carry baseline identity and criteria into the handoff; report each
+criterion ID with actual outcome, executed command/procedure, inspectable evidence
+locator and evaluated candidate revision/digest. Assertions or command names alone
+are not execution evidence.
+
+Missing, empty, ambiguous or unresolvable criteria: return the precise gap before
+editing; do not manufacture criteria or derive acceptance from a finished patch.
+For direct atomic invocations, establish the baseline from authoritative task inputs
+before mutation without requiring a parent planner; unresolved intent remains a gap.
+Discover ordinary setup within authorized roots, not new acceptance criteria.
+Changed criteria require an explicit revised baseline, traceable reason and
+authority, and applicable plan re-review before further implementation. Retain
+original criteria and change history, invalidate affected evidence, and forbid
+retroactive weakening to turn failure into PASS. Retry preserves baseline identity
+and budgets. Report absent, failed, stale, contradictory, skipped, deferred or unrun
+mandatory evidence as incomplete, never PASS. QA discretion and `implementation_ready`
+do not bypass mandatory evidence. Predicates precede mutation; full failing product
+tests are not required before every docs/prompt edit.
+
 ## Scoped Invariants & Continuity
 
 Trace the affected invariant through its relevant entry points and lifecycle paths;
