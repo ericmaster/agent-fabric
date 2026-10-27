@@ -1,6 +1,9 @@
 # Harness review
 
-Load `skills/harness-review/SKILL.md` on execution friction or invoke `/harness-review`.
+After main-task completion (including required checks, authorized delivery and cleanup),
+load `skills/harness-review/SKILL.md` to evaluate execution friction. During execution,
+retain evidence and continue ordinary recovery; blocked or paused is not complete.
+Only an explicit user request for early review overrides this gate.
 `/task-review` is a deprecated, model-disabled redirect; migrate external callers
 and remove it when none remain. It has no scripts or second workflow.
 

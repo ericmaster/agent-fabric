@@ -78,11 +78,22 @@ class ContextTests(unittest.TestCase):
     def test_pointer_is_small_and_does_not_load_full_workflow(self):
         # Spec: docs/specs/task-retrospective.md
         text = ACTIVATION.read_text()
-        self.assertLess(len(text.split()), 100)
+        self.assertLess(len(text.split()), 125)
         for trigger in ('tool errors', 'context searches', 'ambiguous', 'stalls'):
             self.assertIn(trigger, text)
         self.assertIn('review/correction', text)
         self.assertNotIn('task-review', text)
+
+    def test_pointer_defers_review_until_main_task_completion(self):
+        # Spec: docs/specs/task-retrospective.md — completion gate.
+        text = ' '.join(ACTIVATION.read_text().split())
+        for requirement in ('after the main task is complete', 'required checks',
+                            'authorized delivery and checkout cleanup',
+                            'Retain evidence during execution',
+                            'defer loading/launch until completion',
+                            'Blocked, paused or phase-complete is not finished',
+                            'Only an explicit early-review request overrides this gate'):
+            self.assertIn(requirement, text)
 
     def test_review_handoff_preserves_standing_authority(self):
         # Spec: docs/specs/task-retrospective.md — Autonomous correction.

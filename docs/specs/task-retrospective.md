@@ -30,9 +30,15 @@ Install the short `references/activation.md` pointer in native global instructio
 files using `scripts/install_context.py <file>...`. Only its marked block is
 managed; preserve unrelated bytes, reject symlinks/malformed blocks and replace
 atomically. Installation is explicit and idempotent, not a runtime hook. The
-pointer prompts autonomous invocation for repeated tool errors, context searches
-without progress, ambiguity/misleading context and stalls. Expected red tests and
-productive exploration alone are not triggers. Load the full workflow only on
+pointer prompts post-completion evaluation of repeated tool errors, context searches
+without progress, ambiguity/misleading context and stalls observed during execution.
+Finish the main task's deliverables, required checks, authorized integration/deployment,
+live verification and checkout cleanup before automatically loading or launching the
+review. Retain evidence and use ordinary diagnosis/bounded recovery while working;
+review is not a main-task completion prerequisite. Blocked, paused, stalled and
+phase/subtask-complete states do not satisfy this gate. Only an explicit user request
+for early review overrides it; label that source checkpoint incomplete. Expected red
+tests and productive exploration alone are not triggers. Load the full workflow only on
 activation; no continuous supervisor, observer, transcript import, GLiDE, drain,
 model schedule or additional service. Invocation remains model-discretionary,
 not guaranteed; active sessions require their native context reload.
@@ -66,8 +72,9 @@ first-party session API when no dedicated tool is exposed. The skill's
 `references/pichamber.md` owns the create/audit/prompt/visibility procedure; missing
 tool discovery alone is not a capability blocker. Supply the original session ID,
 tool, project directory, task scope, source revision/history cutoff and available
-evidence locators. For an unfinished checkpoint, review the roadblock without
-claiming the main task is complete. Read the actual original history and changed
+evidence locators, including completion evidence or the explicit early-review request
+and incomplete status. Only that explicit exception permits an unfinished checkpoint;
+never claim it completes the main task. Read the actual original history and changed
 files; the executor's summary alone is insufficient. Missing native
 history is `blocked`, never a passing review. Preserve native identity and resume
 the same review/correction session when continuing its work.

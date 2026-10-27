@@ -11,7 +11,7 @@ RECIPE = ROOT / "skills/harness-review/references/pichamber.md"
 
 class TaskReviewLaunchContractTests(unittest.TestCase):
     # Spec: docs/specs/task-retrospective.md via module
-    def test_discretion_covers_completion_and_execution_trouble(self):
+    def test_discretion_evaluates_execution_trouble_only_after_completion(self):
         # Spec: docs/specs/task-retrospective.md via module
         skill = SKILL.read_text()
         description = next(line for line in skill.splitlines() if line.startswith("description:"))
@@ -21,6 +21,16 @@ class TaskReviewLaunchContractTests(unittest.TestCase):
         self.assertIn("status-only turns without new evidence", skill)
         self.assertIn("checkpoint as incomplete", skill)
         self.assertIn("never trigger recursive reviews", skill)
+        self.assertIn('Post-completion evaluation', description)
+        normalized = ' '.join(skill.split())
+        for requirement in ('**Completion gate:** finish the main task',
+                            'checkout cleanup before automatically loading this skill',
+                            'blocked, paused or stalled task is not main-task completion',
+                            'continue ordinary diagnosis and bounded recovery',
+                            'Only an explicit user request for early review overrides',
+                            'Include completion evidence locators in the launch brief'):
+            self.assertIn(requirement, normalized)
+        self.assertNotIn('invoke before repeating it', skill)
 
     def test_review_targets_execution_not_delivery_certification(self):
         # Spec: docs/specs/task-retrospective.md — task success cannot erase execution waste.

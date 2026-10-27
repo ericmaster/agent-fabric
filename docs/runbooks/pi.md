@@ -74,7 +74,7 @@ or infer native child continuation from a new stateless child.
 
 ## Harness review
 
-Invoke `skills/harness-review/SKILL.md` on execution friction or a meaningful checkpoint. Use the host's existing
+Invoke `skills/harness-review/SKILL.md` after main-task completion to evaluate execution friction, not at an unfinished checkpoint (unless the user explicitly requests early review). Use the host's existing
 native session creation/history tools to start an independent visible root with
 the original session ID. No Pi retrospective extension, pinned SDK runner,
 GLiDE, hook-driven context or background drain is needed. Existing provider/model

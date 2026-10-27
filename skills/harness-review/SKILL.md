@@ -1,6 +1,6 @@
 ---
 name: harness-review
-description: Review agent execution after completion, roadblocks, repeated tool errors, excessive context searches, misleading instructions or stalled execution; improve harness/tool use, orchestration, skills and context from original history. Visible supervisor-worker review, agent-discretionary or user-invoked; not task-delivery QA.
+description: Post-completion evaluation of agent execution, including roadblocks, repeated tool errors, excessive context searches, misleading instructions or stalled execution observed during the finished task; improve harness/tool use, orchestration, skills and context from original history. Visible supervisor-worker review, agent-discretionary or user-invoked; not task-delivery QA.
 ---
 
 # Harness review
@@ -26,7 +26,8 @@ not event capture or a continuously running supervisor. Full instructions load o
 Loading this skill is not an instruction to launch a review. Select exactly one
 entry point from the current assignment, before session creation or delegation:
 
-- **Source executor:** only an original business-task session starts step 1. First
+- **Source executor:** only an original business-task session starts step 1, after
+  satisfying the completion gate below (or an explicit user request for early review). First
   run `python3 <skill-directory>/scripts/audit.py --engine <engine> --check-source <source-session-id>`;
   a rejection stops launch. Check native history for an existing review of the same
   checkpoint and resume it instead of creating a duplicate.
@@ -55,20 +56,28 @@ source, but is not a runtime interception of native session tools.
 
 ## When to invoke (source executor only)
 
-Invoke at your discretion when a meaningful task reaches its completion checkpoint,
-or when a roadblock, repeated errors, or stalled execution warrants an independent
-look. Repeated attempts or status-only turns without new evidence are a stall
-signal: stop the unproductive loop and invoke before repeating it. A user request
-also invokes this skill. Do not require the user to notice trouble or ask first.
-A single recovered, irrelevant tool error need not launch another review. Repeated
-context searches without new evidence or ambiguous/misleading instructions are
-also triggers; expected red tests and productive exploration alone are not.
+**Completion gate:** finish the main task's requested deliverables, required checks,
+authorized integration/deployment and live verification, and checkout cleanup before
+automatically loading this skill or launching its workflow. A phase/subtask checkpoint,
+blocked, paused or stalled task is not main-task completion. Harness review is a
+post-completion evaluation, never a prerequisite for finishing the main task.
+
+During execution, retain native evidence of roadblocks, repeated tool errors,
+context searches without progress, ambiguous/misleading instructions and stalls;
+continue ordinary diagnosis and bounded recovery without starting harness review.
+Repeated attempts or status-only turns without new evidence call for a changed
+recovery strategy, not an early retrospective. At main-task completion, use those
+signals to decide whether an independent review is warranted; a single recovered,
+irrelevant error, expected red tests or productive exploration alone need not launch one.
+Only an explicit user request for early review overrides the completion gate;
+identify that checkpoint as incomplete and never certify the unfinished task.
 Optimize recurrence, time and tokens including review overhead; claim savings only
 from actual comparisons. Correct proven causes within scoped maintenance authority,
 not by adding duplicate rules when existing guidance already answers the question.
 
-Freeze the relevant commit and task-history cutoff. For an unfinished task, identify
-that checkpoint as incomplete; inspect the roadblock without certifying completion.
+Freeze the completed task's relevant commit and task-history cutoff. Include completion
+evidence locators in the launch brief, or the explicit early-review request and
+incomplete status when that exception applies.
 Reuse an existing review for the same checkpoint rather than creating duplicates.
 Review/correction episodes never trigger recursive reviews of themselves.
 

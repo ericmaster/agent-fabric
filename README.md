@@ -208,8 +208,10 @@ compliance or add runtime transport.
 
 ## Harness review
 
-Invoke [`harness-review`](skills/harness-review/SKILL.md) for repeated tool errors,
-context searches without progress, misleading instructions or stalls. A visible
+After main-task completion, invoke [`harness-review`](skills/harness-review/SKILL.md)
+to evaluate repeated tool errors, context searches without progress, misleading
+instructions or stalls. Retain evidence during execution; only an explicit user
+request permits early review. A visible
 supervisor delegates investigation to a persisted read-only worker, verifies
 blocker claims and owns authorized correction with tests and independent review.
 `/task-review` is deprecated; migrate callers to `/harness-review`.
