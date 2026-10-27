@@ -21,7 +21,39 @@ install it explicitly with `python3 scripts/install_context.py <instruction-file
 Only the marked block is managed; `--remove` rolls it back. This is static context,
 not event capture or a continuously running supervisor. Full instructions load on demand.
 
-## When to invoke
+## 0. Route the current role before doing anything
+
+Loading this skill is not an instruction to launch a review. Select exactly one
+entry point from the current assignment, before session creation or delegation:
+
+- **Source executor:** only an original business-task session starts step 1. First
+  run `python3 <skill-directory>/scripts/audit.py --engine <engine> --check-source <source-session-id>`;
+  a rejection stops launch. Check native history for an existing review of the same
+  checkpoint and resume it instead of creating a duplicate.
+- **Assigned review supervisor:** use this session as `review_session_id`, record
+  `review_started`, then continue at step 2. Skip step 1; keep the supplied original
+  `source_session_id` throughout investigation, correction and patch acceptance.
+- **Investigation or diagnostic worker:** perform only the read-only brief and
+  return evidence to the supervisor. This is a leaf: create no sessions or agents.
+- **Correction writer:** implement and test only the assigned fix, record correction
+  actions and return the candidate to the existing supervisor. This is a leaf;
+  the supervisor, not the writer, arranges independent patch review.
+- **Patch reviewer:** inspect the frozen patch, source history and checks; report
+  patch acceptance to the existing supervisor. This is a leaf, not another harness
+  review supervisor; skip steps 1, 2 and 4 and create no sessions or agents.
+- **Skill repair / explicit review opt-out:** repair or inspect the skill directly
+  in the current session under the user's scope; launch no harness-review workflow.
+
+Every dispatch names its role, original source ID, existing supervisor ID and
+entry point. The supervisor alone dispatches the bounded investigation, diagnosis,
+correction and patch-review leaves as siblings; never a chain of supervisors.
+Errors, stalls, completion hooks and global activation pointers inside this episode
+stay with the existing supervisor. If the role/source is unclear, resolve it from
+the assignment or native history before dispatch; never default to step 1.
+The recorder rejects a recorded reviewer/worker/writer being rebound as a new
+source, but is not a runtime interception of native session tools.
+
+## When to invoke (source executor only)
 
 Invoke at your discretion when a meaningful task reaches its completion checkpoint,
 or when a roadblock, repeated errors, or stalled execution warrants an independent
@@ -40,7 +72,7 @@ that checkpoint as incomplete; inspect the roadblock without certifying completi
 Reuse an existing review for the same checkpoint rather than creating duplicates.
 Review/correction episodes never trigger recursive reviews of themselves.
 
-## 1. Start an independent supervisor
+## 1. Source executor: start one independent supervisor
 
 Identify the **original source session ID**, engine, absolute working directory,
 frozen commit, exact task scope and task authority. Preserve this original ID
@@ -55,8 +87,8 @@ tool is exposed; tool discovery alone does not prove session creation unavailabl
 Do not fork the writer or silently substitute a hidden child. If the available
 native interfaces cannot create a visible independent root, record the exact
 failed request/capability rather than changing visibility or independence.
-Pass only the source session ID, directory, commit/scope, task authority and the
-instruction to execute this skill's checklist. Do not pass the author's diagnosis,
+Pass the role `review supervisor`, the instruction to skip step 1 and enter step 2,
+the source session ID, directory, commit/scope and task authority. Do not pass the author's diagnosis,
 final answer or a hand-written transcript as evidence. Immediately after receiving
 the real review ID, append `review_requested` from the source session. Make
 `review_started` the reviewer's first action, **before reading history**. These
@@ -95,7 +127,7 @@ created, append `blocked` from the real source session with no review ID; do not
 fabricate a reviewer. Do not add a token, model-catalog
 or native-version gate or invent a PASS.
 
-## 2. Delegate investigation; verify closure
+## 2. Assigned supervisor: delegate investigation; verify closure
 
 The visible review root supervises one fresh read-only native worker with a
 persisted session/history locator, distinct from source and supervisor. Reuse the
@@ -226,10 +258,12 @@ checkpoint's acceptance as approval for changed code. Plan-only/report-only
 authority permits a finding, not a patch; record the precise execution boundary
 as BLOCKED.
 
-Run focused regression checks and repository-required tests. Freeze the candidate
+The correction writer runs focused regression checks and repository-required tests. Freeze the candidate
 commit and append `correction_completed` with actual command/exit-code/evidence
-entries, preserving failed checks. Start a separate fresh-context independent
-**patch reviewer** using the same native interfaces. Require its session ID to
+entries, preserving failed checks, then return to the existing supervisor.
+The supervisor starts a separate fresh-context independent **patch reviewer** leaf
+using the same native interfaces; its brief prohibits delegation and restarting
+this workflow. Require its session ID to
 differ from both the original
 source and correction writer; require original-history access and inspection of
 the patch and actual test results. Audit this as `phase: patch`, retaining the

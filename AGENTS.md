@@ -84,7 +84,7 @@ print flags/defaults without loading sources or writing state (exit 0).
 - **Discretionary QA:** Recommended, not mandatory; loop-supervisor decides run/skip/reuse/defer. QA-only execution blockers go upward without freezing implementation; unrun checks never become PASS. Setup changes belong to implementation roles under existing authority. Spec: `docs/specs/agent-fabric.md` (Discretionary QA Contract).
 - **Delivery & Recovery:** Supervisors own integration, authorized deployment, verification and clean closure. Soft exhaustion triggers evidence-backed bounded recovery under standing task authority, not repeated permission requests; preserve history and explicit hard caps. Prefer a single-writer current checkout after dirty-work triage; isolate concurrent writers or when mandated. Never discard/commit foreign work. Contract: `docs/specs/agent-fabric.md` (Delivery ownership and checkout closure; Native asynchronous orchestration).
 
-- **Evidence:** JSONL entries are agent reports, not automatic proof of success. Record native session IDs, actual checks, patch/revision and outcome; preserve failures and history. Review/correction sessions do not start recursive retrospectives. Legacy retrospective CLI/data remain compatibility utilities, not part of the skill's delivery path.
+- **Evidence:** JSONL entries are agent reports, not automatic proof of success. Record native session IDs, actual checks, patch/revision and outcome; preserve failures and history. Route harness-review roles at skill step 0 before launch; review/correction leaves never start recursive retrospectives. Legacy retrospective CLI/data remain compatibility utilities, not part of the skill's delivery path.
 
 ## Testing
 

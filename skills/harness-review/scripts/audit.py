@@ -218,7 +218,17 @@ def scan(output, engine):
     return rows
 
 
-def audit(engine, report=None):
+def check_source(rows, source):
+    # Spec: docs/specs/task-retrospective.md — preserve the original episode identity.
+    if not text(source) or source != source.strip():
+        raise ValueError('source must be nonempty text')
+    for row in rows:
+        if row['source_session_id'] != source and source in (
+                row.get('review_session_id'), row.get('worker_session_id'), row.get('writer_session_id')):
+            raise ValueError('review/worker/writer cannot become a recursive review source')
+
+
+def audit(engine, report=None, source=None):
     engine = ENGINES[engine]
     if report is not None:
         report = validate(report)
@@ -227,12 +237,19 @@ def audit(engine, report=None):
     except FileNotFoundError:
         if report is not None:
             raise
+        if source is not None:
+            check_source([], source)
+            return {'source_session_id': source, 'launch_allowed': True}
         return summary([])
     with os.fdopen(fd, 'r+b') as output:
         fcntl.flock(output, fcntl.LOCK_EX)
         rows = scan(output, engine)
+        if source is not None:
+            check_source(rows, source)
+            return {'source_session_id': source, 'launch_allowed': True}
         if report is None:
             return summary(rows)
+        check_source(rows, report['source_session_id'])
         record = dict(report, schema_version=2, engine=engine, agent_reported=True,
                       recorded_at=datetime.now(timezone.utc).isoformat())
         if report['event'] == 'correction_started':
@@ -273,13 +290,18 @@ def summary(rows):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--engine', required=True, choices=ENGINES)
-    parser.add_argument('--summary', action='store_true', help='read existing log; no task coverage denominator')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--summary', action='store_true', help='read existing log; no task coverage denominator')
+    mode.add_argument('--check-source', help='read-only pre-launch guard against recursive source identity')
     args = parser.parse_args()
     try:
-        data = sys.stdin.buffer.read(ROW_LIMIT + 1) if not args.summary else b''
+        data = sys.stdin.buffer.read(ROW_LIMIT + 1) if not (args.summary or args.check_source is not None) else b''
         if len(data) > ROW_LIMIT:
             raise ValueError('stdin exceeds 64 KiB')
-        result = audit(args.engine) if args.summary else audit(args.engine, validate(json.loads(data)))
+        if args.check_source is not None:
+            result = audit(args.engine, source=args.check_source)
+        else:
+            result = audit(args.engine) if args.summary else audit(args.engine, validate(json.loads(data)))
     except (ValueError, OSError, TypeError, RecursionError):
         print('harness-review audit: invalid/unsafe input, history, size or destination; no success recorded', file=sys.stderr)
         return 1

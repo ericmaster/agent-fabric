@@ -318,6 +318,75 @@ class TaskReviewAuditTests(unittest.TestCase):
         self.assertEqual(sorted(codes), [0, 0, 1, 1, 1, 1])
         self.assertEqual([row['attempt'] for row in self.rows('pi')], [1, 2])
 
+    def test_recorded_review_roles_cannot_become_recursive_sources(self):
+        # Spec: docs/specs/task-retrospective.md — children retain original source.
+        self.run_cli(event())
+        self.run_cli(event('correction_started'))
+        self.run_cli(blocker(report()))
+        path = self.state / 'agent-fabric/audit/opencode.jsonl'
+        original = path.read_bytes()
+        for child in ('ses_review', 'ses_writer', 'ses_worker'):
+            nested = dict(event(), source_session_id=child, session_id=child,
+                          review_session_id='ses_nested')
+            self.run_cli(nested, ok=False)
+            nested.pop('event')
+            nested.pop('session_id')
+            nested.pop('evidence_refs')
+            nested['checks'] = report()['checks']
+            self.run_cli(nested, ok=False)
+            result = subprocess.run([sys.executable, str(CLI), '--engine', 'openchamber',
+                                     '--check-source', child], capture_output=True, text=True,
+                                    env=self.env, timeout=10)
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(path.read_bytes(), original)
+        # Patch reviewer remains tied to the original task, not a fresh review source.
+        self.run_cli(dict(report(), phase='patch', writer_session_id='ses_writer',
+                          review_session_id='ses_patch'))
+        self.run_cli(dict(event(), source_session_id='ses_patch', session_id='ses_patch',
+                          review_session_id='ses_nested'), ok=False)
+        self.run_cli(dict(event(), source_session_id='ses_unrelated', session_id='ses_unrelated',
+                          review_session_id='ses_unrelated_review'))
+
+    def test_source_preflight_is_read_only_with_or_without_existing_history(self):
+        # Spec: docs/specs/task-retrospective.md — preflight before native launch.
+        command = [sys.executable, str(CLI), '--engine', 'pi', '--check-source', 'ses_source']
+        result = subprocess.run(command, capture_output=True, text=True, env=self.env, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(json.loads(result.stdout)['launch_allowed'])
+        self.assertFalse(self.state.exists())
+        self.run_cli(engine='pi')
+        path = self.state / 'agent-fabric/audit/pi.jsonl'
+        original = path.read_bytes()
+        result = subprocess.run(command, capture_output=True, text=True, env=self.env, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(path.read_bytes(), original)
+        path.write_bytes(original[:-1])
+        result = subprocess.run(command, capture_output=True, text=True, env=self.env, timeout=10)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(path.read_bytes(), original[:-1])
+
+    def test_role_router_precedes_launch_and_dispatches_leaves(self):
+        # Spec: docs/specs/task-retrospective.md — instruction contract, not model execution.
+        skill = (CLI.parents[1] / 'SKILL.md').read_text()
+        router = skill.split('## 0. Route the current role before doing anything', 1)[1].split(
+            '## When to invoke', 1)[0]
+        for role in ('Source executor', 'Assigned review supervisor', 'Investigation or diagnostic worker',
+                     'Correction writer', 'Patch reviewer', 'Skill repair / explicit review opt-out'):
+            self.assertIn(f'**{role}:**', router)
+        self.assertIn('--check-source', router)
+        self.assertIn('Skip step 1', router)
+        self.assertIn('as siblings', router)
+        self.assertIn('The supervisor starts a separate fresh-context independent **patch reviewer** leaf', skill)
+        pointer = (CLI.parents[1] / 'references/activation.md').read_text()
+        self.assertIn('original task executors only', pointer)
+        self.assertIn('non-delegating leaves', pointer)
+        self.assertIn('user opt-outs', pointer)
+        launch = (CLI.parents[1] / 'references/pichamber.md').read_text()
+        self.assertIn('**Supervisor launch:**', launch)
+        self.assertIn('**Leaf launch:**', launch)
+        self.assertIn('not entry at step 2 or a new review checklist', launch)
+        self.assertIn('do not append `review_requested` or `review_started` for that dispatch', launch)
+
     def test_first_correction_accepts_later_authority_and_varied_review_prose(self):
         self.run_cli(event())
         started = event('review_started')

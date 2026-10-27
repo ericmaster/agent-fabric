@@ -23,6 +23,13 @@ no installed dispatcher is needed.
 
 ## Create, audit, submit
 
+Select the assigned role using skill step 0 before using these routes. Only an
+original source executor launches a `review supervisor`; the existing supervisor
+launches investigation, diagnostic, correction and patch-review leaves. Reuse the
+create/prompt/list transport for leaves, not the supervisor prompt or review-start
+audits below. Every leaf brief names its role, original source ID, supervisor ID,
+bounded assignment and the instruction to return without delegation.
+
 3. `POST /api/pi/sessions` with JSON:
 
    ```json
@@ -37,17 +44,25 @@ no installed dispatcher is needed.
 
    Require HTTP 201, a real `session.id` different from the source, the intended
    `session.directory`, and `streamEpoch`. This creates a new root, not a fork.
-   Immediately append `review_requested` using that ID from the source session.
-   If recording fails, do not submit the prompt.
+    For a supervisor launch only, immediately append `review_requested` using that
+    ID from the source session. If recording fails, do not submit the prompt.
+    For a leaf launch, retain its ID in the existing supervisor's native history;
+    do not append `review_requested` or `review_started` for that dispatch.
 4. `POST /api/pi/sessions/<review-id>/prompt` with JSON containing `directory`,
    `text`, the **new session's** `streamEpoch`, and a fresh UUID `operationId`.
-   `text` contains only the original source ID/history locator, directory,
+   **Supervisor launch:** `text` names the role `review supervisor`, says to skip skill step 1 and enter
+   step 2 in this session, and contains the original source ID/history locator, directory,
    frozen revision/history cutoff, scope/authority and instruction to execute
    harness-review as an execution-quality retrospective (harness/tool use,
    orchestration, skills/context), not task-delivery certification. Require
    `review_started` as the reviewer's first action before
-   history reads. Label a blocked/in-progress checkpoint honestly. Do not pass
-   writer diagnoses, summaries or transcript copies as evidence.
+    history reads. Label a blocked/in-progress checkpoint honestly. Do not pass
+    writer diagnoses, summaries or transcript copies as evidence.
+    **Leaf launch:** `text` contains only the role-specific bounded brief and
+    evidence/authority locators. Require a non-delegating return to the existing
+    supervisor, not entry at step 2 or a new review checklist. Correction writers
+    still record their prescribed correction events; patch outcomes stay tied to
+    the original source and writer. Leaf dispatch is not a new review episode.
 5. Require HTTP 202 with `accepted: true` and `messageId`, then verify the root
    is listed under the intended directory. Creation or prompt acceptance is not
    review completion. Leave the session running; report its real ID/title and UI

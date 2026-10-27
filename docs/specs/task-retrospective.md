@@ -43,6 +43,23 @@ and do not claim savings without measurements or weaken correctness gates.
 
 ## Independent review
 
+Route the current assignment before any launch: only the original source executor
+enters skill step 1; an assigned supervisor records its own start and enters step
+2. Investigation, diagnostic, correction and patch-review assignments are
+non-delegating leaves under that same supervisor, not new source tasks or review
+supervisors. Dispatch briefs name role, original source ID, supervisor and entry
+point. The supervisor arranges patch review after the writer returns; neither
+writer nor patch reviewer restarts the workflow. Skill-repair tasks and explicit
+user opt-outs launch no harness review. Resolve ambiguous roles before dispatch.
+
+Before native session creation, run the recorder's read-only `--check-source ID`
+preflight and check native history for an existing review of the checkpoint.
+Under the audit lock, preflight and all new appends reject an original source ID
+already recorded as another source's reviewer, worker or writer. Historical bytes
+remain readable and unchanged. This is a recorded-identity guard, not native-tool
+interception or proof that an unrecorded child cannot launch; role routing remains
+required even without an audit record. Reuse existing review continuations.
+
 Create a visible independent root session through the host's existing native
 session tools, including direct calls to the already-running PiChamber server's
 first-party session API when no dedicated tool is exposed. The skill's
