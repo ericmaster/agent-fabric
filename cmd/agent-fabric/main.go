@@ -74,6 +74,10 @@ func main() {
 		os.Exit(2)
 	}
 	cmd, args := os.Args[1], os.Args[2:]
+	if cmd == "guard" {
+		guardMain(args)
+		return
+	}
 	if cmd == "--help" || cmd == "-h" || cmd == "-help" {
 		usage()
 		return
@@ -149,6 +153,7 @@ func main() {
 }
 
 func usage() {
+	fmt.Fprintln(os.Stderr, "agent-fabric guard check [--log-file ABSOLUTE_PATH] (JSON stdin; read checks only)")
 	fmt.Fprintln(os.Stderr, "agent-fabric install|sync|hub install SOURCE|list|validate|doctor|uninstall|maintenance|retrospective analyze|dispatch|status|enable|disable|lessons [flags]")
 	fmt.Fprintln(os.Stderr, "Use agent-fabric <command> --help (or hub install --help) for flags and defaults.")
 }

@@ -34,6 +34,7 @@ document's home is ambiguous, and apply the frontmatter from §4.
 
 ## Specs
 
+- [`specs/secret-guard.md`](specs/secret-guard.md) — Intermediate read-path checker and private denial audit; shell support deferred.
 - [`specs/agent-fabric.md`](specs/agent-fabric.md) — Portable agent schema, multi-harness adapter rendering, and manifest tracking.
 - [`specs/task-retrospective.md`](specs/task-retrospective.md) — Harness review: supervisor–worker investigation, verified blockers, scoped correction and one audit per engine.
 

@@ -7,6 +7,7 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ### Added
 
+- Intermediate JSON `guard check` read-path checker with symlink-before-`..` proc matching and private Linux denial audit. Shell requests explicitly return unsupported; no harness integration.
 - Instincts on reusable lessons: optional `confidence` in [0.3, 0.9] and `applicability` (`project` default | `global`) on `LessonCandidate`, with validation, read filtering, and advisory-only contracts (no auto-apply).
 
 ### Changed
