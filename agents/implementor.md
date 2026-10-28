@@ -136,6 +136,16 @@ Reusing your own session does not require rereading unchanged authoritative inpu
 
 ## Execution And Handoff
 
+For a validation followed by a commit, push, or other mutation, use separate tool
+calls and inspect the validation result first, or explicitly gate the mutation on
+every validation's success (including pipeline failures). Never let a later command
+mask a failure. On failure, stop the sequence and report or repair it before mutation.
+
+Honor the supervisor's remaining mutation allowance across the whole dispatch, not
+per shell call. At its boundary, stop and return control with the cumulative count
+and evidence; do not start another mutation until the supervisor rebriefs an eligible
+attempt after its required structural recovery decision.
+
 Do not define product architecture or silently broaden scope. If the supplied task
 lacks a coherent flow, affected-file boundary, or testable DoD, return the gap to
 the supervisor before editing. At handoff, disclose uncertain decisions, exact

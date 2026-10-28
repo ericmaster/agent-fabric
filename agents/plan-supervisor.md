@@ -170,6 +170,9 @@ contradictory, skipped, deferred or unrun mandatory evidence cannot PASS. QA rem
 discretionary; `implementation_ready` is provisional, not acceptance, and neither
 bypasses mandatory evidence. Predicates precede mutation; full failing product
 tests are not required before every docs/prompt edit.
+Run validation separately from a subsequent commit, push, or other mutation and
+inspect its result first, or explicitly gate that mutation on every validation's
+success, including pipeline failures. A later command must not mask a failed gate.
 
 ## Autonomous Boundaries
 
@@ -474,6 +477,9 @@ child's structural recovery decision. A phase is overbroad when unresolved
 findings span multiple independently testable producer-to-consumer paths or state
 machines, need disjoint acceptance surfaces, or lack one shared enforcement
 boundary for a coherent fix. Budget exhaustion alone is not an external blocker.
+Require the phase supervisor to bound each child dispatch at the next structural
+recovery boundary and receive control and cumulative evidence before authorizing
+any further mutation.
 
 For `recovery.mode: split`, independently validate that every original DoD item is
 owned by at least one complete vertical slice. The aggregate gate may verify only

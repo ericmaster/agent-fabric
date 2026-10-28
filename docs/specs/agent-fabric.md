@@ -337,6 +337,11 @@ at one shared enforcement boundary without combining unrelated mutations. A
 repeated finding does not require decomposition when one coherent root-cause fix
 still closes the path.
 
+Bound each implementor dispatch by the remaining allowance before the next required
+structural recovery decision. The child stops and returns its cumulative count and
+evidence at that boundary; another mutation requires a recorded decision and an
+eligible rebrief. This is an instruction contract, not runtime isolation.
+
 For an overbroad phase, the supervisor freezes the latest failed checkpoint as
 diagnostic history, identifies the last revision with verified prerequisite
 evidence, and proposes complete vertical replacement slices. Each slice owns one
@@ -507,6 +512,11 @@ renewal of an already authorized task. Further autonomous renewal requires a new
 verified acceptance criterion or restored prerequisite since the last renewal;
 another hypothesis alone cannot sustain a chain of exhausted episodes.
 Hard caps override standing authority.
+
+Validation followed by a commit, push, or other mutation must use separate tool calls
+with the validation result inspected first, or explicitly gate the mutation on every
+validation's success, including pipeline failures. A later command cannot mask a
+failed validation.
 
 Before every mutation, record a compact mutation brief: hypothesis, difference from
 prior attempts, evidence, failing regression, budget and rollback. For initial work,

@@ -11,6 +11,7 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ### Changed
 
+- Make validation-to-mutation sequencing fail closed and bound implementor dispatches at structural recovery handback (instruction contracts, not runtime enforcement).
 - Defer automatic harness-review loading and launch until main-task completion, including required checks, authorized delivery and cleanup; retain friction evidence during execution and allow early review only on explicit user request.
 - Route harness-review by assigned role before dispatch; keep correction and patch review as leaves under one supervisor, honor skill-repair/opt-out scope, and reject recorded child identities reused as review sources before launch or audit append.
 - Show root/subcommand help, including sync and hub install flags, with successful help exits; preserve unknown-flag failures.

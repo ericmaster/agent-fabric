@@ -910,6 +910,27 @@ func TestSupervisionRecoveryContracts(t *testing.T) {
 	}
 }
 
+func TestMutationGateAndChildHandbackContracts(t *testing.T) {
+	for _, tc := range []struct {
+		agent string
+		wants []string
+	}{
+		{"implementor", []string{"Never let a later command\nmask a failure", "remaining mutation allowance across the whole dispatch", "stop and return control with the cumulative count"}},
+		{"loop-supervisor", []string{"including pipeline failures. A later command must not mask a failed gate", "Bound each implementor dispatch by the remaining allowance", "Do not authorize a fourth mutation until the"}},
+		{"plan-supervisor", []string{"including pipeline failures. A later command must not mask a failed gate", "bound each child dispatch at the next structural", "receive control and cumulative evidence"}},
+	} {
+		d, err := ParseFile(filepath.Join("..", "..", "agents", tc.agent+".md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range tc.wants {
+			if !strings.Contains(d.Body, want) {
+				t.Errorf("%s missing contract %q", tc.agent, want)
+			}
+		}
+	}
+}
+
 func TestSupervisorsRecoverOverbroadPhasesByStableBaseDecomposition(t *testing.T) {
 	for _, tc := range []struct {
 		agent string

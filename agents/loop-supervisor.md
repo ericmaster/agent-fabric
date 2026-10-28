@@ -232,6 +232,9 @@ contradictory, skipped, deferred or unrun mandatory evidence cannot PASS. QA rem
 discretionary; `implementation_ready` is provisional, not acceptance, and neither
 bypasses mandatory evidence. Predicates precede mutation; full failing product
 tests are not required before every docs/prompt edit.
+Run validation separately from a subsequent commit, push, or other mutation and
+inspect its result first, or explicitly gate that mutation on every validation's
+success, including pipeline failures. A later command must not mask a failed gate.
 
 ## Atomic Execution Loop
 
@@ -430,6 +433,10 @@ requires a forbidden path or authority after verified recovery becomes `BLOCKED`
 an environment issue requires capability probes and materially distinct safe
 recovery first.
 Do not spend recovery budget on adjacent symptoms.
+Bound each implementor dispatch by the remaining allowance before the next required
+structural recovery decision; require the child to stop and hand back its cumulative
+count and evidence at that boundary. Do not authorize a fourth mutation until the
+decision is recorded and the child is rebriefed for an eligible attempt.
 
 Before every mutation record hypothesis, difference from prior attempts, evidence,
 failing regression, budget and rollback. Initial work names its failing acceptance
