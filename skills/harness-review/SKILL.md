@@ -255,9 +255,12 @@ Append `correction_started` from the correction writer **before the first edit**
 identifying the original directory, separate absolute worktree, branch, writer
 and reviewer. Permit at most **two cumulative correction starts per original
 source session**, across reviewer changes. Keep the original directory fixed;
-the first correction start freezes correction scope and verified authority for
-later starts. Earlier review descriptions may differ, and later user approval may
-authorize that first correction; cite its native locator without rewriting history.
+the first correction start fixes correction scope and verified authority for
+later starts unless the user explicitly approves an amendment. For a changed
+scope or authority, add `scope_change_authority` to `correction_started`, citing
+the new native user approval locator; never infer it from audit text or standing
+authority alone. Preserve earlier records and the original source/directory.
+Earlier review descriptions may differ; later approval may authorize the first correction.
 The locked recorder assigns the attempt number and rejects further starts.
 If the cap is exhausted, append `blocked`; do not change IDs to reset it.
 Preserve dirty and unrelated work. Before integration or deployment, re-read the
@@ -346,7 +349,10 @@ removal/disable actions actually occurred; this skill does not install or remove
 hooks itself.
 
 For corrections also supply `writer_session_id`, `worktree` and `branch`; for
-correction completion/delivery supply `commit` and a nonempty `check` list of
+an explicitly user-approved scope/authority amendment, supply `scope_change_authority`
+only on `correction_started` (a nonempty native approval locator, not approval proof).
+The same two cumulative starts still apply; an amendment never resets the budget.
+For correction completion/delivery supply `commit` and a nonempty `check` list of
 `{"command":"actual command","exit_code":0,"evidence":["result locator"]}`.
 Keep command arguments free of credentials. Optional `reason` and `evidence_refs`
 describe outcomes without environment dumps, transcripts or raw tool output.

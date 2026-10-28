@@ -72,7 +72,8 @@ def validate(report, *, legacy=False, historical=False):
     required |= {'review_session_id', 'commit', 'checks'} if final else {'session_id', 'evidence_refs'}
     if not required <= report.keys() or report.keys() - required - {
             'event', 'phase', 'writer_session_id', 'findings', 'status', 'review_session_id',
-            'worktree', 'branch', 'commit', 'reason', 'evidence_refs', 'check', 'worker_session_id'}:
+            'worktree', 'branch', 'commit', 'reason', 'evidence_refs', 'check', 'worker_session_id',
+            'scope_change_authority'}:
         raise ValueError('missing required or unknown report fields')
     for key in (report.keys() & {'source_session_id', 'session_id', 'review_session_id', 'directory',
                                 'commit', 'task_authority', 'writer_session_id', 'worktree', 'branch', 'reason'}):
@@ -89,6 +90,10 @@ def validate(report, *, legacy=False, historical=False):
         raise ValueError('scope must be a nonempty list of text')
     if 'evidence_refs' in report and not texts(report['evidence_refs']):
         raise ValueError('evidence_refs must be nonempty locators')
+    if 'scope_change_authority' in report:
+        if (event != 'correction_started' or not text(report['scope_change_authority'])
+                or report['scope_change_authority'] != report['scope_change_authority'].strip()):
+            raise ValueError('scope amendment requires an explicit user approval locator on correction start')
     phase = report.get('phase', 'task')
     if phase not in ('task', 'patch'):
         raise ValueError('phase must be task or patch')
@@ -255,11 +260,13 @@ def audit(engine, report=None, source=None):
         if report['event'] == 'correction_started':
             prior = [row for row in rows if row['source_session_id'] == report['source_session_id']]
             # Review prose can differ and a later user message may grant repair authority.
-            # The first correction freezes its contract; all starts share the source cap.
+            # Contract amendments require new explicit approval; never reset the source cap.
             starts = [row for row in prior if row['event'] == 'correction_started']
-            if (any(row['directory'] != report['directory'] for row in prior)
-                    or any(any(row[key] != report[key] for key in ('scope', 'task_authority')) for row in starts)):
-                raise ValueError('original source scope/authority cannot change for correction')
+            if any(row['directory'] != report['directory'] for row in prior):
+                raise ValueError('original source directory cannot change for correction')
+            if (starts and any(starts[-1][key] != report[key] for key in ('scope', 'task_authority'))
+                    and not report.get('scope_change_authority')):
+                raise ValueError('changed correction scope/authority requires explicit user approval')
             attempts = len(starts)
             if attempts >= 2:
                 raise ValueError('original source correction limit (2) exhausted')

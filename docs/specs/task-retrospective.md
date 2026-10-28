@@ -182,9 +182,13 @@ patch against the new state rather than overwrite it or reuse stale acceptance.
 Follow the skill's bounded correction budget, recording unsuccessful attempts
 rather than resetting them.
 The source directory is immutable across reports. The first correction start
-freezes correction scope/authority for subsequent starts, not the free-text scope
-and authority descriptions in earlier reviews. Later user approval may authorize
-the first correction; cite it and preserve earlier read-only reports. All starts
+fixes correction scope/authority, not the free-text descriptions in earlier reviews.
+Changing the latest correction contract requires explicit new user approval:
+`scope_change_authority` on `correction_started` cites its native message locator.
+This field is allowed only on correction starts; the recorder checks nonempty text,
+not whether approval actually grants authority. Standing authority or audit text
+alone cannot authorize an amendment. Preserve all earlier records and source identity.
+Later user approval may also authorize the first correction. All starts
 for the original source still consume the same two-attempt budget under lock,
 including legacy starts and reviewer changes. The recorder checks identity and
 budget consistency, not whether an approval actually grants authority.

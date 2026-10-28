@@ -318,6 +318,27 @@ class TaskReviewAuditTests(unittest.TestCase):
         self.assertEqual(sorted(codes), [0, 0, 1, 1, 1, 1])
         self.assertEqual([row['attempt'] for row in self.rows('pi')], [1, 2])
 
+    def test_explicit_scope_amendment_preserves_history_directory_and_cap(self):
+        self.run_cli(event('correction_started'))
+        path = self.state / 'agent-fabric/audit/opencode.jsonl'
+        original = path.read_bytes()
+        amended = dict(event('correction_started'), scope=['New confirmed finding only'],
+                       task_authority='New native user approval',
+                       scope_change_authority='ses_review/msg_new_user_approval')
+        for invalid in ('', ' ', None, []):
+            self.run_cli(dict(amended, scope_change_authority=invalid), ok=False)
+        self.run_cli(dict(amended, directory='/different/source'), ok=False)
+        self.assertEqual(path.read_bytes(), original)
+        self.run_cli(amended)
+        self.assertEqual([row['attempt'] for row in self.rows()], [1, 2])
+        self.assertEqual(self.rows()[-1]['scope_change_authority'], amended['scope_change_authority'])
+        self.assertTrue(path.read_bytes().startswith(original))
+        after = path.read_bytes()
+        self.run_cli(dict(amended, review_session_id='ses_new_review'), ok=False)
+        self.assertEqual(path.read_bytes(), after)
+        self.assertEqual(self.run_cli(summary=True)['correction_attempts'], 2)
+        self.run_cli(dict(event('review_started'), scope_change_authority='native approval'), ok=False)
+
     def test_recorded_review_roles_cannot_become_recursive_sources(self):
         # Spec: docs/specs/task-retrospective.md — children retain original source.
         self.run_cli(event())
