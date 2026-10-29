@@ -114,6 +114,36 @@ class TaskReviewLaunchContractTests(unittest.TestCase):
         self.assertIn("references/pichamber.md", skill)
         self.assertTrue(RECIPE.is_file())
 
+    def test_opencode_native_history_reference_is_discoverable(self):
+        # Spec: docs/specs/agent-fabric.md — native history reads without new runtime.
+        skill = SKILL.read_text()
+        self.assertIn("references/opencode.md", skill)
+        reference = (ROOT / "skills/harness-review/references/opencode.md").read_text()
+        normalized = " ".join(reference.split())
+        for requirement in ("no SDK, scripted", "Do not inspect credentials",
+                            "opencode api --help", "Operation IDs",
+                            "Operation not found", "session.get",
+                            "session.message.list", "session.message.get",
+                            "Cursor cannot be combined with order",
+                            "limit` is a maximum, not a guarantee",
+                            "not a V1 `parts` array",
+                            "incomplete coverage, never absent history",
+                            "sqlite3 -readonly", "not proof of absent history"):
+            self.assertIn(requirement, normalized)
+
+    def test_recovered_detours_keep_metadata_only_guidance(self):
+        # Spec: docs/specs/agent-fabric.md — validation before mutation; targeted process inspection.
+        runbook = " ".join((ROOT / "docs/runbooks/opencode2-supervision.md").read_text().split())
+        for requirement in ("Inspect a preflight result in its own tool call before running any mutation",
+                            "aggregate to exit 0",
+                            "`agents/plan-supervisor.md` (validation before mutation)"):
+            self.assertIn(requirement, runbook)
+        implementor = " ".join((ROOT / "agents/implementor.md").read_text().split())
+        self.assertIn("`ps -o pid=,comm= -p <pid>`", implementor)
+        self.assertIn("`readlink /proc/<pid>/cwd`", implementor)
+        self.assertIn("are withheld as potential secret exposure", implementor)
+        self.assertNotIn("cat /proc/<pid>/environ", implementor)
+
     def test_native_api_recipe_has_required_create_and_send_identity(self):
         # Spec: docs/specs/task-retrospective.md via module
         recipe = RECIPE.read_text()

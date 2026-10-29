@@ -3,6 +3,7 @@ import copy
 import importlib.util
 import json
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -187,6 +188,39 @@ class LedgerTests(unittest.TestCase):
                 self.run_hook(self.request)
         self.assertEqual(Path(receipt["path"]).read_bytes(), before)
         self.assertEqual(list(self.root.glob(".ledger-*")), [])
+
+    # Spec: docs/specs/agent-fabric.md — rejected stage names the accepted vocabulary
+    def test_invalid_stage_is_rejected_without_writing_and_names_accepted_stages(self):
+        for stage in ("completed", "anything"):
+            with self.subTest(stage=stage):
+                request = copy.deepcopy(self.request)
+                request["checkpoint"]["next_stage"] = stage
+                with self.assertRaises(ValueError) as raised:
+                    self.run_hook(request)
+                message = str(raised.exception)
+                self.assertIn(repr(stage), message)
+                for accepted in sorted(ledger.STAGES):
+                    self.assertIn(accepted, message)
+                self.assertFalse(self.root.exists())
+        # A rejected stage leaves an existing journal byte-identical.
+        receipt = self.run_hook(self.request)
+        before = Path(receipt["path"]).read_bytes()
+        invalid = copy.deepcopy(self.request)
+        invalid["expected_version"] = receipt["version"]
+        invalid["checkpoint"]["next_stage"] = "completed"
+        with self.assertRaisesRegex(ValueError, "invalid next_stage"):
+            self.run_hook(invalid)
+        self.assertEqual(Path(receipt["path"]).read_bytes(), before)
+
+    # Spec: docs/specs/agent-fabric.md — documented stage vocabulary is complete
+    def test_documented_stage_vocabulary_matches_hook(self):
+        spec = (Path(__file__).resolve().parents[1] / "docs/specs/agent-fabric.md").read_text()
+        match = re.search(r"`next_stage` \(`([a-z_| ]+)`\)", " ".join(spec.split()))
+        self.assertIsNotNone(match)
+        self.assertEqual(set(match.group(1).replace(" ", "").split("|")), ledger.STAGES)
+        self.assertIn("done", ledger.STAGES)
+        self.request["checkpoint"]["next_stage"] = "done"
+        self.assertTrue(self.run_hook(self.request)["recorded"])
 
     # Spec: docs/specs/agent-fabric.md via identity and input validation
     def test_tasks_are_isolated_and_invalid_checkpoints_fail(self):

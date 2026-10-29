@@ -24,6 +24,11 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 - Freeze correction scope/authority at the first correction start, allowing later user approval and varied earlier review prose without rewriting audit history or resetting the source's two-attempt limit.
 - Rename the active review skill to `harness-review`; deprecate `task-review` as a model-disabled redirect without scripts. Add a persisted supervisor–worker investigation, supervisor evidence gates for new blocked audits, and an opt-in short native-context activation pointer; preserve historical audits and correction budgets.
 
+### Fixed
+
+- Reject an invalid ledger `next_stage` with the offending value and the complete accepted stage vocabulary, without writing state; align the specification's checkpoint stage list with the hook's accepted set.
+- Document verified OpenCode native history reads (`opencode api` operation discovery, `session.get`/`session.message.list`, cursor and truncation limits) with a read-only database fallback, and add metadata-only process inspection plus a preflight-before-mutation technique for recovered execution detours.
+
 ## [0.2.1] - 2026-10-23
 
 ### Added

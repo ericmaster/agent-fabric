@@ -44,6 +44,16 @@ Primary-only agents cannot be launched as children; Fabric supervisors use mode
 `all`. Keep one plan supervisor as delivery owner; a loop returns structural
 recovery to it rather than launching a second owner for the same plan.
 
+## Validation and mutation sequencing
+
+Inspect a preflight result in its own tool call before running any mutation that
+depends on it. A failing check followed by an unconditional command in the same
+shell can still aggregate to exit 0 (an assertion failure, then
+`git worktree remove` and `git branch -d`), so an aggregate exit is not evidence
+that the inspection passed. On preflight failure stop, report, and leave cleanup
+and delivery undone until the gate is actually satisfied. Canonical rule:
+`agents/plan-supervisor.md` (validation before mutation).
+
 ## Rollout and checks
 
 Run `go test ./...`, `python3 -m unittest discover -s tests -p 'test_supervisor_*.py'`
