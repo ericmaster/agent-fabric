@@ -44,6 +44,15 @@ Local tests reuse the installed Pi parser/loader without provider calls:
 `cd extensions/pi && npm test`. Set `PI_PACKAGE` to the actual Pi package root
 when testing a PiChamber-bundled host rather than the global installation.
 
+## Secret guard runtime
+
+`extensions/pi/secret-guard.ts` can check stock `bash` and `read` `tool_call`
+events before execution when that entry is loaded. Read checks use the pinned
+native resolved path (`@`, `file://`, tilde, Unicode spaces), not the raw
+argument; unresolved encodings block. This runbook does not install or enable
+the entry. Custom `spawnHook`, replaced tools, `pi.exec`, and `!`/`!!` are not
+protected. Contract: [`secret-guard.md`](../specs/secret-guard.md).
+
 ## Fresh-context subagents
 
 Preserve existing extensions and use the installed Pi package's example when

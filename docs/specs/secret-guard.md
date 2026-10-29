@@ -147,6 +147,34 @@ if response["decision"] != "allow":
     raise SystemExit("guard withheld operation")
 ```
 
+## Pi runtime
+
+`extensions/pi/secret-guard.ts` is source support for a loaded Pi `tool_call`
+entry. This section does not install it, change host configuration, or make the
+CLI an installed enforcement layer.
+
+Stock `bash` checks `shellCommandPrefix + "\n" + command` when a prefix is set,
+using the same settings read as the stock tool, then `guard check`. An unreadable
+prefix, a non-bash/sh `shellPath`, deny, error, a missing helper, or a timeout
+blocks with fixed reason `guard_withheld` and does not echo the request.
+
+Stock `read` resolves the argument with the pinned package `resolveReadPathAsync`
+before `guard check`. That resolver strips a leading `@`, expands `~`, decodes
+`file://`, normalizes Unicode spaces, and resolves against cwd. The helper sees
+that resolved target, not the raw argument. A missing resolver or a resolution
+error fixed-blocks without a helper call and without opening target contents.
+The resolver existence probe is metadata only.
+
+A loaded entry still runs when Fabric role mode is `off` and when Pi dispatches
+without approval. A separate process can load the same entry; parent handlers
+are not inherited.
+
+These routes are unsupported, not protected: custom `spawnHook`, replaced or
+renamed tools, a tool-closure prefix that no longer matches settings, `pi.exec`,
+and user `!`/`!!` (`user_bash`). Shell alias expansion remains outside the
+checker even when the prefix text is included. A failed or absent entry is not
+enforcement.
+
 ## Limits and verification
 
 This is not general taint/dataflow analysis. Aliases/session state, external
