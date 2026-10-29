@@ -49,9 +49,20 @@ when testing a PiChamber-bundled host rather than the global installation.
 `extensions/pi/secret-guard.ts` can check stock `bash` and `read` `tool_call`
 events before execution when that entry is loaded. Read checks use the pinned
 native resolved path (`@`, `file://`, tilde, Unicode spaces), not the raw
-argument; unresolved encodings block. This runbook does not install or enable
-the entry. Custom `spawnHook`, replaced tools, `pi.exec`, and `!`/`!!` are not
-protected. Contract: [`secret-guard.md`](../specs/secret-guard.md).
+argument; unresolved encodings block. Custom `spawnHook`, replaced tools,
+`pi.exec`, and `!`/`!!` are not protected. Contract:
+[`secret-guard.md`](../specs/secret-guard.md).
+
+Opt in without changing role-mode loading or Pi settings:
+
+```bash
+agf install --source "$PWD" --tools pi --assets secret-guard --yes
+```
+
+That writes only `extensions/agf-secret-guard/index.ts` under
+`PI_CODING_AGENT_DIR` (default `~/.pi/agent`). `--project <dir>` writes
+`<dir>/.pi/extensions/agf-secret-guard/index.ts` instead. The entry embeds the
+absolute `agf` path. Reload an owned idle session.
 
 ## Fresh-context subagents
 

@@ -1,6 +1,6 @@
 # Agent Fabric Specification
 
-Standalone shell/read guard CLI contract: [secret-guard.md](secret-guard.md); not installed enforcement.
+Standalone shell/read guard CLI contract: [secret-guard.md](secret-guard.md). Opt-in Pi discovery install is explicit; it is not default enforcement.
 
 Canonical definitions are Markdown files with YAML-like frontmatter. Identity is
 the filename stem. `description` and `x-agent-fabric.schema: 1` are required. A
@@ -81,7 +81,12 @@ extension: global `${PI_CODING_AGENT_DIR:-~/.pi/agent}/agents/<id>.md`, project
 ownership checks as other adapters. The upstream subagent extension is
 host-installed, not vendored or silently fetched by Fabric. The optional Fabric
 mode extension lives in `extensions/pi` and is installed explicitly as a local Pi
-package; see [Pi setup](../runbooks/pi.md).
+package; see [Pi setup](../runbooks/pi.md). `--assets secret-guard --tools pi`
+installs a separate discovery entry at
+`${PI_CODING_AGENT_DIR:-~/.pi/agent}/extensions/agf-secret-guard/index.ts`, or
+`<project>/.pi/extensions/agf-secret-guard/index.ts` with `--project`, using an
+absolute helper path. Ownership and stock-route limits:
+[secret-guard.md](secret-guard.md).
 Only `name`, `description`, `model`, and comma-separated `tools` are emitted.
 Bundled profiles use the explicit mapping sentinel `model: inherit`, omitting the
 native model field so the child inherits the active parent model and thinking.
@@ -1021,9 +1026,10 @@ Release archives are static cross-platform builds accompanied by
 `sha256sums.txt` and a machine-readable `release-manifest.json`. Bootstrap verifies
 archive member paths and types before extraction, installs `agent-fabric` and a
 copied `agf` alias, removes only its bundled source directories, and never edits
-shell profiles. Archives include the optional Pi mode package at `extensions/pi`;
-bootstrap stages it under the install directory but never enables it or edits Pi
-settings. Pi package installation remains explicit.
+shell profiles. Archives include the optional Pi mode package at `extensions/pi`,
+including `secret-guard.ts`. Bootstrap stages those files and does not enable the
+guard or edit Pi settings. Pi package installation and `--assets secret-guard`
+remain explicit.
 
 `AGF_INSTALL_DIR` is a bootstrap setting for the executable location; the CLI
 does not expose a no-op self-install flag.

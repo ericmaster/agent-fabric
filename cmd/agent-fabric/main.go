@@ -120,7 +120,7 @@ func main() {
 	fs.BoolVar(&o.strict, "strict", false, "warnings are failures")
 	fs.BoolVar(&o.force, "force", false, "replace modified managed files")
 	fs.BoolVar(&o.json, "json", false, "machine-readable output")
-	fs.StringVar(&o.assets, "assets", "", "optional assets (none); retrospective retired in favor of harness-review")
+	fs.StringVar(&o.assets, "assets", "", "optional assets: secret-guard (requires explicit --tools pi); retrospective retired")
 	if err := fs.Parse(args); err != nil {
 		fail(err)
 	}
@@ -860,22 +860,121 @@ func managedFileKey(file manifest.File) string {
 	return file.Target + "\x00" + file.Agent
 }
 
-func optionalAssetWrites(o options, _ string) ([]pendingWrite, error) {
+func optionalAssetWrites(o options, root string) ([]pendingWrite, error) {
 	spec := strings.TrimSpace(o.assets)
 	if spec == "" || spec == "none" {
 		return nil, nil
 	}
+	var writes []pendingWrite
+	seen := map[string]bool{}
 	for _, name := range strings.Split(spec, ",") {
 		name = strings.TrimSpace(name)
-		if name == "" {
+		if name == "" || seen[name] {
 			continue
 		}
-		if name == "retrospective" {
+		seen[name] = true
+		switch name {
+		case "retrospective":
 			return nil, errors.New("retrospective hooks are retired; use the model-invoked harness-review skill")
+		case "secret-guard":
+			asset, err := secretGuardWrites(o, root)
+			if err != nil {
+				return nil, err
+			}
+			writes = append(writes, asset...)
+		default:
+			return nil, fmt.Errorf("unknown asset %q", name)
 		}
-		return nil, fmt.Errorf("unknown asset %q", name)
 	}
-	return nil, nil
+	return writes, nil
+}
+
+func secretGuardWrites(o options, root string) ([]pendingWrite, error) {
+	if !explicitTool(o.tools, "pi") {
+		return nil, errors.New("secret-guard asset requires explicit --tools pi")
+	}
+	source, err := os.ReadFile(filepath.Join(root, "extensions", "pi", "secret-guard.ts"))
+	if err != nil {
+		return nil, err
+	}
+	helper, err := guardHelperPath()
+	if err != nil {
+		return nil, err
+	}
+	body, err := renderGuardEntry(source, helper)
+	if err != nil {
+		return nil, err
+	}
+	dest, err := secretGuardPiPath(o)
+	if err != nil {
+		return nil, err
+	}
+	return []pendingWrite{{path: dest, body: body, target: "pi", resource: manifest.ResourceSecretGuardPi}}, nil
+}
+
+func requestsAsset(raw, name string) bool {
+	for _, asset := range strings.Split(raw, ",") {
+		if strings.TrimSpace(asset) == name {
+			return true
+		}
+	}
+	return false
+}
+
+func explicitTool(raw, name string) bool {
+	for _, tool := range strings.Split(raw, ",") {
+		if strings.TrimSpace(tool) == name {
+			return true
+		}
+	}
+	return false
+}
+
+// secretGuardPiPath is the pinned Pi 1.4.0 discovery destination:
+// global <agentDir>/extensions, project <project>/.pi/extensions.
+func secretGuardPiPath(o options) (string, error) {
+	if o.project != "" {
+		project, err := filepath.Abs(o.project)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Abs(filepath.Join(project, ".pi", "extensions", "agf-secret-guard", "index.ts"))
+	}
+	base, err := targetBase(o, "pi")
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(filepath.Join(base, "extensions", "agf-secret-guard", "index.ts"))
+}
+
+func guardHelperPath() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	if resolved, evalErr := filepath.EvalSymlinks(exe); evalErr == nil {
+		exe = resolved
+	}
+	abs, err := filepath.Abs(exe)
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(abs) {
+		return "", errors.New("guard helper path is not absolute")
+	}
+	return abs, nil
+}
+
+func renderGuardEntry(source []byte, helper string) (string, error) {
+	const token = `"__AGF_GUARD_HELPER__"`
+	encoded, err := json.Marshal(helper)
+	if err != nil {
+		return "", err
+	}
+	if strings.Count(string(source), token) != 1 {
+		return "", errors.New("secret-guard source missing helper placeholder")
+	}
+	return strings.Replace(string(source), token, string(encoded), 1), nil
 }
 
 // retrospectivePluginDestination retains the legacy owned plugin path for
@@ -901,26 +1000,36 @@ func expectedManagedPath(o options, file manifest.File) (string, error) {
 		if file.Agent != "" {
 			return "", fmt.Errorf("resource %q must not use an agent id", file.Resource)
 		}
-		if file.Resource != manifest.ResourceLearningOrigin && file.Resource != manifest.ResourceRetrospectivePlugin {
+		if file.Resource != manifest.ResourceLearningOrigin && file.Resource != manifest.ResourceRetrospectivePlugin && file.Resource != manifest.ResourceSecretGuardPi {
 			return "", fmt.Errorf("unknown resource %q", file.Resource)
 		}
 		var expected string
-		if file.Resource == manifest.ResourceRetrospectivePlugin {
-			var err error
-			expected, err = retrospectivePluginDestination(o)
-			if err != nil {
-				return "", err
+		var pathErr error
+		switch file.Resource {
+		case manifest.ResourceSecretGuardPi:
+			if file.Target != "pi" {
+				return "", fmt.Errorf("secret-guard resource requires target pi")
 			}
-		} else {
+			expected, pathErr = secretGuardPiPath(o)
+			if pathErr != nil {
+				return "", pathErr
+			}
+			// Exact spelling. filepath.Abs is lexical and would accept a symlink/.. alias.
+			if file.Path != expected {
+				return "", fmt.Errorf("manifest path is outside managed destination: %s", file.Path)
+			}
+			return expected, nil
+		case manifest.ResourceRetrospectivePlugin:
+			expected, pathErr = retrospectivePluginDestination(o)
+		default:
 			root, _, err := scopeRoot(o)
 			if err != nil {
 				return "", err
 			}
-			var absErr error
-			expected, absErr = filepath.Abs(filepath.Join(root, "retrospective", "learning-origin.json"))
-			if absErr != nil {
-				return "", absErr
-			}
+			expected, pathErr = filepath.Abs(filepath.Join(root, "retrospective", "learning-origin.json"))
+		}
+		if pathErr != nil {
+			return "", pathErr
 		}
 		actual, err := filepath.Abs(file.Path)
 		if err != nil {
@@ -980,6 +1089,9 @@ func install(o options, sync bool) error {
 	root, ds, err := load(o)
 	if err != nil {
 		return err
+	}
+	if requestsAsset(o.assets, "secret-guard") && !explicitTool(o.tools, "pi") {
+		return errors.New("secret-guard asset requires explicit --tools pi")
 	}
 	if !o.yes && (o.agents == "" && !o.all || o.tools == "") {
 		if !hasTTY() {
@@ -1084,7 +1196,12 @@ func install(o options, sync bool) error {
 		}
 		m.Files = append(m.Files, file)
 	}
-	if err := migrateMovedManagedFiles(manifestPath, &m, o.force); err != nil {
+	// Hash match is not authority for a guard path outside the current destination.
+	if err := rejectUnownedGuardResources(o, manifestPath, m); err != nil {
+		return err
+	}
+	removals, err := planMovedManagedFiles(manifestPath, &m, o.force)
+	if err != nil {
 		return err
 	}
 	if err := migrateLegacy(o, &m); err != nil {
@@ -1094,7 +1211,7 @@ func install(o options, sync bool) error {
 	if err != nil {
 		return err
 	}
-	if err := commitWrites(writes, manifestPath, m, managed, o.force); err != nil {
+	if err := commitWrites(writes, removals, manifestPath, m, managed, o.force); err != nil {
 		return err
 	}
 	fmt.Printf("installed %d agents for %d tools (%s)\n", len(ds), len(ts), map[bool]string{true: "sync", false: "install"}[sync])
@@ -1183,25 +1300,34 @@ func restoreSnapshot(snapshot fileSnapshot) error {
 	return os.Chmod(snapshot.path, snapshot.mode)
 }
 
-func commitWrites(writes []pendingWrite, manifestPath string, next manifest.Manifest, managed map[string]string, force bool) error {
-	paths := make(map[string]bool, len(writes)+1)
-	snapshots := make([]fileSnapshot, 0, len(writes)+1)
-	for _, write := range writes {
-		if paths[write.path] {
-			continue
+func commitWrites(writes []pendingWrite, removals []string, manifestPath string, next manifest.Manifest, managed map[string]string, force bool) error {
+	paths := make(map[string]bool, len(writes)+len(removals)+1)
+	snapshots := make([]fileSnapshot, 0, len(writes)+len(removals)+1)
+	add := func(path string) error {
+		if path == "" || paths[path] {
+			return nil
 		}
-		paths[write.path] = true
-		snapshot, err := snapshotPath(write.path)
+		paths[path] = true
+		snapshot, err := snapshotPath(path)
 		if err != nil {
 			return err
 		}
 		snapshots = append(snapshots, snapshot)
+		return nil
 	}
-	manifestSnapshot, err := snapshotPath(manifestPath)
-	if err != nil {
+	for _, write := range writes {
+		if err := add(write.path); err != nil {
+			return err
+		}
+	}
+	for _, path := range removals {
+		if err := add(path); err != nil {
+			return err
+		}
+	}
+	if err := add(manifestPath); err != nil {
 		return err
 	}
-	snapshots = append(snapshots, manifestSnapshot)
 	rollback := func(cause error) error {
 		for i := len(snapshots) - 1; i >= 0; i-- {
 			if restoreErr := restoreSnapshot(snapshots[i]); restoreErr != nil {
@@ -1209,6 +1335,11 @@ func commitWrites(writes []pendingWrite, manifestPath string, next manifest.Mani
 			}
 		}
 		return cause
+	}
+	for _, path := range removals {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return rollback(err)
+		}
 	}
 	for _, write := range writes {
 		if err := safeWrite(write.path, []byte(write.body), managed, force); err != nil {
@@ -1305,7 +1436,29 @@ func mergeManifest(path string, next manifest.Manifest, o options) (manifest.Man
 	return next, nil
 }
 
-func migrateMovedManagedFiles(manifestPath string, next *manifest.Manifest, force bool) error {
+func rejectUnownedGuardFiles(o options, files []manifest.File) error {
+	for _, file := range files {
+		if file.Resource != manifest.ResourceSecretGuardPi {
+			continue
+		}
+		if _, pathErr := expectedManagedPath(o, file); pathErr != nil {
+			return fmt.Errorf("refusing guard resource outside managed destination: %w", pathErr)
+		}
+	}
+	return nil
+}
+
+func rejectUnownedGuardResources(o options, manifestPath string, next manifest.Manifest) error {
+	wantsGuard := false
+	for _, file := range next.Files {
+		if file.Resource == manifest.ResourceSecretGuardPi {
+			wantsGuard = true
+			break
+		}
+	}
+	if !wantsGuard {
+		return nil
+	}
 	previous, err := manifest.Read(manifestPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -1313,10 +1466,22 @@ func migrateMovedManagedFiles(manifestPath string, next *manifest.Manifest, forc
 	if err != nil {
 		return err
 	}
+	return rejectUnownedGuardFiles(o, previous.Files)
+}
+
+func planMovedManagedFiles(manifestPath string, next *manifest.Manifest, force bool) ([]string, error) {
+	previous, err := manifest.Read(manifestPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
 	nextByKey := make(map[string]manifest.File, len(next.Files))
 	for _, file := range next.Files {
 		nextByKey[managedFileKey(file)] = file
 	}
+	var removals []string
 	for _, old := range previous.Files {
 		replacement, moved := nextByKey[managedFileKey(old)]
 		if !moved || old.Path == replacement.Path {
@@ -1327,7 +1492,7 @@ func migrateMovedManagedFiles(manifestPath string, next *manifest.Manifest, forc
 			continue
 		}
 		if statErr != nil {
-			return statErr
+			return nil, statErr
 		}
 		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 			next.Migration = append(next.Migration, "preserved non-regular obsolete managed file "+old.Path)
@@ -1335,16 +1500,27 @@ func migrateMovedManagedFiles(manifestPath string, next *manifest.Manifest, forc
 		}
 		body, readErr := os.ReadFile(old.Path)
 		if readErr != nil {
-			return readErr
+			return nil, readErr
 		}
 		if !force && manifest.Hash(body) != old.Hash {
 			next.Migration = append(next.Migration, "preserved modified obsolete managed file "+old.Path)
 			continue
 		}
-		if removeErr := os.Remove(old.Path); removeErr != nil {
-			return removeErr
-		}
+		removals = append(removals, old.Path)
 		next.Migration = append(next.Migration, "removed obsolete managed file "+old.Path)
+	}
+	return removals, nil
+}
+
+func migrateMovedManagedFiles(manifestPath string, next *manifest.Manifest, force bool) error {
+	removals, err := planMovedManagedFiles(manifestPath, next, force)
+	if err != nil {
+		return err
+	}
+	for _, path := range removals {
+		if err := os.Remove(path); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -1411,6 +1587,9 @@ func uninstall(o options) error {
 	p := filepath.Join(root, ".agent-fabric-manifest.json")
 	m, err := manifest.Read(p)
 	if err != nil {
+		return err
+	}
+	if err := rejectUnownedGuardFiles(o, m.Files); err != nil {
 		return err
 	}
 	remaining := make([]manifest.File, 0, len(m.Files))
@@ -1720,7 +1899,7 @@ func runHub(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := commitWrites(writes, manifestPath, m, managed, o.force); err != nil {
+	if err := commitWrites(writes, nil, manifestPath, m, managed, o.force); err != nil {
 		return err
 	}
 	fmt.Printf("installed %d hub agents for %d tools\n", len(ds), len(ts))

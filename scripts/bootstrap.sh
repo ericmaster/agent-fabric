@@ -59,7 +59,7 @@ if [[ -d "$tmp/assets" ]]; then
 fi
 if [[ -d "$tmp/extensions/pi" ]]; then
   mkdir -p "$install_dir/extensions/pi"
-  cp "$tmp/extensions/pi/index.ts" "$tmp/extensions/pi/package.json" "$install_dir/extensions/pi/"
+  cp "$tmp/extensions/pi/index.ts" "$tmp/extensions/pi/package.json" "$tmp/extensions/pi/secret-guard.ts" "$install_dir/extensions/pi/"
 fi
 if [[ "$os" == windows ]]; then
   cp "$install_dir/$bin" "$install_dir/agf.exe"

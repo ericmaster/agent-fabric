@@ -175,6 +175,24 @@ and user `!`/`!!` (`user_bash`). Shell alias expansion remains outside the
 checker even when the prefix text is included. A failed or absent entry is not
 enforcement.
 
+## Pi installation
+
+`agent-fabric install --assets secret-guard --tools pi` is explicit opt-in and
+does nothing unless `--tools` includes `pi`. Global entry:
+`${PI_CODING_AGENT_DIR:-~/.pi/agent}/extensions/agf-secret-guard/index.ts`.
+Project entry: `<project>/.pi/extensions/agf-secret-guard/index.ts`. Those are
+the pinned Pi 1.4.0 loader destinations. The entry embeds the absolute installer
+path and does not search `PATH`. It is not added to the role-mode package.
+Install does not rewrite settings, models, permissions, or other extensions.
+
+A prior manifest entry for this resource is owned only when its path is that
+exact destination string. A matching hash is not authority, and a lexical alias
+such as a symlink plus `..` is not that destination. install and sync fail before
+migration or writes when a prior guard path is outside it. Eligible managed-file
+removals on that install commit with the writes and are restored if a later
+write fails. Release archives and bootstrap stage `extensions/pi/secret-guard.ts`
+and do not enable the entry. Loaded behavior is [Pi runtime](#pi-runtime).
+
 ## Limits and verification
 
 This is not general taint/dataflow analysis. Aliases/session state, external

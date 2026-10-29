@@ -28,6 +28,10 @@ const ResourceLearningOrigin = "retrospective-learning-origin"
 // plugin asset identity. It is not an agent id.
 const ResourceRetrospectivePlugin = "retrospective-opencode-plugin"
 
+// ResourceSecretGuardPi is the opt-in Pi secret-guard discovery entry.
+// It is not an agent id.
+const ResourceSecretGuardPi = "secret-guard-pi"
+
 type Manifest struct {
 	Schema    int               `json:"schema"`
 	Source    string            `json:"source"`
