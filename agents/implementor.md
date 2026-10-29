@@ -62,11 +62,11 @@ a credential, pass its environment value directly to the local client or browser
 input in the same process. Keep it out of commands, output, URLs, logs,
 screenshots, and files.
 
-Inspect a running process by targeted metadata only: the specific PID and command
-name (`ps -o pid=,comm= -p <pid>`) and its working directory (`readlink
-/proc/<pid>/cwd`). Broad argv listings (`ps aux`, unpiped `ps -ef`) and
-`/proc/<pid>/environ` are withheld as potential secret exposure and return no
-evidence. Ask for the single field the diagnosis needs.
+Inspect a running process with targeted metadata commands: the specific PID and
+command name (`ps -o pid=,comm= -p <pid>`) and its working directory (`readlink
+/proc/<pid>/cwd`). Do not dump process argv or environment: `ps aux`, `ps -ef` or
+`ps -eo pid,args`, even filtered or piped, can expose another process's secrets.
+Ask for the single field the diagnosis needs.
 
 Missing documentation, preferred tooling, a local image, or usable existing test
 state is setup work. Inspect the repository procedure, perform safe ordinary

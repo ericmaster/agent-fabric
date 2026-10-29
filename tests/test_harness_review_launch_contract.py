@@ -125,7 +125,10 @@ class TaskReviewLaunchContractTests(unittest.TestCase):
                             "Operation not found", "session.get",
                             "session.message.list", "session.message.get",
                             "Cursor cannot be combined with order",
-                            "limit` is a maximum, not a guarantee",
+                            "plus outcome when present",
+                            "`limit` is a maximum, not a guarantee",
+                            "tool or CLI output may truncate",
+                            "check that the JSON parses completely",
                             "not a V1 `parts` array",
                             "incomplete coverage, never absent history",
                             "sqlite3 -readonly", "not proof of absent history"):
@@ -141,7 +144,8 @@ class TaskReviewLaunchContractTests(unittest.TestCase):
         implementor = " ".join((ROOT / "agents/implementor.md").read_text().split())
         self.assertIn("`ps -o pid=,comm= -p <pid>`", implementor)
         self.assertIn("`readlink /proc/<pid>/cwd`", implementor)
-        self.assertIn("are withheld as potential secret exposure", implementor)
+        self.assertIn("Do not dump process argv or environment", implementor)
+        self.assertIn("`ps -eo pid,args`, even filtered or piped", implementor)
         self.assertNotIn("cat /proc/<pid>/environ", implementor)
 
     def test_native_api_recipe_has_required_create_and_send_identity(self):

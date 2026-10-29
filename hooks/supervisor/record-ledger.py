@@ -26,9 +26,9 @@ def validate_checkpoint(value, execution_root):
         raise ValueError("checkpoint execution_root mismatch")
     if value.get("next_stage") not in STAGES:
         # Diagnostics name the accepted vocabulary so a documented-but-rejected
-        # stage is not mistaken for corrupt state.
-        raise ValueError("invalid next_stage %r; accepted: %s"
-                         % (value.get("next_stage"), ", ".join(sorted(STAGES))))
+        # stage is not mistaken for corrupt state; the supplied value is not
+        # echoed back.
+        raise ValueError("invalid next_stage; accepted: %s" % ", ".join(sorted(STAGES)))
     attempts = value.get("attempts")
     if not isinstance(attempts, dict) or any(type(attempts.get(key)) is not int or attempts[key] < 0 for key in COUNTERS):
         raise ValueError("checkpoint requires nonnegative integer attempts")

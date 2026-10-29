@@ -14,10 +14,12 @@ only for a documented origin. Keep the source session's agent/model tuple, which
 running server's OpenAPI document:
 
 ```bash
-opencode api GET /openapi.json
+opencode api GET /openapi.json > /path/to/private/openapi.json
 ```
 
-An unknown name fails as `Operation not found: <name>` (for example the V1-style
+The document is large: redirect it to a file you own under an authorized path and
+inspect that file's completeness instead of trusting streamed stdout. An unknown
+name fails as `Operation not found: <name>` (for example the V1-style
 `session.messages`). That is a naming defect, not proof that history is missing.
 
 ## Read metadata, then history
@@ -29,16 +31,18 @@ opencode api session.message.get --param sessionID=<ses id> --param messageID=<m
 ```
 
 `session.message.list` returns `{data, cursor: {previous, next}}`; page items carry
-id, type, outcome and time. The first page may set `order=asc|desc`; continuation
-passes the opaque `cursor` **alone**. `cursor` combined with `order` is rejected
+id, type and time, plus outcome when present. The first page may set
+`order=asc|desc`; continuation passes the opaque `cursor` **alone**. `cursor`
+combined with `order` is rejected
 (`InvalidCursorError: Cursor cannot be combined with order`) and an altered cursor
 is rejected too. Follow `cursor.next` until it is null or empty: that, not a
 title or the newest assistant answer, is the end of the paged range.
 
-`limit` is a maximum, not a guarantee. A large page can exceed the CLI's output
-cap and return truncated, unparsable JSON; reduce `limit` until the body parses, or
-read one message with `session.message.get`. A truncated body or a 4xx JSON body
-is incomplete coverage, never absent history; report the exact unread range.
+`limit` is a maximum, not a guarantee, and tool or CLI output may truncate a large
+response. Capture the response in a private file you own under an authorized path
+and check that the JSON parses completely; reduce `limit` until it does, or read
+one message with `session.message.get`. A truncated body or a 4xx JSON body is
+incomplete coverage, never absent history; report the exact unread range.
 
 ## Launch a root and prompt
 

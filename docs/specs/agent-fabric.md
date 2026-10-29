@@ -929,8 +929,8 @@ directory) and `--execution-root`, and a JSON request on stdin. Identity is
 JSON document containing the journal and checkpoint under an exclusive file
 lock. Counters cannot decrease, even across scope changes. Concurrent stale
 writes fail without changing state. Malformed/corrupt state fails closed without
-writing; a rejected `next_stage` reports the offending value and the complete
-accepted stage set listed above; output is one JSON receipt, exit 0 for
+writing; a rejected `next_stage` reports the complete accepted stage set listed
+above without echoing the supplied value; output is one JSON receipt, exit 0 for
 success/absent and nonzero for error. This is
 trusted per-task storage, not a filesystem sandbox or runtime dispatch engine.
 Hosts own optional replicas; replica failures never erase local state. The

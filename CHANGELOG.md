@@ -26,8 +26,8 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ### Fixed
 
-- Reject an invalid ledger `next_stage` with the offending value and the complete accepted stage vocabulary, without writing state; align the specification's checkpoint stage list with the hook's accepted set.
-- Document verified OpenCode native history reads (`opencode api` operation discovery, `session.get`/`session.message.list`, cursor and truncation limits) with a read-only database fallback, and add metadata-only process inspection plus a preflight-before-mutation technique for recovered execution detours.
+- Reject an invalid ledger `next_stage` with the complete accepted stage vocabulary and no echo of the supplied value, without writing state; align the specification's checkpoint stage list with the hook's accepted set.
+- Document verified OpenCode native history reads (`opencode api` operation discovery, `session.get`/`session.message.list`, cursor and truncation handling) with a read-only database fallback, and add targeted process-inspection plus preflight-before-mutation guidance for recovered execution detours.
 
 ## [0.2.1] - 2026-10-23
 

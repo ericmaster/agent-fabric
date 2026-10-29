@@ -191,14 +191,17 @@ class LedgerTests(unittest.TestCase):
 
     # Spec: docs/specs/agent-fabric.md — rejected stage names the accepted vocabulary
     def test_invalid_stage_is_rejected_without_writing_and_names_accepted_stages(self):
-        for stage in ("completed", "anything"):
+        marker = "synthetic-rejected-stage-marker"
+        for stage in (marker, "anything"):
             with self.subTest(stage=stage):
                 request = copy.deepcopy(self.request)
                 request["checkpoint"]["next_stage"] = stage
                 with self.assertRaises(ValueError) as raised:
                     self.run_hook(request)
                 message = str(raised.exception)
-                self.assertIn(repr(stage), message)
+                self.assertNotIn(marker, message)
+                self.assertNotIn("'anything'", message)
+                self.assertIn("invalid next_stage; accepted:", message)
                 for accepted in sorted(ledger.STAGES):
                     self.assertIn(accepted, message)
                 self.assertFalse(self.root.exists())
