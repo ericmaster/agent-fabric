@@ -10,6 +10,7 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 - Standalone shell AST inspection with pinned parser, full frozen shell/read corpus and supported wrapper-state regressions; no harness installation or enforcement claim.
 - Pi secret-guard source checks stock bash and read tool calls before execution, using the native-resolved read target. Custom spawn, replaced tools, `pi.exec`, and `!` remain unsupported.
 - Opt-in Pi secret-guard install (`--assets secret-guard --tools pi`) writes a native discovery entry with an absolute helper path. A prior guard path is owned only as that exact destination string; a lexical alias fails before effects. Eligible managed removals roll back with the install. No host activation.
+- OpenCode secret-guard source checks stock and observed read calls before execution and records shell as non-support. Opt-in install (`--assets secret-guard --tools opencode`) writes the pinned plugins discovery entry with an absolute helper path and does not rewrite OpenCode config.
 - Intermediate JSON `guard check` read-path checker with symlink-before-`..` proc matching and private Linux denial audit. Shell requests explicitly return unsupported; no harness integration.
 - Instincts on reusable lessons: optional `confidence` in [0.3, 0.9] and `applicability` (`project` default | `global`) on `LessonCandidate`, with validation, read filtering, and advisory-only contracts (no auto-apply).
 

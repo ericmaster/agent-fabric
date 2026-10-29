@@ -85,7 +85,11 @@ package; see [Pi setup](../runbooks/pi.md). `--assets secret-guard --tools pi`
 installs a separate discovery entry at
 `${PI_CODING_AGENT_DIR:-~/.pi/agent}/extensions/agf-secret-guard/index.ts`, or
 `<project>/.pi/extensions/agf-secret-guard/index.ts` with `--project`, using an
-absolute helper path. Ownership and stock-route limits:
+absolute helper path. `--assets secret-guard --tools opencode` installs a
+separate discovery entry at
+`${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-~/.config}/opencode}/plugins/agf-secret-guard/index.ts`,
+or `<project>/.opencode/plugins/agf-secret-guard/index.ts` with `--project`.
+Ownership, read coverage, and explicit shell non-support:
 [secret-guard.md](secret-guard.md).
 Only `name`, `description`, `model`, and comma-separated `tools` are emitted.
 Bundled profiles use the explicit mapping sentinel `model: inherit`, omitting the
@@ -1027,9 +1031,10 @@ Release archives are static cross-platform builds accompanied by
 archive member paths and types before extraction, installs `agent-fabric` and a
 copied `agf` alias, removes only its bundled source directories, and never edits
 shell profiles. Archives include the optional Pi mode package at `extensions/pi`,
-including `secret-guard.ts`. Bootstrap stages those files and does not enable the
-guard or edit Pi settings. Pi package installation and `--assets secret-guard`
-remain explicit.
+including `secret-guard.ts`, and stage `extensions/opencode/secret-guard.ts`.
+Bootstrap stages those files and does not enable the guard or edit Pi or
+OpenCode settings. Package installation and `--assets secret-guard` remain
+explicit.
 
 `AGF_INSTALL_DIR` is a bootstrap setting for the executable location; the CLI
 does not expose a no-op self-install flag.

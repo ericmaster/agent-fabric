@@ -18,8 +18,9 @@ for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; d
   cp -R "$root/skills/harness-review" "$work/skills/harness-review"
   mkdir -p "$work/skills/task-review"
   cp "$root/skills/task-review/SKILL.md" "$work/skills/task-review/"
-  mkdir -p "$work/extensions/pi"
+  mkdir -p "$work/extensions/pi" "$work/extensions/opencode"
   cp "$root/extensions/pi/index.ts" "$root/extensions/pi/package.json" "$root/extensions/pi/secret-guard.ts" "$work/extensions/pi/"
+  cp "$root/extensions/opencode/secret-guard.ts" "$work/extensions/opencode/"
   find -P "$work" \( -name '__pycache__' -o -name '*.pyc' -o -name 'node_modules' -o -name 'dist' -o -name '*.tsbuildinfo' -o -name '.record-captures.jsonl' \) -prune -exec rm -rf {} +
   tar -C "$work" -czf "$out/${name}.tar.gz" "agent-fabric${suffix}" agents adapters hooks assets skills extensions
   rm -rf "$work"

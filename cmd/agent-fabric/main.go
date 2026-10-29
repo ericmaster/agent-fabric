@@ -120,7 +120,7 @@ func main() {
 	fs.BoolVar(&o.strict, "strict", false, "warnings are failures")
 	fs.BoolVar(&o.force, "force", false, "replace modified managed files")
 	fs.BoolVar(&o.json, "json", false, "machine-readable output")
-	fs.StringVar(&o.assets, "assets", "", "optional assets: secret-guard (requires explicit --tools pi); retrospective retired")
+	fs.StringVar(&o.assets, "assets", "", "optional assets: secret-guard (requires explicit --tools pi or opencode); retrospective retired")
 	if err := fs.Parse(args); err != nil {
 		fail(err)
 	}
@@ -890,26 +890,45 @@ func optionalAssetWrites(o options, root string) ([]pendingWrite, error) {
 }
 
 func secretGuardWrites(o options, root string) ([]pendingWrite, error) {
-	if !explicitTool(o.tools, "pi") {
-		return nil, errors.New("secret-guard asset requires explicit --tools pi")
-	}
-	source, err := os.ReadFile(filepath.Join(root, "extensions", "pi", "secret-guard.ts"))
-	if err != nil {
-		return nil, err
+	if !explicitTool(o.tools, "pi") && !explicitTool(o.tools, "opencode") {
+		return nil, errors.New("secret-guard asset requires explicit --tools pi or opencode")
 	}
 	helper, err := guardHelperPath()
 	if err != nil {
 		return nil, err
 	}
+	var writes []pendingWrite
+	if explicitTool(o.tools, "pi") {
+		write, err := oneGuardWrite(o, root, helper, "pi", filepath.Join("extensions", "pi", "secret-guard.ts"), secretGuardPiPath, manifest.ResourceSecretGuardPi)
+		if err != nil {
+			return nil, err
+		}
+		writes = append(writes, write)
+	}
+	if explicitTool(o.tools, "opencode") {
+		write, err := oneGuardWrite(o, root, helper, "opencode", filepath.Join("extensions", "opencode", "secret-guard.ts"), secretGuardOpenCodePath, manifest.ResourceSecretGuardOpenCode)
+		if err != nil {
+			return nil, err
+		}
+		writes = append(writes, write)
+	}
+	return writes, nil
+}
+
+func oneGuardWrite(o options, root, helper, target, rel string, dest func(options) (string, error), resource string) (pendingWrite, error) {
+	source, err := os.ReadFile(filepath.Join(root, rel))
+	if err != nil {
+		return pendingWrite{}, err
+	}
 	body, err := renderGuardEntry(source, helper)
 	if err != nil {
-		return nil, err
+		return pendingWrite{}, err
 	}
-	dest, err := secretGuardPiPath(o)
+	path, err := dest(o)
 	if err != nil {
-		return nil, err
+		return pendingWrite{}, err
 	}
-	return []pendingWrite{{path: dest, body: body, target: "pi", resource: manifest.ResourceSecretGuardPi}}, nil
+	return pendingWrite{path: path, body: body, target: target, resource: resource}, nil
 }
 
 func requestsAsset(raw, name string) bool {
@@ -945,6 +964,38 @@ func secretGuardPiPath(o options) (string, error) {
 		return "", err
 	}
 	return filepath.Abs(filepath.Join(base, "extensions", "agf-secret-guard", "index.ts"))
+}
+
+// secretGuardOpenCodePath is the pinned OpenCode 2.2.0 discovery destination:
+// global <config>/plugins, project <project>/.opencode/plugins. Config follows
+// OPENCODE_CONFIG_DIR, else XDG_CONFIG_HOME/opencode, else ~/.config/opencode.
+func secretGuardOpenCodePath(o options) (string, error) {
+	if o.project != "" {
+		project, err := filepath.Abs(o.project)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Abs(filepath.Join(project, ".opencode", "plugins", "agf-secret-guard", "index.ts"))
+	}
+	base, err := openCodeConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(filepath.Join(base, "plugins", "agf-secret-guard", "index.ts"))
+}
+
+func openCodeConfigDir() (string, error) {
+	if dir := strings.TrimSpace(os.Getenv("OPENCODE_CONFIG_DIR")); dir != "" {
+		return filepath.Abs(dir)
+	}
+	if xdg := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdg != "" {
+		return filepath.Abs(filepath.Join(xdg, "opencode"))
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(filepath.Join(home, ".config", "opencode"))
 }
 
 func guardHelperPath() (string, error) {
@@ -1000,17 +1051,23 @@ func expectedManagedPath(o options, file manifest.File) (string, error) {
 		if file.Agent != "" {
 			return "", fmt.Errorf("resource %q must not use an agent id", file.Resource)
 		}
-		if file.Resource != manifest.ResourceLearningOrigin && file.Resource != manifest.ResourceRetrospectivePlugin && file.Resource != manifest.ResourceSecretGuardPi {
+		if file.Resource != manifest.ResourceLearningOrigin && file.Resource != manifest.ResourceRetrospectivePlugin && file.Resource != manifest.ResourceSecretGuardPi && file.Resource != manifest.ResourceSecretGuardOpenCode {
 			return "", fmt.Errorf("unknown resource %q", file.Resource)
 		}
 		var expected string
 		var pathErr error
 		switch file.Resource {
-		case manifest.ResourceSecretGuardPi:
-			if file.Target != "pi" {
-				return "", fmt.Errorf("secret-guard resource requires target pi")
+		case manifest.ResourceSecretGuardPi, manifest.ResourceSecretGuardOpenCode:
+			want := "pi"
+			var pathFn func(options) (string, error) = secretGuardPiPath
+			if file.Resource == manifest.ResourceSecretGuardOpenCode {
+				want = "opencode"
+				pathFn = secretGuardOpenCodePath
 			}
-			expected, pathErr = secretGuardPiPath(o)
+			if file.Target != want {
+				return "", fmt.Errorf("secret-guard resource requires target %s", want)
+			}
+			expected, pathErr = pathFn(o)
 			if pathErr != nil {
 				return "", pathErr
 			}
@@ -1090,8 +1147,8 @@ func install(o options, sync bool) error {
 	if err != nil {
 		return err
 	}
-	if requestsAsset(o.assets, "secret-guard") && !explicitTool(o.tools, "pi") {
-		return errors.New("secret-guard asset requires explicit --tools pi")
+	if requestsAsset(o.assets, "secret-guard") && !explicitTool(o.tools, "pi") && !explicitTool(o.tools, "opencode") {
+		return errors.New("secret-guard asset requires explicit --tools pi or opencode")
 	}
 	if !o.yes && (o.agents == "" && !o.all || o.tools == "") {
 		if !hasTTY() {
@@ -1436,9 +1493,13 @@ func mergeManifest(path string, next manifest.Manifest, o options) (manifest.Man
 	return next, nil
 }
 
+func secretGuardResource(resource string) bool {
+	return resource == manifest.ResourceSecretGuardPi || resource == manifest.ResourceSecretGuardOpenCode
+}
+
 func rejectUnownedGuardFiles(o options, files []manifest.File) error {
 	for _, file := range files {
-		if file.Resource != manifest.ResourceSecretGuardPi {
+		if !secretGuardResource(file.Resource) {
 			continue
 		}
 		if _, pathErr := expectedManagedPath(o, file); pathErr != nil {
@@ -1449,14 +1510,13 @@ func rejectUnownedGuardFiles(o options, files []manifest.File) error {
 }
 
 func rejectUnownedGuardResources(o options, manifestPath string, next manifest.Manifest) error {
-	wantsGuard := false
+	wanted := map[string]bool{}
 	for _, file := range next.Files {
-		if file.Resource == manifest.ResourceSecretGuardPi {
-			wantsGuard = true
-			break
+		if secretGuardResource(file.Resource) {
+			wanted[file.Resource] = true
 		}
 	}
-	if !wantsGuard {
+	if len(wanted) == 0 {
 		return nil
 	}
 	previous, err := manifest.Read(manifestPath)
@@ -1466,7 +1526,13 @@ func rejectUnownedGuardResources(o options, manifestPath string, next manifest.M
 	if err != nil {
 		return err
 	}
-	return rejectUnownedGuardFiles(o, previous.Files)
+	var relevant []manifest.File
+	for _, file := range previous.Files {
+		if wanted[file.Resource] {
+			relevant = append(relevant, file)
+		}
+	}
+	return rejectUnownedGuardFiles(o, relevant)
 }
 
 func planMovedManagedFiles(manifestPath string, next *manifest.Manifest, force bool) ([]string, error) {

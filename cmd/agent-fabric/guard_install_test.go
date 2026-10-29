@@ -415,7 +415,7 @@ func TestGuardInstallForeignBytes(t *testing.T) {
 
 func TestGuardInstallRequiresPi(t *testing.T) {
 	isolateGuardHome(t)
-	for _, tools := range []string{"", "opencode", "antigravity"} {
+	for _, tools := range []string{"", "antigravity"} {
 		o := guardOptions(t, "secret-guard")
 		o.tools = tools
 		if tools == "opencode" || tools == "antigravity" {

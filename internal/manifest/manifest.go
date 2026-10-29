@@ -32,6 +32,10 @@ const ResourceRetrospectivePlugin = "retrospective-opencode-plugin"
 // It is not an agent id.
 const ResourceSecretGuardPi = "secret-guard-pi"
 
+// ResourceSecretGuardOpenCode is the opt-in OpenCode secret-guard discovery entry.
+// It is not an agent id.
+const ResourceSecretGuardOpenCode = "secret-guard-opencode"
+
 type Manifest struct {
 	Schema    int               `json:"schema"`
 	Source    string            `json:"source"`

@@ -41,4 +41,5 @@ document's home is ambiguous, and apply the frontmatter from §4.
 ## Runbooks
 
 - [`runbooks/pi.md`](runbooks/pi.md) — Pi subagent runtime, Fabric agents/hooks, and PiChamber setup.
+- [`runbooks/opencode-secret-guard.md`](runbooks/opencode-secret-guard.md) — Opt-in OpenCode secret-guard install. Contract: [`specs/secret-guard.md`](specs/secret-guard.md).
 - [`runbooks/task-retrospective.md`](runbooks/task-retrospective.md) — Activate harness review, migrate its deprecated name, inspect audits and retire old hooks.

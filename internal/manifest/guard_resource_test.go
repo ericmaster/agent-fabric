@@ -7,8 +7,11 @@ import (
 )
 
 func TestManagedGuardResource(t *testing.T) {
-	if ResourceSecretGuardPi == "" || ResourceSecretGuardPi == ResourceLearningOrigin || ResourceSecretGuardPi == ResourceRetrospectivePlugin {
+	if ResourceSecretGuardPi == "" || ResourceSecretGuardPi == ResourceLearningOrigin || ResourceSecretGuardPi == ResourceRetrospectivePlugin || ResourceSecretGuardPi == ResourceSecretGuardOpenCode {
 		t.Fatalf("resource identity %q collides or is empty", ResourceSecretGuardPi)
+	}
+	if ResourceSecretGuardOpenCode == "" || ResourceSecretGuardOpenCode == ResourceLearningOrigin || ResourceSecretGuardOpenCode == ResourceRetrospectivePlugin {
+		t.Fatalf("opencode resource identity %q collides or is empty", ResourceSecretGuardOpenCode)
 	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "manifest.json")

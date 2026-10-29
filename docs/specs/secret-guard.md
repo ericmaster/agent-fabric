@@ -193,6 +193,50 @@ removals on that install commit with the writes and are restored if a later
 write fails. Release archives and bootstrap stage `extensions/pi/secret-guard.ts`
 and do not enable the entry. Loaded behavior is [Pi runtime](#pi-runtime).
 
+## OpenCode runtime
+
+`extensions/opencode/secret-guard.ts` is source support for a plugin loaded by
+the pinned OpenCode 2.2.0 V2 loader. It is not host enforcement. The loaded
+entry calls the same `guard check` protocol with `source: "opencode"`.
+
+Stock `read`, and a session `context`/`compaction`/`generate` tools key whose
+input schema is exactly the stock read schema (`path`, `offset`, `limit`), is
+checked at `tool.execute.before`. The path sent to the helper is the pinned
+`FileAccess.resolvePath` expansion: leading `~` / `~/`, Windows shell-path
+normalization, then resolve against `location.directory`. A missing directory,
+resolution failure, helper error, missing helper, or timeout blocks with fixed
+reason `guard_withheld` and does not echo the request. Denial fails the call
+before the tool executor. Allow-all permission does not skip that hook.
+
+A rename that happens after this entry's session hook is not visible here.
+That route is unsupported, not protected. A later `execute.before` can still
+change an allowed path; that route is unsupported. Filename recovery inside
+the read executor, grep, MCP, and CodeMode are unsupported.
+
+Shell is explicit non-support. `shell.create.before` carries environment data,
+has no failure channel, and is not the final spawn: a later hook or
+`ShellTool.prepare` can change command, cwd, and shell afterward. This entry
+does not subscribe to that hook, rewrite commands, or throw inside a shell
+executor. Direct session shell, other subprocesses, and native transcript
+persistence are not covered. A failed or absent entry is not enforcement.
+
+## OpenCode installation
+
+`agent-fabric install --assets secret-guard --tools opencode` is explicit
+opt-in and does nothing for this entry unless `--tools` includes `opencode`.
+`--tools pi` remains the Pi entry only. Global destination:
+`${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-~/.config}/opencode}/plugins/agf-secret-guard/index.ts`.
+Project destination: `<project>/.opencode/plugins/agf-secret-guard/index.ts`.
+Those are pinned 2.2.0 loader destinations. The entry embeds the absolute
+installer path and does not search `PATH`. Install does not rewrite
+`opencode.json`, models, permissions, or other plugins.
+
+Ownership matches the Pi rule: a prior manifest path is this resource only
+when it is that exact destination string. Release archives and bootstrap stage
+`extensions/opencode/secret-guard.ts` and do not enable the entry. Loaded
+behavior is [OpenCode runtime](#opencode-runtime). Operator command:
+[opencode-secret-guard](../runbooks/opencode-secret-guard.md).
+
 ## Limits and verification
 
 This is not general taint/dataflow analysis. Aliases/session state, external
