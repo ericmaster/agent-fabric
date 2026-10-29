@@ -28,7 +28,7 @@ func privateDir(t *testing.T) string {
 	return path
 }
 
-func records(t *testing.T, path string) []map[string]any {
+func auditRecords(t *testing.T, path, rule string) []map[string]any {
 	t.Helper()
 	body, err := os.ReadFile(path) // Synthetic audit only.
 	if err != nil {
@@ -41,7 +41,7 @@ func records(t *testing.T, path string) []map[string]any {
 		if json.Unmarshal(line, &row) != nil {
 			t.Fatal("invalid/interleaved JSONL")
 		}
-		if len(row) != 6 || row["source"] != "sdk" || row["rule"] != "proc_environ_read" || row["policy_version"] != float64(1) || row["layer"] != "deterministic" {
+		if len(row) != 6 || row["source"] != "sdk" || row["rule"] != rule || row["policy_version"] != float64(1) || row["layer"] != "deterministic" {
 			t.Fatal("unexpected audit schema")
 		}
 		stamp, ok := row["timestamp"].(string)
@@ -62,6 +62,19 @@ func records(t *testing.T, path string) []map[string]any {
 }
 
 func TestGuardReadDenialLog(t *testing.T) {
+	testDenialLog(t, denial)
+}
+
+func TestGuardDenialLog(t *testing.T) {
+	testDenialLog(t, func() guard.Response {
+		return guard.Check(guard.Request{Version: 1, Op: "shell", Shell: "bash", Cwd: "/", Command: "env X=SYNTHETIC_PRIVATE_SENTINEL"})
+	})
+}
+
+// Both original shell-audit and accepted read-audit suites exercise every gate.
+func testDenialLog(t *testing.T, denial func() guard.Response) {
+	rule := denial().Reason
+	records := func(t *testing.T, path string) []map[string]any { return auditRecords(t, path, rule) }
 	t.Run("default_and_no_allow_state", func(t *testing.T) {
 		base := t.TempDir()
 		t.Setenv("XDG_STATE_HOME", base)

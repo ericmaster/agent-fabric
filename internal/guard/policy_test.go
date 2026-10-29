@@ -12,8 +12,7 @@ import (
 	"github.com/ericmaster/agent-fabric/internal/guard"
 )
 
-// This intermediate tree explicitly activates only R01-R09. Shell rows remain
-// immutable fixture data for the successor, not skipped or passing shell tests.
+// Corpus commands are data; neither Check nor tests execute them or read targets.
 func TestGuardCorpus(t *testing.T) {
 	body, err := os.ReadFile("../../fixtures/guard/corpus.json")
 	if err != nil {
@@ -37,12 +36,16 @@ func TestGuardCorpus(t *testing.T) {
 	}
 	active := 0
 	for _, row := range rows {
-		if row.Request.Op != "read" {
-			continue
-		}
 		active++
-		if row.ID != fmt.Sprintf("R%02d", active) {
-			t.Fatal("read inventory changed")
+		prefix, index := "D", active
+		if active > 39 {
+			prefix, index = "A", active-39
+		}
+		if active > 61 {
+			prefix, index = "R", active-61
+		}
+		if row.ID != fmt.Sprintf("%s%02d", prefix, index) {
+			t.Fatal("full70 inventory changed")
 		}
 		t.Run(row.ID, func(t *testing.T) {
 			cwd := t.TempDir()
@@ -76,8 +79,35 @@ func TestGuardCorpus(t *testing.T) {
 			}
 		})
 	}
-	if active != 9 {
-		t.Fatalf("active read inventory=%d;want9", active)
+	if active != 70 {
+		t.Fatalf("active inventory=%d;want70", active)
+	}
+}
+
+func TestGuardParserBoundary(t *testing.T) {
+	for _, tc := range []struct{ id, command, decision, reason string }{
+		{"mixed_inert_unclosed_substitution", "sh -s <<E'O'F\nprintf '%s' '$( '\nEOF", "error", "parse_error"},
+		{"mixed_closing_comment_delimiter", "sh -s <<e'n'v\n# comment \\\nenv", "error", "parse_error"},
+		{"quoted_inert_unclosed_substitution", "sh -s <<'EOF'\nprintf '%s' '$( '\nEOF", "allow", "no_match"},
+		{"quoted_closing_comment_delimiter", "sh -s <<'env'\n# comment \\\nenv", "allow", "no_match"},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			cwd := t.TempDir()
+			got := guard.Check(guard.Request{Version: 1, Op: "shell", Shell: "bash", Cwd: cwd, Command: tc.command})
+			body, err := json.Marshal(got)
+			want := fmt.Sprintf(`{"version":1,"decision":%q,"reason":%q,"policy_version":1}`, tc.decision, tc.reason)
+			if err != nil || string(body) != want {
+				t.Fatal("boundary response differs from fixed four-field contract (payload omitted)")
+			}
+			path := filepath.Join(cwd, "audit", "denials.jsonl")
+			if err := guard.AppendDenial(path, "sdk", got); err != nil {
+				t.Fatal("unexpected audit error (payload omitted)")
+			}
+			if _, err := os.Lstat(filepath.Dir(path)); !os.IsNotExist(err) {
+				t.Fatal("allow/error created audit state")
+			}
+			t.Logf("response=%s audit_records=0", body)
+		})
 	}
 }
 

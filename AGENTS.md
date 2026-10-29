@@ -61,7 +61,7 @@ print flags/defaults without loading sources or writing state (exit 0).
 
 ## Architecture at a glance
 
-- **Read guard:** `internal/guard` and `guard check` implement metadata-only read checks and private denial audit; shell requests are unsupported. Contract: [`docs/specs/secret-guard.md`](docs/specs/secret-guard.md).
+- **Secret guard:** `internal/guard` and `guard check` inspect shell syntax/read metadata with private denial audit; standalone, not installed enforcement. Contract: [`docs/specs/secret-guard.md`](docs/specs/secret-guard.md).
 - **Canonical Definitions as SSOT:** Canonical agent workflows live exclusively in `agents/<id>.md` and contain full portable behavior, permissions, and declarative hook placeholders. Spec: `docs/specs/agent-fabric.md`.
 - **Self-Locating Delegation:** Fresh-context handoffs use the fail-closed Delegation Packet contract defined normatively in `docs/specs/agent-fabric.md`; hooks only enrich or validate it.
 - **Eval before implementation:** Pin measurable criteria before mutation; reconcile candidate-linked evidence before PASS, including direct atomic work. Contract: [`Pre-implementation evaluation baseline`](docs/specs/agent-fabric.md#pre-implementation-evaluation-baseline).
