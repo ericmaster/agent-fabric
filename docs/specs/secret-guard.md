@@ -1,38 +1,101 @@
 ---
-title: "Spec: read-path secret guard"
+title: "Spec: standalone secret guard"
 type: spec
 status: active
-covers: internal/guard
-last_checked: 2026-10-28
+covers: internal/guard/, cmd/agent-fabric/guard.go
+last_checked: 2026-10-29
 ---
 
-# Read-path secret guard
+# Standalone secret guard
 
-This intermediate implementation checks read requests only. It is not shell
-protection, a sandbox, or complete secret-disclosure prevention. No harness hooks
-are installed. Shell analysis and aggregate Phase 1 acceptance remain deferred.
+`agf guard check` inspects syntax and path metadata; it never executes submitted
+commands or opens submitted file contents. This voluntarily invoked check is **not
+installed enforcement**, a sandbox, general secret detection, or output screening.
+Callers must honor both deny and error before executing/reading anything themselves.
+No adapter, installer, model, endpoint, SDK, daemon or server is configured by it.
 
 ## Protocol
 
 `agent-fabric guard check [--log-file ABSOLUTE_PATH]` accepts exactly one JSON
 object on stdin, at most 65536 bytes, and emits one JSON response on stdout.
-Required read fields: `version: 1`, `op: "read"`, absolute `cwd`, nonempty string
-array `paths`. Empty paths and NULs are invalid. Optional `source` is empty or
+Both operations require `version: 1` and absolute `cwd`. For `op: "read"`, supply
+a nonempty string array `paths`; for `op: "shell"`, supply a present string
+`command` (empty is valid) and `shell: "bash"` or `"posix"`.
+Empty paths and NULs in command/cwd/paths are invalid. Optional `source` is empty or
 `cli`, `sdk`, `pi`, `opencode`. Unknown fields, null fields, wrong types and extra
 JSON values are invalid. Read requests must not contain nonempty `command` or
-`shell`. Neither submitted commands nor path contents are executed/read.
+`shell`; shell requests must not contain nonempty `paths`.
+Sensitive input belongs on stdin, not argv. No environment expansion, command
+lookup or shell startup file loading occurs.
 
 Responses contain only `version: 1`, `decision`, `reason`, `policy_version: 1`:
 
 | Decision | Reason | Exit |
 |---|---|---|
 | allow | no_match | 0 |
-| deny | proc_environ_read | 1 |
-| error | invalid_request, limit_exceeded, unsupported_shell | 2 |
+| deny | environment_dump, proc_environ_read | 1 |
+| error | invalid_request, limit_exceeded, unsupported_shell, parse_error, unsupported_dynamic_shell | 2 |
 
-Validly formed shell requests return `error/unsupported_shell`, including empty
-commands; there is no shell parser or shell policy in this tree. Errors never
-echo request text, paths or values.
+Errors never echo request text, parser excerpts, paths, values or exceptions.
+
+### Parser support boundary
+
+Valid shell grammar can exceed the pinned parser's support. The two mixed-quoted
+heredocs below return `error/parse_error`, exit2: an **incomplete, unchecked
+operation**, not `allow`, a policy denial, proof of invalid Bash or a completed
+protective inspection. Callers must withhold execution on error.
+
+These are JSON-escaped command strings (`\n` decodes to LF), not commands to run:
+
+| Unchecked mixed-quoted input | Fully quoted control: `allow/no_match`, exit0 |
+|---|---|
+| `"sh -s <<E'O'F\nprintf '%s' '$( '\nEOF"` | `"sh -s <<'EOF'\nprintf '%s' '$( '\nEOF"` |
+| `"sh -s <<e'n'v\n# comment \\\nenv"` | `"sh -s <<'env'\n# comment \\\nenv"` |
+
+An author may choose a fully quoted equivalent only after preserving the intended
+semantics. The checker never rewrites input, recovers a partial AST, executes Bash
+or falls back to another parser. This narrow limitation does not exclude static
+heredocs generally; supported programs still receive their normal classification.
+
+## Shell matching
+
+The pinned Go1.22-compatible `mvdan.cc/sh/v3` v3.8.0 parser traverses Bash/POSIX
+AST statements, groups, functions, pipelines and substitutions. It checks common
+`command`/`builtin`/`exec`/`env` wrappers, literal `eval` and static `sh`/`bash -c`
+programs. Dynamic `eval "$code"` and `sh -c "$code"` return
+`unsupported_dynamic_shell`, not an invented safe result. Limits:8 nested
+shell-string levels and4096 total visited AST nodes across nested parses.
+
+- Deny `env` without a child after supported options/assignments, `printenv`
+  value output and bare `set`. Preserve assignments with safe children,
+  `set -euo pipefail`, `set -- arg`, `set -o`, help/version, variable-presence
+  checks, comments and inert strings.
+- `env --` ends option parsing, not assignment processing; `eval --` removes
+  its option terminator before parsing the literal program.
+- Shell short flags from `c,e,l,s,u,x,v` are supported at the nested-program
+  boundary. Static heredocs are parsed when stdin is selected (explicit `-s`,
+  or no script operand after options). With `-s`, remaining operands are
+  positional arguments; otherwise an external script is outside inspection.
+  Unsupported options are not interpreted as supported shell programs.
+  Stdin redirections apply left to right by numeric destination descriptor;
+  duplication snapshots its source and moves/closes update that source. Only
+  the effective fd0 heredoc/here-string is parsed, not superseded or non-stdin
+  literal bodies. Closed fd0 has no program; an explicitly selected file,
+  inherited/unknown descriptor or dynamic program returns
+  `unsupported_dynamic_shell` without opening contents. Named-descriptor
+  allocation/dataflow is outside this numeric-descriptor seam.
+  Each redirect retains its own parse's original source; heredoc body spans
+  exclude the closing delimiter line before `<<-` tab removal and context-specific
+  decoding. Quoted literal programs do not use normalized parser body values.
+- Only uncaptured, unpiped `printenv` with exactly one stdout `>` redirection to
+  literal `/dev/null` is exempt. Pipelines or extra descriptor manipulation
+  conservatively deny, even when stdout is discarded.
+- Proc matching also applies to input redirections and operands of known
+  readers: `cat`, `head`, `tail`, `od`, `xxd`, `hexdump`, `strings`, `grep`, `sed`,
+  `awk`, `less`, `more`, `dd`. Dynamic word parts supply wildcard placeholders
+  for lexical matching only, never actual expansion.
+- `stat`/`test -e` are not content-read requests. Unknown ordinary executables,
+  `python app.py`, `environment.md` and `printf '%s' "$TOKEN"` remain allowed.
 
 ## Read matching
 
@@ -64,9 +127,51 @@ previous file plus lock. Audit failure preserves the decision/exit and emits
 only `guard_audit_unavailable` on stderr. Non-Linux audit fails explicitly
 rather than approximating the Linux guarantees.
 
-## Verification partition
+## Safe caller example
 
-The immutable70-case corpus is retained; only R01–R09 are active in policy and
-compiled CLI corpus suites. Shell rows are data, not skipped/passing tests.
-Read suites cover protocol, bounds, privacy, metadata-only FIFO handling,
-SG-R3 symlink/`..`, denial-audit permissions, rotation, concurrency and failures.
+Use an absolute trusted binary path and an ordinary subprocess API, no SDK.
+This example checks a synthetic command without executing it:
+
+```python
+import json, os, subprocess
+
+request = {"version": 1, "op": "shell", "command": "env",
+           "cwd": os.getcwd(), "shell": "bash", "source": "sdk"}
+checked = subprocess.run(["/trusted/path/agf", "guard", "check"],
+                         input=json.dumps(request), text=True,
+                         capture_output=True, timeout=2)
+response = json.loads(checked.stdout)
+assert response["version"] == response["policy_version"] == 1
+assert checked.returncode == {"allow": 0, "deny": 1, "error": 2}[response["decision"]]
+if response["decision"] != "allow":
+    raise SystemExit("guard withheld operation")
+```
+
+## Limits and verification
+
+This is not general taint/dataflow analysis. Aliases/session state, external
+scripts/interpreter code, copied executables, dynamic command names/path dataflow,
+ANSI-C quoted names, exotic wrappers/options (`sudo`, `doas`, `nohup`, `timeout`,
+BusyBox, `env -S`) and explicit variable-value output remain outside v1 coverage.
+A successful check says only that supported rules did not match. It says nothing
+about all subprocesses, native dispatch, raw streams, persistence or installed
+harness enforcement. Later reads remain susceptible to replacement races.
+
+The frozen [`70-case corpus`](../../fixtures/guard/corpus.json) activates all
+D01–D39, A01–A22 and R01–R09 in policy and compiled CLI tests. Synthetic
+placeholders are materialized, but commands remain data. Supplemental public CLI
+tests cover SG-R1/R2/R4 wrapper state and SG-R3 read/shell consumers. Tests also
+cover bounded parsing, private errors, nonexecution/content-free FIFO checks and
+shell/read denial-audit permissions, rotation, concurrency and failure handling.
+
+```sh
+go test -json ./internal/guard ./cmd/agent-fabric -run '^TestGuardParserBoundary$' -count=1
+go test -json ./internal/guard ./cmd/agent-fabric -run 'TestGuardCorpus|TestGuardCLI' -count=1
+go test -json ./internal/guard ./cmd/agent-fabric -run 'TestGuardLimits|TestGuardPrivateErrors|TestGuardNoExecution' -count=1
+go test -json ./internal/guard ./cmd/agent-fabric -run TestGuardDenialLog -count=1
+go test ./...
+```
+
+Reported leaks/false denials use the existing [harness-review contract](task-retrospective.md):
+private evidence, sanitized regression first, smallest independently reviewed
+correction. No new collector/service or automatic policy relaxation.

@@ -1,4 +1,4 @@
-// Package guard checks read paths using metadata, never submitted contents.
+// Package guard checks shell syntax and read-path metadata, never executing input.
 package guard
 
 import (
@@ -85,7 +85,13 @@ func Check(req Request) Response {
 	}
 	switch req.Op {
 	case "shell":
-		return Error("unsupported_shell") // Read-only intermediate slice; no parser.
+		if req.Shell != "bash" && req.Shell != "posix" {
+			return Error("unsupported_shell")
+		}
+		if len(req.Paths) != 0 || strings.ContainsRune(req.Command, 0) {
+			return Error("invalid_request")
+		}
+		return (&policy{cwd: req.Cwd}).inspect(req.Command, req.Shell, 0, false)
 	case "read":
 		if len(req.Paths) == 0 || req.Command != "" || req.Shell != "" {
 			return Error("invalid_request")

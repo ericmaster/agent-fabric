@@ -39,13 +39,17 @@ func TestGuardReadProtocol(t *testing.T) {
 		assertGuardCLI(t, bin, t.TempDir(), readInput(t, "normal.txt", "/proc/self/environ"), "deny", "proc_environ_read")
 	})
 	for _, command := range []string{"", "env", "unknown-ordinary-program"} {
-		t.Run("unsupported_shell_"+command, func(t *testing.T) {
+		t.Run("shell_successor_"+command, func(t *testing.T) {
 			cwd := t.TempDir()
 			input, err := json.Marshal(map[string]any{"version": 1, "op": "shell", "command": command, "cwd": cwd, "shell": "bash"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			assertGuardCLI(t, bin, cwd, input, "error", "unsupported_shell")
+			decision, reason := "allow", "no_match"
+			if command == "env" {
+				decision, reason = "deny", "environment_dump"
+			}
+			assertGuardCLI(t, bin, cwd, input, decision, reason)
 		})
 	}
 }

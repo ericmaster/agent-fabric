@@ -119,12 +119,16 @@ func TestGuardCLICorpus(t *testing.T) {
 	}
 	active := 0
 	for _, row := range rows {
-		if row.Request["op"] != "read" {
-			continue
-		} // Explicit proc partition, not skipped shell PASS.
 		active++
-		if row.ID != fmt.Sprintf("R%02d", active) {
-			t.Fatal("read inventory changed")
+		prefix, index := "D", active
+		if active > 39 {
+			prefix, index = "A", active-39
+		}
+		if active > 61 {
+			prefix, index = "R", active-61
+		}
+		if row.ID != fmt.Sprintf("%s%02d", prefix, index) {
+			t.Fatal("full70 inventory changed")
 		}
 		t.Run(row.ID, func(t *testing.T) {
 			cwd := t.TempDir()
@@ -143,7 +147,7 @@ func TestGuardCLICorpus(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			paths := row.Request["paths"].([]any)
+			paths, _ := row.Request["paths"].([]any)
 			for i, p := range paths {
 				switch p {
 				case "${PROC_LINK}":
@@ -159,7 +163,7 @@ func TestGuardCLICorpus(t *testing.T) {
 			assertGuardCLI(t, bin, cwd, input, row.Decision, row.Reason)
 		})
 	}
-	if active != 9 {
-		t.Fatalf("active read cases=%d;want9", active)
+	if active != 70 {
+		t.Fatalf("active cases=%d;want70", active)
 	}
 }

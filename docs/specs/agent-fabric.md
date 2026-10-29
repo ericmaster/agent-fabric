@@ -1,6 +1,6 @@
 # Agent Fabric Specification
 
-Read-only guard CLI contract: [secret-guard.md](secret-guard.md). Shell checking is unsupported in this intermediate tree.
+Standalone shell/read guard CLI contract: [secret-guard.md](secret-guard.md); not installed enforcement.
 
 Canonical definitions are Markdown files with YAML-like frontmatter. Identity is
 the filename stem. `description` and `x-agent-fabric.schema: 1` are required. A
