@@ -7,7 +7,7 @@ DoD validation. It owns the control loop and evidence integrity; it never self-c
 Direct user invocation is not a fresh-child handoff, so its intake packet is optional.
 Every fresh-child arrow below is labelled with its validated self-locating Delegation Packet.
 The normative packet and fail-closed resolution contract lives only in
-[`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
+[`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md).
 
 ## Full Workflow
 

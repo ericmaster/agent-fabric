@@ -7,7 +7,7 @@ slices. It never implements phases itself; under standing execution intent,
 decomposition and `plan-supervisor` dispatch are orchestration rather than
 self-implementation.
 Fresh discovery and review children receive the self-locating handoff defined
-normatively in [`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
+normatively in [`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md).
 Direct user invocation is not a fresh-child handoff, so its intake packet is optional.
 
 A concurrently loaded host skill (interview, artifact, or documentation skill) augments a single

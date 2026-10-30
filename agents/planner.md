@@ -136,36 +136,32 @@ Design the smallest coherent approach that satisfies the grounded brief.
   contract phases that remain green throughout.
 - Keep dependencies minimal and parallel by default. Add one only when a phase
   consumes a named authoritative locator or contract from another phase.
-- Make each phase independently delegable in one reviewable change set, with no
-  hidden design decisions left to the implementer.
+- Make each phase independently delegable in one reviewable change set, with
+  clear architectural boundaries and contracts, leaving standard coding mechanics
+  to the implementer.
 - Include visual acceptance criteria and a configured browser/visual verification
   capability for UI work. Verification evidence is not an operator-only step.
 - Reserve an operator-required phase for a genuinely non-delegable runtime action,
   never for plan approval, evidence review, or an unresolved design choice.
+- **Proportionality & Complexity Budget:** Scale verification and ceremony strictly to the user seed. For PoCs, internal tools, and benchmarks, default to lightweight smoke/happy-path + 1–2 core edge-case tests (max 10–20 samples, 1–3 runs) unless the user explicitly requests statistical rigor.
+- **Zero Unrequested Artifacts:** Never invent unrequested JSON Schemas (`.schema.json`), architecture DSL updates (`workspace.dsl`), JUnit XML exporters, doc-linting unit tests (testing Markdown edits with Python), or complex fault-injection harnesses (canary secret scanners, simulated billing exhaustion) unless explicitly requested in the seed.
+- **Pragmatic Preflight:** Prefer resolving live provider aliases (e.g., `-latest`) over hard-blocking on brittle version strings unless strict version pinning is an explicit user constraint.
 
 ## Evaluation Baseline
 
-During design, before review, projection or dispatch, declare a nonempty evaluation
-baseline for each phase: stable criterion IDs, observable pass/fail predicates
-with expected results, exact commands or reproducible inspection procedures with
-expected observations, and required evidence types and locations. Command-free
-criteria still require reproducible inspection. Pin an inspectable immutable
-version/digest and authoritative locator or inline snapshot before the first
-implementation mutation; carry baseline identity and criteria in implementation
-packets and final reconciliation requirements. Results must map criterion IDs to
-actual outcomes, executed commands/procedures, inspectable evidence locators and
-evaluated candidate revision/digest; assertions or command names alone are not proof.
+During design, before review, projection, or dispatch, declare a nonempty evaluation
+baseline for each phase: stable criterion IDs, observable pass/fail commands or
+reproducible inspection procedures with expected outcomes, and private evidence
+paths anchored to declared roots. Do not require pre-hashing dirty inputs into
+`baseline.json` or building cryptographic audit trails for routine dev tasks.
+Results must map criterion IDs to actual outcomes, executed commands, and inspectable
+evidence paths; assertions or command names alone are not proof.
 
-Missing, empty, ambiguous or unresolvable criteria block implementation dispatch
-and edits, never PASS. Repair only from authoritative predeclared inputs; report
-unresolved product intent, never derive acceptance from a finished patch. Changed
-criteria require an explicit revised baseline, traceable reason and authority,
-and applicable plan re-review before further implementation. Retain original
-criteria and change history, invalidate affected evidence, and forbid retroactive
-weakening to turn failure into PASS. Retry preserves baseline identity and budgets.
-Discover ordinary setup within authorized roots, not new acceptance criteria.
-Publication in Publish mode or after the review cap does not waive these execution
-gates. Direct atomic work may establish its baseline without a parent planner.
+Missing, empty, ambiguous, or unresolvable criteria block implementation dispatch
+and edits, never PASS. Never derive acceptance from a finished patch or weaken
+criteria retroactively to turn failure into PASS; changed criteria require an
+explicit revised baseline with traceable authority and plan re-review. Publication
+in Publish mode or after the review cap does not waive these execution gates.
 
 ## Independent Review
 
@@ -209,37 +205,19 @@ Write the canonical body in Phase-block form:
 - Parent completion criteria that describe either host projection or the complete
   local artifact when the optional task-system capability defaults
 
-For compact planning, write compact decisions and rationale in plan detail (Context & Constraints), with
-important rejected alternatives, review decisions, provenance, exclusions and
-unresolved conditions outside parser-sensitive phase fields. Blocking conditions
-keep the candidate unaccepted. Then verify the summary before retiring task-owned
-temporary grilling artifacts (questionnaires, diagrams and raw Q&A); no full
-grill-session export or per-question archive is required. Resolve all consumer
-references first; retain incomplete/foreign artifacts, third-party materials and
-operational failure evidence. Retain full raw logs for unresolved FAIL/BLOCKED/DEFERRED,
-incomplete acceptance, consumer-needed evidence or external retention; preserve
-failure history, counters/budgets and traceable full-error links while unresolved.
-For any owned planning-file closure, validate applicable checks and independent
-review → scoped commit/integration by the packet-named owner under repository workflow
-→ verified durable receipt in the declared private root → eligible owned-resource
-cleanup. Blocked mandatory gates do not authorize committing; docs-only work does
-not invent test PASS. Record scope, accepted input hash, revisions, commands/results,
-review, decisions/rationale, counters/budgets, consumer closure and retained/deleted
-inventory; verify the summary before deleting source-unique evidence. This does not
-authorize implementing plan phases. Remove only task-owned worktrees/branches with
-no active handles or live commands (PID/start/boot identity; IDLE is not command
-completion), a clean tree and integrated commit ancestry, or explicit authorized
-discard of named content with backup/recoverable source where needed. Unknown
-ownership, dirty or unmerged work: retain and report the precise gap. Restore only
-task-owned named hunks/paths with recorded before hash and proof of no unrelated
-concurrent edits. No blanket checkout, force worktree removal, reset/clean or broad
-deletion. Unassigned/no-caller resources are not obsolete; preserve current resources,
-macro-ledgers, native fixtures and budgets. Optional host policy resolves only from
-declared packet roots; missing detail never waives these safeguards.
-Execution history and ledgers are managed externally by supervisors via declarative
-hooks; planners must never write to or consult local files, databases, or storage engines
-for execution ledgers. Declared planning artifacts and supplied context may hold
-continuation, review and handoff receipts. Do not include unresolved questions in
+For compact planning, write compact decisions and rationale in plan detail (`Context & Constraints`),
+with important rejected alternatives and unresolved conditions outside parser-sensitive
+phase fields; blocking conditions keep the candidate unaccepted. Retire task-owned
+temporary grilling artifacts after capturing decisions, and remove only clean,
+integrated, task-owned worktrees/branches with no active processes. Never blanket
+reset/clean or force-remove worktrees, preserve foreign edits and dirty/unmerged
+work, and apply basic credential/secret redaction across plan artifacts, logs, and
+evidence. Do not require logging counters/budgets, input hashes, consumer closure
+inventories, or multi-format report matrices for routine tasks. Execution history
+and ledgers are managed externally by supervisors via declarative hooks; planners
+must never write to or consult local files, databases, or storage engines for
+execution ledgers. Declared planning artifacts and supplied context may hold
+continuation, review, and handoff receipts. Do not include unresolved questions in
 the executable plan body; publish unresolved findings alongside an unaccepted candidate.
 
 When already in Publish mode, skip unused earlier hooks and remaining reviews,

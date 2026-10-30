@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Spec: docs/specs/agent-fabric.md — Continuity and checkpoints
+# Spec: docs/specs/supervision-ledger-and-qa.md — Continuity and checkpoints
 """Opt-in POSIX ledger/checkpoint hook; roots and transport are host-owned."""
 
 import argparse

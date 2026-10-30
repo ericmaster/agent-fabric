@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Spec: docs/specs/agent-fabric.md — Deterministic supervision support
+# Spec: docs/specs/supervision-ledger-and-qa.md — Deterministic supervision support
 """Read-only supervisor preflight; JSON stdin/stdout, no dispatch or storage."""
 import hashlib
 import importlib.util

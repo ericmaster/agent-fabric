@@ -10,7 +10,7 @@ Every fresh-child dispatch requires a validated self-locating Delegation Packet.
 Later dispatches resume recorded child continuation IDs from the separate handoff
 artifact; bug-fixer alone owns needs-plan projection and execution handoff.
 The normative packet and fail-closed resolution contract lives only in
-[`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
+[`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md).
 
 ## Full Workflow
 

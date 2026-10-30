@@ -208,7 +208,7 @@ func TestAutonomousFlowPreservesOnlyExternalGates(t *testing.T) {
 		t.Error("planner restored redundant projection approval")
 	}
 
-	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "agent-fabric.md"))
+	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "supervision-and-delivery.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestExecutionSupervisorsDoNotReconfirmApprovedWork(t *testing.T) {
 }
 
 func TestAutonomousBudgetAndProportionalSafetyContract(t *testing.T) {
-	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "agent-fabric.md"))
+	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "supervision-and-delivery.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -517,7 +517,7 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 	})
 
 	t.Run("artifact resolution is distinct from repository inspection", func(t *testing.T) {
-		spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "agent-fabric.md"))
+		spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "delegation-and-evaluation.md"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -541,7 +541,7 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 	})
 
 	t.Run("normative contract permits direct dispatcher invocation", func(t *testing.T) {
-		spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "agent-fabric.md"))
+		spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "delegation-and-evaluation.md"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -609,7 +609,7 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 	})
 
 	t.Run("portable locator and proof boundaries are explicit", func(t *testing.T) {
-		spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "agent-fabric.md"))
+		spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "delegation-and-evaluation.md"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -751,7 +751,7 @@ func TestPlannerCapsReviewAndHonorsPublishInstruction(t *testing.T) {
 }
 
 func TestSupervisorResumeHandleIsMandatory(t *testing.T) {
-	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "agent-fabric.md"))
+	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "supervision-ledger-and-qa.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1001,10 +1001,15 @@ func TestSupervisorsRecoverOverbroadPhasesByStableBaseDecomposition(t *testing.T
 		}
 	}
 
-	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "agent-fabric.md"))
+	deliverySpec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "supervision-and-delivery.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	ledgerSpec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "supervision-ledger-and-qa.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := string(deliverySpec) + "\n" + string(ledgerSpec)
 	for _, want := range []string{
 		"Budget exhaustion is not itself an external blocker",
 		"mandatorily before a fourth mutation",
@@ -1015,7 +1020,7 @@ func TestSupervisorsRecoverOverbroadPhasesByStableBaseDecomposition(t *testing.T
 		"structural_recovery|aggregate_acceptance",
 		"At the mutation cap, evaluate structural recovery",
 	} {
-		if !strings.Contains(string(spec), want) {
+		if !strings.Contains(spec, want) {
 			t.Errorf("spec missing structural recovery contract %q", want)
 		}
 	}
@@ -1271,7 +1276,7 @@ func TestExternalPreReviewEvidenceContract(t *testing.T) {
 		}
 	}
 
-	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "agent-fabric.md"))
+	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "delegation-and-evaluation.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

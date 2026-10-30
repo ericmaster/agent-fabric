@@ -7,7 +7,7 @@ It cannot implement product code, wrappers or tooling. QA is recommended, not
 mandatory; loop-supervisor decides whether to dispatch and what evidence is needed.
 Execution blockers are communicated upward as deferred QA without stopping implementation.
 Its intake follows the fail-closed packet contract defined normatively in
-[`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
+[`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md).
 
 ## Full Workflow
 

@@ -6,7 +6,7 @@ The Expert Debugger diagnoses hard failures and produces a bounded root-cause re
 It cannot modify files or invent task-system state. It is invoked by the loop-supervisor
 during bounded recovery.
 Its intake follows the fail-closed packet contract defined normatively in
-[`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
+[`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md).
 
 ## Full Workflow
 

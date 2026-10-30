@@ -6,7 +6,7 @@ The Plan Supervisor executes a pre-decomposed implementation plan phase-by-phase
 task supervision. It owns phase ordering and evidence integrity; the phase loop
 is the sole recovery owner. Load the macro checkpoint before phase selection.
 Fresh-child arrows abbreviate the Delegation Packet contract defined normatively in
-[`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
+[`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md).
 Direct user invocation is not a fresh-child handoff, so its intake packet is optional.
 
 ## Full Workflow

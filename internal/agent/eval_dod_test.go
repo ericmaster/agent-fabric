@@ -1,4 +1,4 @@
-// Spec: docs/specs/agent-fabric.md — Pre-implementation evaluation baseline
+// Spec: docs/specs/delegation-and-evaluation.md — Pre-implementation evaluation baseline
 package agent
 
 import (
@@ -29,12 +29,19 @@ func evalDoDObligations(role string) []string {
 	}
 	switch role {
 	case "planner":
-		return append(common,
-			"During design, before review, projection or dispatch, declare",
-			"in implementation packets and final reconciliation requirements",
-			"Missing, empty, ambiguous or unresolvable criteria block implementation dispatch and edits, never PASS",
+		return []string{
+			"During design, before review, projection, or dispatch, declare a nonempty evaluation baseline",
+			"stable criterion IDs",
+			"observable pass/fail commands or reproducible inspection procedures with expected outcomes",
+			"private evidence paths anchored to declared roots",
+			"Do not require pre-hashing dirty inputs into `baseline.json` or building cryptographic audit trails for routine dev tasks",
+			"Results must map criterion IDs to actual outcomes, executed commands, and inspectable evidence paths",
+			"assertions or command names alone are not proof",
+			"Missing, empty, ambiguous, or unresolvable criteria block implementation dispatch and edits, never PASS",
+			"Never derive acceptance from a finished patch or weaken criteria retroactively to turn failure into PASS",
+			"changed criteria require an explicit revised baseline with traceable authority and plan re-review",
 			"Publication in Publish mode or after the review cap does not waive these execution gates",
-			"Direct atomic work may establish its baseline without a parent planner")
+		}
 	case "implementor":
 		// Worker reports use singular fields per result, not the supervisor's plural map.
 		for i, text := range common {

@@ -3,7 +3,7 @@
 This diagram shows how the built-in agents collaborate in the full intake → planning → execution
 lifecycle, including hook event fire points and delegation relationships.
 Every fresh-context delegation arrow carries the self-locating packet defined
-normatively in [`docs/specs/agent-fabric.md`](../specs/agent-fabric.md); hooks may
+normatively in [`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md); hooks may
 enrich or validate that packet but never reconstruct known locators.
 
 ## Full System Diagram
@@ -108,15 +108,16 @@ flowchart TD
 |---|---|---|---|---|
 | [Planner](planner.md) | `planner` | primary | sandbox | load-task · pre-plan · post-plan · decompose |
 | [Plan Reviewer](plan-reviewer.md) | `reviewer` | subagent | sandbox | pre-plan |
-| [Plan Supervisor](plan-supervisor.md) | `supervisor` | primary | workspace | load-task · pre-plan · label · decompose · record-ledger |
+| [Plan Supervisor](plan-supervisor.md) | `supervisor` | all | workspace | load-task · pre-plan · label · decompose · record-ledger |
 | [Loop Supervisor](loop-supervisor.md) | `supervisor` | all | workspace | load-task · record-ledger |
 | [Implementor](implementor.md) | `worker` | subagent | sandbox | load-task |
-| [Code Reviewer](code-reviewer.md) | `reviewer` | subagent | sandbox | load-task |
+| [Code Reviewer](code-reviewer.md) | `reviewer` | all | sandbox | load-task |
 | [QA Runner](qa-runner.md) | `qa` | subagent | sandbox | — |
 | [Expert Debugger](expert-debugger.md) | `solver` | subagent | sandbox | — |
 | [Bug Fixer](bug-fixer.md) | `supervisor` | primary | workspace | load-task · label · persist-ticket · decompose |
 | [Report Reviewer](bug-fixer.md) | `reviewer` | subagent | sandbox | — |
-| [Deploy Supervisor](deploy-supervisor.md) | `supervisor` | primary | workspace | load-task · pre-deploy · post-deploy |
+| [Deploy Supervisor](deploy-supervisor.md) | `supervisor` | all | workspace | load-task · pre-deploy · post-deploy |
+| Learning Corrector (`agents/learning-corrector.md`) | `worker` | primary | sandbox | — |
 
 ## Hook Event Reference
 

@@ -1,4 +1,4 @@
-# Spec: docs/specs/agent-fabric.md — Deterministic supervision support
+# Spec: docs/specs/supervision-ledger-and-qa.md — Deterministic supervision support
 import copy
 import hashlib
 import json

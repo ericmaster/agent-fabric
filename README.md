@@ -129,7 +129,7 @@ Optional target profile overrides live in one user file,
   "profiles": {
     "opencode": {
       "worker": {
-        "model": "openai/gpt-5.6",
+        "model": "openai/gpt-6.1-sol",
         "effort": "high",
         "permissions": { "network": "deny" },
         "tools": {
@@ -184,7 +184,8 @@ visibility, isolation, hooks, and optional dependencies. Provider model IDs live
 only in `adapters/<target>.json`.
 
 The portable hook events are `load-task`, `pre-plan`, `classify`, `label`,
-`decompose`, `post-plan`, plus loop-supervisor's `pre-delegate-<agent>` and
+`persist-ticket`, `decompose`, `post-plan`, `record-ledger`, `pre-deploy`, and
+`post-deploy`, plus loop-supervisor's `pre-delegate-<agent>` and
 `post-delegate-<agent>` lifecycle events. Canonical agents use declarative hook placeholders,
 which `install` and `sync` resolve once from the host-global `~/.agent-hooks/`
 directory. Markdown instructions take precedence over an executable script.
@@ -201,9 +202,10 @@ credentials, and private task-system details remain adapter- or host-owned.
 
 Every explicit fresh-context handoff is self-locating and fails closed on a
 missing, unreadable, or ambiguous required input. The normative Delegation Packet,
-Declared Root, locator, hook, and inspection boundaries live only in
-[`docs/specs/agent-fabric.md`](docs/specs/agent-fabric.md). Structural tests verify
-that those safeguards render through every adapter; they do not prove model
+Declared Root, locator, and inspection boundaries live in
+[`docs/specs/delegation-and-evaluation.md`](docs/specs/delegation-and-evaluation.md)
+(hook resolution and schema contracts in [`docs/specs/agent-fabric.md`](docs/specs/agent-fabric.md)).
+Structural tests verify that those safeguards render through every adapter; they do not prove model
 compliance or add runtime transport.
 
 ## Harness review

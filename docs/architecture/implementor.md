@@ -5,7 +5,7 @@
 The Implementor makes bounded, targeted code changes for one atomic task. It is dispatched
 by the loop-supervisor, hands off only to its supervisor, and never self-certifies.
 Its intake follows the fail-closed packet contract defined normatively in
-[`docs/specs/agent-fabric.md`](../specs/agent-fabric.md); the diagram assumes required
+[`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md); the diagram assumes required
 inputs resolved before normal repository inspection.
 
 ## Full Workflow

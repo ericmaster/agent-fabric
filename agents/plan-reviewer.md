@@ -58,6 +58,10 @@ Assess every phase for complete vertical-slice delivery, one-worker delegability
 minimal acyclic dependencies, concrete specifications and paths, testable DoD,
 rollback, risks, and justified operator-required classification.
 
+- **Enforce Proportionality (Anti-Ratchet Rule):** You are a guardian of BOTH safety and execution speed/ROI. Treat **over-engineering, unrequested infrastructure, excessive benchmark sample sizes, and compliance theater** as a `high` severity defect under category `bloat`.
+- **Forbidden Reviewer Demands:** Never issue a `REVISE` demanding statistical significance (e.g., 100+ runs, ECE bins, large labeled corpora), synthetic fault-injection harnesses, canary secret scanners, doc-validation unit tests, or multi-viewport visual checks unless the user seed explicitly asked for them.
+- **Subtraction Bias:** Whenever you require adding a missing safety guard or test, check if an over-engineered requirement in the candidate can be simplified or removed to keep the phase lean.
+
 ```json
 {"verdict":"PASS|REVISE","summary":"","coverage":{"status":"PASS|FAIL|NOT_AVAILABLE","gaps":[]},"phase_assessments":[{"phase":"","vertical_slice":"PASS|FAIL|NOT_APPLICABLE","independently_delegable":"PASS|FAIL","dependency_valid":"PASS|FAIL","dod_testable":"PASS|FAIL"}],"findings":[{"severity":"critical|high|medium|low","category":"","phase":"","evidence":"","defect":"","required_change":""}],"confidence":0.0}
 ```

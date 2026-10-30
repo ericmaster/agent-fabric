@@ -1,11 +1,11 @@
 # Code Reviewer — Workflow Diagram
 
-`agents/code-reviewer.md` · profile: `reviewer` · mode: `subagent` · isolation: `sandbox`
+`agents/code-reviewer.md` · profile: `reviewer` · mode: `all` · isolation: `sandbox`
 
 The Code Reviewer is an adversarial, read-only gate dispatched by the loop-supervisor in a
 fresh context. It cannot edit files. It returns a single structured JSON verdict.
 Its intake follows the fail-closed packet contract defined normatively in
-[`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
+[`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md).
 
 ## Full Workflow
 

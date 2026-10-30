@@ -1,4 +1,4 @@
-// Spec: docs/specs/agent-fabric.md — Bounded episodes and discretionary QA
+// Spec: docs/specs/supervision-and-delivery.md, docs/specs/supervision-ledger-and-qa.md — Bounded episodes and discretionary QA
 package agent
 
 import (
@@ -8,10 +8,10 @@ import (
 	"testing"
 )
 
-// Spec: docs/specs/agent-fabric.md — Phase closure and compact planning
+// Spec: docs/specs/supervision-and-delivery.md — Phase closure and compact planning
 // These are instruction-policy regressions, not filesystem/process enforcement.
 func TestPhaseClosureAndCompactPlanning(t *testing.T) {
-	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "agent-fabric.md"))
+	spec, err := os.ReadFile(filepath.Join("..", "..", "docs", "specs", "supervision-and-delivery.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,14 +41,30 @@ func TestPhaseClosureAndCompactPlanning(t *testing.T) {
 			if strings.Contains(body, "docs/specs/agent-fabric.md") {
 				t.Error("PORTABILITY: exported role depends on Fabric source checkout")
 			}
-			wants := []string{"scoped commit/integration by the packet-named owner under repository workflow", "verified durable receipt", "eligible owned-resource cleanup", "Retain full raw logs for unresolved FAIL/BLOCKED/DEFERRED", "consumer-needed evidence or external retention", "traceable full-error links", "a clean tree and integrated commit ancestry", "explicit authorized discard of named content with backup/recoverable source", "retain and report the precise gap", "task-owned named hunks/paths with recorded before hash and proof of no unrelated concurrent edits", "No blanket checkout, force worktree removal, reset/clean or broad deletion", "Unassigned/no-caller resources are not obsolete", "macro-ledgers, native fixtures and budgets", "missing detail never waives these safeguards"}
+			var wants []string
 			if role == "planner" {
-				wants = append(wants, "compact decisions and rationale in plan detail", "verify the summary before retiring task-owned temporary grilling artifacts", "Resolve all consumer references first", "retain incomplete/foreign artifacts, third-party materials and operational failure evidence", "Blocked mandatory gates do not authorize committing")
-				if strings.Contains(body, "Keep rationale, alternatives, review decisions, provenance, and exclusions in separate decision artifacts") {
-					t.Error("obsolete separate-decision-artifact requirement")
+				wants = []string{
+					"with clear architectural boundaries and contracts, leaving standard coding mechanics to the implementer",
+					"**Proportionality & Complexity Budget:** Scale verification and ceremony strictly to the user seed",
+					"**Zero Unrequested Artifacts:** Never invent unrequested JSON Schemas (`.schema.json`), architecture DSL updates (`workspace.dsl`)",
+					"**Pragmatic Preflight:** Prefer resolving live provider aliases (e.g., `-latest`) over hard-blocking on brittle version strings",
+					"compact decisions and rationale in plan detail",
+					"Retire task-owned temporary grilling artifacts after capturing decisions",
+					"remove only clean, integrated, task-owned worktrees/branches with no active processes",
+					"Never blanket reset/clean or force-remove worktrees, preserve foreign edits",
+					"basic credential/secret redaction",
+					"Do not require logging counters/budgets, input hashes, consumer closure inventories, or multi-format report matrices for routine tasks",
+				}
+				for _, forbidden := range []string{
+					"Keep rationale, alternatives, review decisions, provenance, and exclusions in separate decision artifacts",
+					"with no hidden design decisions left to the implementer",
+				} {
+					if strings.Contains(body, forbidden) {
+						t.Errorf("planner retains obsolete requirement %q", forbidden)
+					}
 				}
 			} else {
-				wants = append(wants, "validate required checks on current accepted inputs → independent review → immediate scoped commit/integration", "No phase PASS with valid uncommitted code", "blocked mandatory gates do not authorize committing", "not invented test PASS", "current accepted input hash", "retained/deleted inventory", "Verify the summary before deleting source-unique evidence", "COMPLETED accepted-scope logs only after all consumer references are resolved", "IDLE is not command completion", "PID/start/boot identity")
+				wants = []string{"scoped commit/integration by the packet-named owner under repository workflow", "verified durable receipt", "eligible owned-resource cleanup", "Retain full raw logs for unresolved FAIL/BLOCKED/DEFERRED", "consumer-needed evidence or external retention", "traceable full-error links", "a clean tree and integrated commit ancestry", "explicit authorized discard of named content with backup/recoverable source", "retain and report the precise gap", "task-owned named hunks/paths with recorded before hash and proof of no unrelated concurrent edits", "No blanket checkout, force worktree removal, reset/clean or broad deletion", "Unassigned/no-caller resources are not obsolete", "macro-ledgers, native fixtures and budgets", "missing detail never waives these safeguards", "validate required checks on current accepted inputs → independent review → immediate scoped commit/integration", "No phase PASS with valid uncommitted code", "blocked mandatory gates do not authorize committing", "not invented test PASS", "current accepted input hash", "retained/deleted inventory", "Verify the summary before deleting source-unique evidence", "COMPLETED accepted-scope logs only after all consumer references are resolved", "IDLE is not command completion", "PID/start/boot identity"}
 			}
 			for _, want := range wants {
 				if !strings.Contains(body, want) {
@@ -57,6 +73,22 @@ func TestPhaseClosureAndCompactPlanning(t *testing.T) {
 			}
 		})
 	}
+	t.Run("plan-reviewer", func(t *testing.T) {
+		d, err := ParseFile(filepath.Join("..", "..", "agents", "plan-reviewer.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := strings.Join(strings.Fields(d.Body), " ")
+		for _, want := range []string{
+			"**Enforce Proportionality (Anti-Ratchet Rule):** You are a guardian of BOTH safety and execution speed/ROI. Treat **over-engineering, unrequested infrastructure, excessive benchmark sample sizes, and compliance theater** as a `high` severity defect under category `bloat`.",
+			"**Forbidden Reviewer Demands:** Never issue a `REVISE` demanding statistical significance (e.g., 100+ runs, ECE bins, large labeled corpora), synthetic fault-injection harnesses, canary secret scanners, doc-validation unit tests, or multi-viewport visual checks unless the user seed explicitly asked for them.",
+			"**Subtraction Bias:** Whenever you require adding a missing safety guard or test, check if an over-engineered requirement in the candidate can be simplified or removed to keep the phase lean.",
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("plan-reviewer missing anti-bloat guardrail %q", want)
+			}
+		}
+	})
 }
 
 // Spec: docs/specs/agent-fabric.md — portable supervision instructions

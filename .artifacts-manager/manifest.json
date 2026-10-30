@@ -22,21 +22,6 @@
       "updatedAt": "2026-09-15T22:32:21.000Z"
     },
     {
-      "id": "task-retrospective-planning-decisions",
-      "title": "Task Retrospective — Planning Decisions",
-      "type": "html",
-      "file": "grill-task-retrospective.html",
-      "description": "Remaining data-sharing and activation decisions for portable automatic instruction repair",
-      "tags": [
-        "planning",
-        "grilling",
-        "tailwind",
-        "mermaid"
-      ],
-      "createdAt": "2026-09-30T08:28:09.226Z",
-      "updatedAt": "2026-09-30T08:28:09.226Z"
-    },
-    {
       "id": "agent-fabric-task-retrospective-implementation-plan",
       "title": "Agent Fabric — Task Retrospective Implementation Plan",
       "type": "markdown",

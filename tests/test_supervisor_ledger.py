@@ -1,4 +1,4 @@
-# Spec: docs/specs/agent-fabric.md — Continuity and checkpoints
+# Spec: docs/specs/supervision-ledger-and-qa.md — Continuity and checkpoints
 import copy
 import importlib.util
 import json
@@ -215,9 +215,9 @@ class LedgerTests(unittest.TestCase):
             self.run_hook(invalid)
         self.assertEqual(Path(receipt["path"]).read_bytes(), before)
 
-    # Spec: docs/specs/agent-fabric.md — documented stage vocabulary is complete
+    # Spec: docs/specs/supervision-ledger-and-qa.md — documented stage vocabulary is complete
     def test_documented_stage_vocabulary_matches_hook(self):
-        spec = (Path(__file__).resolve().parents[1] / "docs/specs/agent-fabric.md").read_text()
+        spec = (Path(__file__).resolve().parents[1] / "docs/specs/supervision-ledger-and-qa.md").read_text()
         match = re.search(r"`next_stage` \(`([a-z_| ]+)`\)", " ".join(spec.split()))
         self.assertIsNotNone(match)
         self.assertEqual(set(match.group(1).replace(" ", "").split("|")), ledger.STAGES)

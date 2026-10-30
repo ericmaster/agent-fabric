@@ -6,7 +6,7 @@ The Plan Reviewer independently validates implementation plans for completeness,
 correctness, safety, and testable completion criteria. It is dispatched by the Planner in a
 **fresh context** with a minimal, sanitised package — no authoring transcripts or rejected drafts.
 That package follows the fail-closed Delegation Packet contract defined normatively
-in [`docs/specs/agent-fabric.md`](../specs/agent-fabric.md).
+in [`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md).
 
 ## Full Workflow
 

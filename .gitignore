@@ -20,3 +20,9 @@ __pycache__/
 /.agents/task-retrospective-projection/
 hooks/retrospective/dist/
 hooks/retrospective/.record-captures.jsonl
+
+# Temporary planning and grilling artifacts
+/.artifacts-manager/grill-*
+/grill-*
+grill-*.html
+

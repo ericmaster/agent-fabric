@@ -1,21 +1,8 @@
 # Agent Workflow Diagrams
 
-Architecture diagrams for each built-in Agent Fabric agent. Each diagram shows the agent's
-internal workflow, hook invocations, delegation relationships, and output contracts.
+Structural workflow diagrams, hook invocations, delegation relationships, and output
+contracts for each built-in Agent Fabric agent:
 
-| Agent | Role | Profile | Hooks |
-|---|---|---|---|
-| [planner](planner.md) | Authors implementation plans | planner | load-task · pre-plan · post-plan |
-| [plan-supervisor](plan-supervisor.md) | Orchestrates multi-phase plan execution | supervisor | load-task · pre-plan · label · decompose |
-| [loop-supervisor](loop-supervisor.md) | Drives one atomic task to DoD | supervisor | load-task |
-| [implementor](implementor.md) | Makes bounded code changes | worker | load-task |
-| [code-reviewer](code-reviewer.md) | Adversarial read-only gate | reviewer | load-task |
-| [qa-runner](qa-runner.md) | Deterministic verification | qa | — |
-| [expert-debugger](expert-debugger.md) | Root-cause diagnosis | readonly | — |
-| [plan-reviewer](plan-reviewer.md) | Independent plan validation | reviewer | pre-plan |
-| [deploy-supervisor](deploy-supervisor.md) | Gated release & deploy verification | supervisor | load-task · pre-deploy · post-deploy |
-| [bug-fixer](bug-fixer.md) | Plain-language bug intake and gated fix dispatch | supervisor | load-task · label · persist-ticket · decompose |
-| [report-reviewer](bug-fixer.md) | Independent bug-report completeness audit | reviewer | — |
-
-Filing rule: these are structural diagrams — they belong in `docs/architecture/` per §3 of
-[`docs-organization-blueprint.md`](../docs-organization-blueprint.md).
+- **System diagram, agent role summary, and hook event table (SSOT):** [`system-overview.md`](system-overview.md)
+- **Per-agent diagram index:** [`../index.md#architecture`](../index.md#architecture)
+- **Filing rules:** §3 of [`../docs-organization-blueprint.md`](../docs-organization-blueprint.md)
