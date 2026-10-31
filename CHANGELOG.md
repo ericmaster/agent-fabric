@@ -5,6 +5,8 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-31
+
 ### Added
 
 - Standalone shell AST inspection with pinned parser, full frozen shell/read corpus and supported wrapper-state regressions; no harness installation or enforcement claim.
@@ -16,6 +18,7 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ### Changed
 
+- Modularize the monolithic specification into four focused domain specs (`agent-fabric.md`, `delegation-and-evaluation.md`, `supervision-and-delivery.md`, and `supervision-ledger-and-qa.md`), and add proportionality constraints and anti-bloat guardrails to the planner and plan-reviewer.
 - Permit explicitly user-approved harness-review correction scope amendments through a native approval locator, preserving the source/directory, append-only history and shared two-start limit.
 - Make validation-to-mutation sequencing fail closed and bound implementor dispatches at structural recovery handback (instruction contracts, not runtime enforcement).
 - Defer automatic harness-review loading and launch until main-task completion, including required checks, authorized delivery and cleanup; retain friction evidence during execution and allow early review only on explicit user request.
