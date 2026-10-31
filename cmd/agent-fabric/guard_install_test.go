@@ -499,6 +499,17 @@ func TestGuardInstallNativeDiscovery(t *testing.T) {
 
 func assertNativeLoads(t *testing.T, cwd, agentDir, want string) {
 	t.Helper()
+	piPkg := os.Getenv("PI_PACKAGE")
+	if piPkg == "" {
+		piPkg = os.Getenv("AGF_PI_PACKAGE")
+	}
+	if piPkg == "" {
+		piPkg = pinnedPiPackage
+	}
+	if _, err := os.Stat(filepath.Join(piPkg, "package.json")); err != nil {
+		t.Skipf("skipping native Pi loader check: %s not found", piPkg)
+		return
+	}
 	cmd := exec.Command("node", "--input-type=module", "-e", `
 import { pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
@@ -522,7 +533,7 @@ if (!paths.includes(process.env.WANT)) {
 }
 `)
 	cmd.Env = append(os.Environ(),
-		"PI_PACKAGE="+pinnedPiPackage,
+		"PI_PACKAGE="+piPkg,
 		"CWD="+cwd,
 		"AGENT_DIR="+agentDir,
 		"WANT="+want,
