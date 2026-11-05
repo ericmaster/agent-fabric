@@ -5,6 +5,10 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ## [Unreleased]
 
+### Changed
+
+- Delegate phases and bounded fixes directly to implementor, which owns tests/remediations and independent code review in the same session. Retain loop-supervisor only for existing continuations, with unchanged history/budgets. Scope OpenCode implementor delegation to code-reviewer; preserve fail-closed review, single-owner hooks/checkpoints, and direct reviewer fallback when nesting is unavailable.
+
 ## [0.3.0] - 2026-10-31
 
 ### Added

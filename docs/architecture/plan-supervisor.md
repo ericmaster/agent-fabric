@@ -3,8 +3,8 @@
 `agents/plan-supervisor.md` · profile: `supervisor` · mode: `all` · isolation: `workspace`
 
 The Plan Supervisor executes a pre-decomposed implementation plan phase-by-phase through bounded
-task supervision. It owns phase ordering and evidence integrity; the phase loop
-is the sole recovery owner. Load the macro checkpoint before phase selection.
+task supervision. It owns phase ordering and evidence integrity; implementor
+is the local recovery owner. Load the macro checkpoint before phase selection.
 Fresh-child arrows abbreviate the Delegation Packet contract defined normatively in
 [`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md).
 Direct user invocation is not a fresh-child handoff, so its intake packet is optional.
@@ -32,7 +32,7 @@ flowchart TD
     subgraph "Phase Selection Loop"
         SEL["② Select unblocked implementation\nwith verified functional prerequisites"]
         BRIEF["Write and validate\nself-locating phase packet"]
-        DISPATCH["③ Resume recorded loop-supervisor\nnew session only on new resolving authority / approved scope identity change / unavailable recorded continuation\ncontext length: resume or BLOCKED\nvalidated packet + checkpoint"]
+        DISPATCH["③ Resume recorded implementor\nnew session only on new resolving authority / approved scope identity change / unavailable recorded continuation\ncontext length: resume or BLOCKED\nvalidated packet + checkpoint"]
     end
 
     DEC --> SEL --> BRIEF
@@ -152,6 +152,6 @@ The Plan Supervisor acts as a curation firewall between phases:
 The plan supervisor integrates accepted slice outputs into one recorded revision;
 dependent slices consume verified predecessor changes. Aggregate acceptance runs
 against that integrated revision. Soft exhaustion requires a distinct evidence-backed
-strategy, not another user instruction; explicit hard caps still bind. QA is recommended and owned by loop-supervisor;
+strategy, not another user instruction; explicit hard caps still bind. QA is recommended and owned by the delivery supervisor;
 acceptance requires substantive evidence, not a QA session. Reduced delivery reuses
 the verified deployed revision and declares deferred and defective behavior.

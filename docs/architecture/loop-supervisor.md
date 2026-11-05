@@ -1,5 +1,8 @@
 # Loop Supervisor — Workflow Diagram
 
+Deprecated for new tasks. This diagram applies only to existing continuations;
+preserve their history/budgets. New execution uses [implementor](implementor.md).
+
 `agents/loop-supervisor.md` · profile: `supervisor` · mode: `all` · isolation: `workspace`
 
 The Loop Supervisor drives one atomic task through implementation, review, testing, and

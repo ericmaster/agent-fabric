@@ -90,6 +90,28 @@ func openCodeMarkdown(d agent.Definition, p Profile) string {
 		d.Description, d.Mode, openCodeModel(p.Model, effort), d.Fabric.Visibility == "hidden")
 	if rules := openCodePermissionRules(permissions(d, p), p.Tools); rules != "" {
 		b.WriteString("permissions:\n" + rules)
+		// Scope this role's new capability after profile/tool allows, without
+		// reopening a task/subagent denial or a disabled delegation tool.
+		if d.ID == "implementor" {
+			b.WriteString("  - action: \"subagent\"\n    resource: \"*\"\n    effect: \"deny\"\n")
+			policies := permissions(d, p)
+			effect := policies["task"]
+			if policies["subagent"] == "ask" {
+				effect = "ask"
+			}
+			allowed := (effect == "allow" || effect == "ask") && policies["task"] != "deny" && policies["subagent"] != "deny"
+			if wildcard, set := p.Tools["*"]; set && !wildcard && !p.Tools["task"] && !p.Tools["subagent"] {
+				allowed = false
+			}
+			for name, enabled := range p.Tools {
+				if !enabled && (name == "task" || name == "subagent") {
+					allowed = false
+				}
+			}
+			if allowed {
+				fmt.Fprintf(&b, "  - action: \"subagent\"\n    resource: \"code-reviewer\"\n    effect: %q\n", effect)
+			}
+		}
 	}
 	b.WriteString("---\n" + d.Body)
 	if !strings.HasSuffix(d.Body, "\n") {

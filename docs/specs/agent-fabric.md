@@ -63,6 +63,18 @@ source rather than flattening ordered resource scopes into an action map. Model/
 effort-only overrides preserve the rules byte-for-byte.
 legacy managed hub files retain their old format until refreshed from their owner.
 
+Implementor supports direct and child entry (`mode: all`) and explicitly permits
+task delegation only for independent code-reviewer. OpenCode appends native
+`subagent/* deny`, then `subagent/code-reviewer allow` (or `ask`, preserving
+explicit confirmation) only if effective role/tool policy permits delegation;
+profile/tool allows cannot widen this destination cap,
+and explicit task/subagent denials stay closed. Reviewer denies edit and task.
+These are tool permission controls, not OS isolation: allowed shell/MCP can bypass
+tool boundaries, and network deny covers only webfetch/websearch. Other adapters
+do not enforce destination scopes; the role's only-reviewer/no-delegation rules
+are declarative there (Pi readonly allowlist also removes subagent). No global
+permissions, models or unrelated roles are changed.
+
 Root `--help`/`-h` lists commands and the subcommand-help entry point. Flag-bearing
 subcommands (including `sync` and `hub install`) print flags/defaults to stderr
 for `--help`/`-h` and exit zero before loading sources or writing state. Unknown
@@ -155,8 +167,8 @@ resolves each registered event once from host-global `~/.agent-hooks/`; Markdown
 precedes an executable script. Deterministic hook events include `load-task`, `pre-plan`,
 `classify`, `label`, `persist-ticket`, `decompose`, `post-plan`, `record-ledger`, `pre-deploy`, and `post-deploy`.
 The generated agent receives either inlined Markdown instructions, an executable script path,
-or an explicit no-hook continuation (or section omission for optional lifecycle blocks). Loop-supervisor
-delegation hooks use `pre-delegate-<agent>` and `post-delegate-<agent>` events;
+or an explicit no-hook continuation (or section omission for optional lifecycle blocks). Delegation
+hooks use `pre-delegate-<agent>` and `post-delegate-<agent>` events;
 absent hooks are omitted so its default generated output is unchanged. The generated
 file is therefore deterministic until its next install or sync. Hooks own their
 own caching, logging, input transport, and failure semantics; canonical agents

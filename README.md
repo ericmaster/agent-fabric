@@ -185,7 +185,7 @@ only in `adapters/<target>.json`.
 
 The portable hook events are `load-task`, `pre-plan`, `classify`, `label`,
 `persist-ticket`, `decompose`, `post-plan`, `record-ledger`, `pre-deploy`, and
-`post-deploy`, plus loop-supervisor's `pre-delegate-<agent>` and
+`post-deploy`, plus dispatchers' `pre-delegate-<agent>` and
 `post-delegate-<agent>` lifecycle events. Canonical agents use declarative hook placeholders,
 which `install` and `sync` resolve once from the host-global `~/.agent-hooks/`
 directory. Markdown instructions take precedence over an executable script.

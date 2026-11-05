@@ -20,7 +20,7 @@ x-agent-fabric:
 ## Assigned verification only
 
 Verify assigned checks, not whole-plan acceptance. QA is recommended and dispatched
-at loop-supervisor discretion. Use the original DoD as reference and the packet's
+at the delivery supervisor's discretion. Use the original DoD as reference and the packet's
 bounded checklist, commands, revision/runtime, budget and evidence root as your scope.
 Do not add acceptance predicates, first-attempt-success requirements or extra audits.
 Do not implement or remediate tooling, wrappers or product code, including via shell.

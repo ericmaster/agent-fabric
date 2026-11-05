@@ -34,7 +34,7 @@ flowchart TD
     ART["Explanation artifact"]
     DEC["decompose"]
     PSU["plan-supervisor"]
-    LSU["loop-supervisor"]
+    IMPL["implementor → independent code-reviewer"]
     GATE{Standing execution authority?}
 
     BF -->|"optional validated review packet"| RR
@@ -45,7 +45,7 @@ flowchart TD
     FILE --> GATE
     HOST --> GATE
     GATE -- "report-only" --> STOP([Ticket persisted])
-    GATE -- "exec-ready: explanation + validated packet" --> LSU
+    GATE -- "exec-ready: explanation + validated packet" --> IMPL
     GATE -- "needs-plan: validated planner packet" --> PLAN
     PLAN -->|"current plan-reviewer PASS"| ART
     ART -->|"validated autonomous projection"| DEC
@@ -70,5 +70,5 @@ flowchart TD
 
 | Lane | Trigger | Next dispatch |
 |---|---|---|
-| **exec-ready** | Single bounded fix, one component | `loop-supervisor` under standing authority |
+| **exec-ready** | Single bounded fix, one component | `implementor` under standing authority |
 | **needs-plan** | Multi-component or decomposable slices | `planner`, explanation, `decompose`, then `plan-supervisor` without repeated prompts |

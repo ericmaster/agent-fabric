@@ -21,7 +21,7 @@ document's home is ambiguous, and apply the frontmatter from §4.
 - [`architecture/planner.md`](architecture/planner.md) — Planner workflow and hook map
 - [`architecture/plan-reviewer.md`](architecture/plan-reviewer.md) — Plan Reviewer review rubric and Planner↔Reviewer sequence
 - [`architecture/plan-supervisor.md`](architecture/plan-supervisor.md) — Plan Supervisor phase-execution state machine
-- [`architecture/loop-supervisor.md`](architecture/loop-supervisor.md) — Loop Supervisor atomic task control loop and delegation model
+- [`architecture/loop-supervisor.md`](architecture/loop-supervisor.md) — Deprecated; existing-continuation compatibility only
 - [`architecture/implementor.md`](architecture/implementor.md) — Implementor bounded-change workflow
 - [`architecture/code-reviewer.md`](architecture/code-reviewer.md) — Code Reviewer static + semantic review protocol
 - [`architecture/qa-runner.md`](architecture/qa-runner.md) — QA Runner verification sequence and anti-cheat checks

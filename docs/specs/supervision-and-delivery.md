@@ -14,6 +14,37 @@ ledger hooks, deterministic support, and QA contracts live in [supervision-ledge
 
 ## Autonomous Execution Contract
 
+### Phase ownership
+
+New tasks use `plan-supervisor -> implementor -> code-reviewer`, or direct atomic
+implementor. Bug-fixer dispatches implementor for exec-ready tickets. Supervisors
+retain plan/DAG, macro budgets, global acceptance, integration and delivery; they
+do not implement product changes. Implementor owns diagnosis, edits, relevant
+tests and remediations in one recorded session and may delegate only code-reviewer.
+Planner remains the planning owner. Loop-supervisor is deprecated for new tasks;
+existing continuations keep their identity, workflow, evidence and budgets without
+migration/cancellation/reset. Legacy loop-specific contracts below apply only there.
+
+Review is independent, read-only and non-delegating. Freeze base/diff/candidate,
+supply original task/DoD and objective evidence without author conversation or
+rationalizations, and resume the same reviewer for ordinary remediation. Return
+the complete original verdict plus native locator/session and candidate identity
+to the supervisor. ACCEPT must match the final candidate; absent, denied, rejected,
+pending or transport-failed review never permits PASS. Later edits invalidate
+affected review/check evidence. If nesting is unavailable, the supervisor invokes
+that reviewer directly on the same candidate and returns its unfiltered findings
+to the same implementor, with no intermediate loop or fallback chain. A direct
+atomic implementor without a capable parent reports incomplete review instead.
+Runtime mandatory gates remain implementor-owned, not replaced by static review;
+extra QA is discretionary, not a required extra session. Production deployment
+requires explicit human confirmation, regardless of ordinary execution authority.
+
+The actual dispatcher alone runs applicable pre/post-delegate hooks once per
+dispatch. Plan-supervisor owns implementor dispatch hooks and fallback review hooks;
+implementor owns normal review hooks. Plan macro persistence includes the child's
+single phase history; direct atomic implementor owns the existing micro checkpoint
+through record-ledger only. See the ledger spec for single-writer continuity.
+
 An approved task or plan authorizes every in-scope, safe, reversible local or
 non-production action needed to satisfy its DoD. Execution roles own capability
 recovery: adapt command invocation and tool-compatible artifact paths, select a
@@ -127,7 +158,7 @@ loop. A child's context gap or environment `BLOCKED` is an internal recovery cla
 not proof of external dependence.
 
 Budget exhaustion is not itself an external blocker. After each root-cause
-diagnostic, and mandatorily before a fourth mutation, the atomic supervisor tests
+diagnostic, and mandatorily before a fourth mutation, the implementor tests
 whether the phase is structurally overbroad. A phase requires decomposition when
 the remaining findings span multiple independently testable producer-to-consumer
 paths or state machines, need disjoint acceptance surfaces, or cannot be repaired
@@ -135,8 +166,8 @@ at one shared enforcement boundary without combining unrelated mutations. A
 repeated finding does not require decomposition when one coherent root-cause fix
 still closes the path.
 
-Bound each implementor dispatch by the remaining allowance before the next required
-structural recovery decision. The child stops and returns its cumulative count and
+Bound implementor mutations by the remaining allowance before the next required
+structural recovery decision. It stops and returns its cumulative count and
 evidence at that boundary; another mutation requires a recorded decision and an
 eligible rebrief. This is an instruction contract, not runtime isolation.
 
@@ -158,7 +189,7 @@ never inherited wholesale.
 
 The plan supervisor owns composition into one recorded integration revision.
 It also owns replacement-DAG acceptance: obtain independent plan-reviewer PASS
-before materialization or execution, including direct loop-supervisor split handoffs.
+before materialization or execution, including direct atomic split proposals.
 Use at most two passes, resume the reviewer, and revise the same deterministic
 slices without resetting counters; unresolved rejection returns terminal FAIL.
 An original plan's PASS does not cover a changed replacement DAG.
@@ -167,13 +198,13 @@ base. Conflicts return to the owning slice's existing session and counters;
 invalidated gates rerun. Aggregate acceptance verifies the integrated revision
 containing all accepted outputs, never only isolated PASS reports.
 
-When a parent plan exists, `loop-supervisor` returns `recovery.mode: split` and a
+When a parent plan exists, `implementor` returns `recovery.mode: split` and a
 validated split proposal to `plan-supervisor`. The plan supervisor invokes the
 `decompose` hook, materializes replacement slices and dependencies, blocks later
 phases on the aggregate gate, and continues without human confirmation. On direct
-atomic invocation, loop-supervisor hands the replacement DAG to `plan-supervisor`
-and stops its failed-scope loop; if dispatch is unavailable, it returns the split
-proposal as `FAIL`, not `BLOCKED`. The plan supervisor reuses its rendered
+atomic invocation, implementor returns the replacement DAG to its caller as
+`FAIL`, not `BLOCKED`, and never dispatches another implementor or supervisor.
+The plan supervisor reuses its rendered
 `decompose` executor during recovery; without an installed hook it updates the
 inline macro DAG and discloses missing durable task-system materialization. A
 replacement that appears overbroad invalidates the partition and causes a
@@ -317,8 +348,9 @@ episode ending transfers recovery to the delivery owner, not to the user's inbox
 
 ## Delivery ownership and checkout closure
 
-Plan, loop and deploy supervisors own delivery, not merely dispatch or a local PASS.
-All three use mode `all` so native V2 delegation can reach them as well as root use.
+Plan and deploy supervisors own delivery, not merely dispatch or a local PASS.
+They and implementor use mode `all` for native delegation and direct use; legacy
+loop-supervisor retains mode `all` for compatibility.
 Carry the original objective through applicable review, scoped commit, integration,
 authorized deployment, live verification and cleanup. Record delivery stage, owner,
 target and next action; an implementation report is not proof of a deployed result.
@@ -465,7 +497,7 @@ explanation at `bugfix-tickets/explanations/ticket-id.html` with exactly the
 sections What is broken, The fix plan, and What happens next. One file per
 ticket, rewritten in place on each plan revision.
 
-`exec-ready` dispatches `loop-supervisor` under standing execution authority.
+`exec-ready` dispatches `implementor` under standing execution authority.
 `needs-plan` dispatches `planner` (autonomous session; plan parent only), then
 invokes `decompose` with validated scope and rationale and dispatches
 `plan-supervisor` without repeated approval prompts.
@@ -474,5 +506,4 @@ invokes `decompose` with validated scope and rationale and dispatches
 `missing_detail|ambiguity|inconsistency`; a context gap is `REVISE` with a
 critical finding naming the exact gap and can never yield `PASS`.
 bug-fixer performs zero write-back after persistence; later ticket updates belong
-to the dispatched supervisors.
-
+to the execution owner named in the packet.

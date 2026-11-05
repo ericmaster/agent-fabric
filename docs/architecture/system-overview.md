@@ -25,7 +25,7 @@ flowchart TD
     RR -->|"review result"| BF
     BF --> H_PT --> H_LBL_BF
     BF -->|"validated planner packet"| PLANNER
-    H_LBL_BF -->|"exec-ready packet"| LSUP
+    H_LBL_BF -->|"exec-ready packet"| IMPL
     BF -->|"validated autonomous projection"| H_DEC_BF
     H_DEC_BF -->|"validated plan-supervisor packet"| PSUP
 
@@ -54,35 +54,25 @@ flowchart TD
     PSUP --> H_LT2 --> H_PP2 --> H_DEC2
 
     subgraph "Atomic Execution Loop (per phase)"
-        LSUP["**Loop Supervisor**\nprofile: supervisor · all"]
-        H_LT3["🪝 load-task"]
-        IMPL["**Implementor**\nprofile: worker · subagent"]
+        IMPL["**Implementor**\nprofile: worker · all"]
         IMPL_H_LT["🪝 load-task"]
         CREV["**Code Reviewer**\nprofile: reviewer · subagent\n(fresh context)"]
         CREV_H_LT["🪝 load-task"]
         QAR["**QA Runner**\nprofile: qa · subagent"]
     end
 
-    H_DEC2 -->|"validated phase packet"| LSUP
-    LSUP --> H_LT3
+    H_DEC2 -->|"validated phase packet"| IMPL
+    USER -->|"direct atomic task"| IMPL
     IMPL_H_LT -.->|"load-task"| IMPL
     CREV_H_LT -.->|"load-task"| CREV
-    LSUP -->|"validated implementation packet dispatch"| IMPL
-    IMPL -->|"implementation result"| LSUP
-    LSUP -->|"validated review packet dispatch"| CREV
-    CREV -->|"review result"| LSUP
-    LSUP -.->|"optional validated QA packet dispatch"| QAR
-    QAR -->|"QA result"| LSUP
-    LSUP -->|"deferred QA receipt; implementation continues"| PSUP
-
-    subgraph "Recovery (on FAIL / BLOCKED)"
-        DBG["**Expert Debugger**\nprofile: solver · subagent"]
-    end
-
-    LSUP -.->|"validated recovery packet"| DBG
-    DBG -.->|"remediation brief"| LSUP
-
-    LSUP --> H_LBL2 --> PHASE_DONE{All phases\ncomplete?}
+    IMPL -->|"validated review packet dispatch"| CREV
+    CREV -->|"review result; same-session remediation"| IMPL
+    IMPL -->|"evidence + original review locator"| PSUP
+    PSUP -.->|"fallback review when nesting unavailable"| CREV
+    CREV -.->|"original fallback verdict"| PSUP
+    PSUP -.->|"optional validated QA packet dispatch"| QAR
+    QAR -->|"QA result"| PSUP
+    PSUP --> H_LBL2 --> PHASE_DONE{All phases\ncomplete?}
     PHASE_DONE -- "next phase" --> H_DEC2
     PHASE_DONE -- "all done" --> COMPLETE([Plan complete])
     COMPLETE -- "scoped executable release task only" --> DEPLOY[Deploy Supervisor: checkpoint, canary and live verification]
@@ -97,7 +87,6 @@ flowchart TD
     style H_PP2 fill:#a855f7,color:#fff,stroke:none
     style H_DEC2 fill:#6366f1,color:#fff,stroke:none
     style H_LBL2 fill:#6366f1,color:#fff,stroke:none
-    style H_LT3 fill:#6366f1,color:#fff,stroke:none
     style IMPL_H_LT fill:#6366f1,color:#fff,stroke:none
     style CREV_H_LT fill:#6366f1,color:#fff,stroke:none
 ```
@@ -109,8 +98,8 @@ flowchart TD
 | [Planner](planner.md) | `planner` | primary | sandbox | load-task · pre-plan · post-plan · decompose |
 | [Plan Reviewer](plan-reviewer.md) | `reviewer` | subagent | sandbox | pre-plan |
 | [Plan Supervisor](plan-supervisor.md) | `supervisor` | all | workspace | load-task · pre-plan · label · decompose · record-ledger |
-| [Loop Supervisor](loop-supervisor.md) | `supervisor` | all | workspace | load-task · record-ledger |
-| [Implementor](implementor.md) | `worker` | subagent | sandbox | load-task |
+| [Loop Supervisor](loop-supervisor.md) (deprecated; existing continuations only) | `supervisor` | all | workspace | load-task · record-ledger |
+| [Implementor](implementor.md) | `worker` | all | sandbox | load-task · record-ledger (atomic) · review dispatch |
 | [Code Reviewer](code-reviewer.md) | `reviewer` | all | sandbox | load-task |
 | [QA Runner](qa-runner.md) | `qa` | subagent | sandbox | — |
 | [Expert Debugger](expert-debugger.md) | `solver` | subagent | sandbox | — |
@@ -130,7 +119,7 @@ flowchart TD
 | `persist-ticket` | Bug Fixer | Persist a portable bug ticket; file default when uninstalled |
 | `decompose` | Planner · Plan Supervisor · Bug Fixer | Single-owner projection of child phases into task-system |
 | `post-plan` | Planner | Signal completion / publish / notify |
-| `record-ledger` | Plan Supervisor · Loop Supervisor | Load/record versioned macro/micro checkpoint and journal; explicit inline fallback without hook |
+| `record-ledger` | Plan Supervisor · direct atomic Implementor · legacy Loop Supervisor | Single owner per phase/task; versioned macro/micro checkpoint, explicit inline fallback |
 | `pre-deploy` · `post-deploy` | Deploy Supervisor | Target/authority preflight and empirical release evidence |
 
 Hooks are resolved once at install/sync time from `~/.agent-hooks/`. Markdown instructions

@@ -4,7 +4,7 @@
 
 The QA Runner verifies supervisor-assigned checks, with original DoD as reference.
 It cannot implement product code, wrappers or tooling. QA is recommended, not
-mandatory; loop-supervisor decides whether to dispatch and what evidence is needed.
+mandatory; the delivery supervisor decides whether to dispatch and what evidence is needed.
 Execution blockers are communicated upward as deferred QA without stopping implementation.
 Its intake follows the fail-closed packet contract defined normatively in
 [`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md).
@@ -13,7 +13,7 @@ Its intake follows the fail-closed packet contract defined normatively in
 
 ```mermaid
 flowchart TD
-    START([Validated packet from loop-supervisor]) --> READDOD
+    START([Validated packet from delivery supervisor]) --> READDOD
 
     subgraph "Preparation"
         READDOD["Resolve packet inputs, then read assigned checks\noriginal DoD as reference\n(context gap → BLOCKED, supervisor defers QA)"]
@@ -43,7 +43,7 @@ flowchart TD
         REPORT["Return structured evidence report\nCompress logs → relevant errors + evidence\n(no raw output forwarding)"]
     end
 
-    REPORT --> DONE([Return to loop-supervisor])
+    REPORT --> DONE([Return assigned-check evidence to delivery supervisor])
 ```
 
 ## Hook Summary

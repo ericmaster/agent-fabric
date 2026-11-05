@@ -386,7 +386,7 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 			{"loop QA runner", "loop-supervisor", "packet, then dispatch or resume `qa-runner`"},
 			{"loop expert debugger", "loop-supervisor", "packet, then dispatch or resume `expert-debugger` using the continuity rule"},
 			{"loop retries and remediation", "loop-supervisor", "Every retry, remediation, or idle-child redispatch repeats the applicable hook and immediate packet validation"},
-			{"plan first loop supervisor", "plan-supervisor", "The first `loop-supervisor` for a phase is a fresh child"},
+			{"plan first implementor", "plan-supervisor", "The first `implementor` for a phase is a fresh child"},
 			{"plan resume recorded session", "plan-supervisor", "idle-child report collection resume that recorded session"},
 			{"plan replacement session", "plan-supervisor", "A replacement session"},
 			{"planner discovery child", "planner", "Any fresh discovery or design child receives a self-locating Delegation Packet"},
@@ -395,7 +395,7 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 			{"bug-fixer report reviewer", "bug-fixer", "packet, then dispatch `report-reviewer` in a fresh context"},
 			{"bug-fixer planner", "bug-fixer", "packet, then dispatch `planner` in a fresh context"},
 			{"bug-fixer plan supervisor", "bug-fixer", "packet, then dispatch `plan-supervisor` using the continuity rule"},
-			{"bug-fixer loop supervisor", "bug-fixer", "packet, then dispatch `loop-supervisor` using the continuity rule"},
+			{"bug-fixer implementor", "bug-fixer", "packet, then dispatch `implementor` using the continuity rule"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -476,8 +476,12 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 
 	t.Run("child-only roles remain fail closed before substantive work", func(t *testing.T) {
 		for _, id := range childRoles {
+			intakeGuard := unconditionalOldGuard
+			if id == "implementor" {
+				intakeGuard = "Fresh-child intake and\nevery outgoing review dispatch require a self-contained"
+			}
 			for _, anchor := range []string{
-				unconditionalOldGuard,
+				intakeGuard,
 				"Fail closed before substantive work",
 				"Normal repository inspection begins only after all required packet inputs resolve",
 			} {
@@ -640,18 +644,18 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 		}
 	})
 
-	t.Run("system overview routes child results and dispatches through loop supervisor", func(t *testing.T) {
+	t.Run("system overview routes direct implementation and review", func(t *testing.T) {
 		overview, err := os.ReadFile(filepath.Join("..", "..", "docs", "architecture", "system-overview.md"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		body := string(overview)
 		for _, edge := range []string{
-			`IMPL -->|"implementation result"| LSUP`,
-			`LSUP -->|"validated review packet dispatch"| CREV`,
-			`CREV -->|"review result"| LSUP`,
-			`LSUP -.->|"optional validated QA packet dispatch"| QAR`,
-			`QAR -->|"QA result"| LSUP`,
+			`IMPL -->|"validated review packet dispatch"| CREV`,
+			`CREV -->|"review result; same-session remediation"| IMPL`,
+			`IMPL -->|"evidence + original review locator"| PSUP`,
+			`PSUP -.->|"optional validated QA packet dispatch"| QAR`,
+			`QAR -->|"QA result"| PSUP`,
 		} {
 			if !strings.Contains(body, edge) {
 				t.Errorf("system overview missing supervisor-owned edge %q", edge)
@@ -659,8 +663,8 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 		}
 		for _, line := range strings.Split(body, "\n") {
 			edge := strings.ReplaceAll(strings.TrimSpace(line), " ", "")
-			if strings.HasPrefix(edge, "IMPL-->") && strings.Contains(edge, "CREV") {
-				t.Errorf("implementor must return to loop supervisor, not dispatch reviewer: %s", line)
+			if strings.HasPrefix(edge, "IMPL-->") && strings.Contains(edge, "LSUP") {
+				t.Errorf("new tasks must not require loop-supervisor: %s", line)
 			}
 			if strings.HasPrefix(edge, "CREV-->") && strings.Contains(edge, "QAR") {
 				t.Errorf("code reviewer must return to loop supervisor, not dispatch QA: %s", line)
@@ -775,9 +779,9 @@ func TestSupervisorResumeHandleIsMandatory(t *testing.T) {
 			"Reuse a finding's recorded diagnosis",
 		}},
 		{"plan-supervisor", planSup.Body, []string{
-			"resume the recorded `loop-supervisor` session for that phase",
+			"resume the recorded `implementor` session for that phase",
 			"pass that resume handle on every later",
-			"Open a new `loop-supervisor` session only when " + shared,
+			"Open a new `implementor` session only when " + shared,
 			"Context length is not continuation unavailability: resume the recorded session",
 			"Reuse a finding's recorded diagnosis",
 		}},
@@ -826,7 +830,7 @@ func TestSupervisorResumeHandleIsMandatory(t *testing.T) {
 			name: "plan-supervisor architecture",
 			path: filepath.Join("..", "..", "docs", "architecture", "plan-supervisor.md"),
 			wants: []string{
-				"Resume recorded loop-supervisor",
+				"Resume recorded implementor",
 				"new session only on new resolving authority / approved scope identity change / unavailable recorded continuation",
 				"context length: resume or BLOCKED",
 			},
@@ -917,7 +921,7 @@ func TestMutationGateAndChildHandbackContracts(t *testing.T) {
 	}{
 		{"implementor", []string{"Never let a later command\nmask a failure", "remaining mutation allowance across the whole dispatch", "stop and return control with the cumulative count"}},
 		{"loop-supervisor", []string{"including pipeline failures. A later command must not mask a failed gate", "Bound each implementor dispatch by the remaining allowance", "Do not authorize a fourth mutation until the"}},
-		{"plan-supervisor", []string{"including pipeline failures. A later command must not mask a failed gate", "bound each child dispatch at the next structural", "receive control and cumulative evidence"}},
+		{"plan-supervisor", []string{"including pipeline failures. A later command must not mask a failed gate", "stop its mutations at the next structural", "receive control and cumulative evidence"}},
 	} {
 		d, err := ParseFile(filepath.Join("..", "..", "agents", tc.agent+".md"))
 		if err != nil {
@@ -1213,7 +1217,7 @@ func TestSupervisorLedgerAndCurationFirewallContracts(t *testing.T) {
 }
 
 func TestWorkersDecoupledFromLedgerStorage(t *testing.T) {
-	for _, id := range []string{"implementor", "code-reviewer", "planner"} {
+	for _, id := range []string{"code-reviewer", "planner"} {
 		d, err := ParseFile(filepath.Join("..", "..", "agents", id+".md"))
 		if err != nil {
 			t.Fatalf("parse %s: %v", id, err)

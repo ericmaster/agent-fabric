@@ -92,6 +92,41 @@ func TestPhaseClosureAndCompactPlanning(t *testing.T) {
 }
 
 // Spec: docs/specs/agent-fabric.md — portable supervision instructions
+// These cases assert shipped instruction paths, not runtime model compliance.
+func TestDirectPhaseOwnershipAndReview(t *testing.T) {
+	for role, wants := range map[string][]string{
+		"plan-supervisor": {"The first `implementor` for a phase is a fresh child", "do not write product implementation", "same implementor for repairs", "absent, denied, rejected or transport-failed review never yields PASS", "no duplicate micro ledger", "do not migrate/cancel"},
+		"bug-fixer":       {"packet, then dispatch `implementor`", "same implementor", "Missing, denied, rejected or transport-failed review never yields PASS"},
+		"implementor":     {"Direct atomic invocation needs no planner or supervisor", "Fresh-child intake", "Delegate only to `code-reviewer`", "On REJECT, diagnose, correct and revalidate in this same implementor session", "resume the same reviewer", "complete original verdict", "Later edits invalidate affected review/check evidence", "transport-failed review is incomplete, never PASS", "If nested dispatch is unsupported", "it invokes that reviewer directly", "never insert loop-supervisor", "parent alone persists macro state", "direct atomic", "expected_version", "Never directly access ledger storage engines or ambient session histories", "Before a fourth mutation", "same failed prerequisite permits three distinct recovery attempts"},
+		"code-reviewer":   {"Do not edit, delegate", "including through shell or MCP", "complete original verdict", "do not consume the implementor's conversation"},
+		"loop-supervisor": {"Deprecated for new tasks", "only for existing", "cancellation or reset"},
+	} {
+		t.Run(role, func(t *testing.T) {
+			d, err := ParseFile(filepath.Join("..", "..", "agents", role+".md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := strings.Join(strings.Fields(d.Body), " ")
+			for _, want := range wants {
+				if !strings.Contains(body, want) {
+					t.Errorf("missing %q", want)
+				}
+			}
+			if role == "implementor" && (d.Mode != "all" || d.Fabric.Permissions["task"] != "allow" || d.Fabric.Permissions["network"] != "deny") {
+				t.Error("atomic/child review capability changed")
+			}
+			if role == "code-reviewer" && (d.Fabric.Permissions["edit"] != "deny" || d.Fabric.Permissions["task"] != "deny") {
+				t.Error("review must be read-only and non-delegating")
+			}
+			if role == "plan-supervisor" || role == "bug-fixer" {
+				if strings.Contains(body, "dispatch `loop-supervisor`") {
+					t.Error("obsolete mandatory loop route")
+				}
+			}
+		})
+	}
+}
+
 func TestBoundedEpisodesAndDiscretionaryQA(t *testing.T) {
 	cases := []struct {
 		role    string
@@ -120,7 +155,7 @@ func TestBoundedEpisodesAndDiscretionaryQA(t *testing.T) {
 		}},
 		{"plan-supervisor", []string{
 			"QA is recommended, not mandatory",
-			"loop-supervisor owns the QA decision",
+			"plan-supervisor owns the QA decision",
 			"DEFERRED",
 			"implementation_ready",
 			"standing task authority",

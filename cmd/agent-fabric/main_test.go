@@ -831,7 +831,7 @@ func TestFreshContextSafeguardsSurviveEmptyHookRenderingAcrossMappings(t *testin
 		{"plan-supervisor", true, []string{
 			"return `BLOCKED` for fresh-child intake, or keep the affected phase `BLOCKED`, and name the exact gap",
 			"Every fresh child dispatch requires a validated self-locating Delegation Packet",
-			"The first `loop-supervisor` for a phase is a fresh child",
+			"The first `implementor` for a phase is a fresh child",
 			"idle-child report collection resume that recorded session",
 			"A replacement session",
 			"A context gap blocks dispatch before substantive child work",
@@ -843,7 +843,7 @@ func TestFreshContextSafeguardsSurviveEmptyHookRenderingAcrossMappings(t *testin
 			"This includes every revised-candidate pass",
 			"A context gap blocks review dispatch before substantive child work",
 		}},
-		{"implementor", false, []string{"return `BLOCKED` naming the exact gap"}},
+		{"implementor", false, []string{"return `BLOCKED` naming the exact gap", "Direct atomic invocation needs no planner or supervisor", "Fresh-child intake and", "every outgoing review dispatch require a self-contained", "Delegate only to `code-reviewer`", "transport-failed review is incomplete, never PASS", "If nested dispatch is unsupported"}},
 		{"code-reviewer", false, []string{"return `BLOCKED` with a `scope_blocker` finding naming the exact gap", "continue your own review session", "ACCEPT|REJECT|BLOCKED"}},
 		{"qa-runner", false, []string{"return `BLOCKED` naming the exact gap"}},
 		{"expert-debugger", false, []string{"return the existing schema with the exact gap in `root_cause_analysis.blockers`"}},
@@ -853,7 +853,7 @@ func TestFreshContextSafeguardsSurviveEmptyHookRenderingAcrossMappings(t *testin
 			"packet, then dispatch `report-reviewer` in a fresh context",
 			"packet, then dispatch `planner` in a fresh context",
 			"packet, then dispatch `plan-supervisor` using the continuity rule",
-			"packet, then dispatch `loop-supervisor` using the continuity rule",
+			"packet, then dispatch `implementor` using the continuity rule",
 		}},
 		{"report-reviewer", false, []string{"return `REVISE` with a critical finding naming the exact gap"}},
 	}
@@ -889,7 +889,11 @@ func TestFreshContextSafeguardsSurviveEmptyHookRenderingAcrossMappings(t *testin
 					t.Fatalf("empty-hook rendering retained unconditional packet guard %q", unconditionalOldGuard)
 				}
 			} else {
-				anchors = append(anchors, childAnchors...)
+				if tc.id == "implementor" {
+					anchors = append(anchors, childAnchors[1:]...)
+				} else {
+					anchors = append(anchors, childAnchors...)
+				}
 			}
 			anchors = append(anchors, tc.anchors...)
 			for _, anchor := range anchors {

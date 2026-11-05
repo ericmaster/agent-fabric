@@ -277,6 +277,90 @@ func TestRenderMatchesRepresentativeGoldenFixtures(t *testing.T) {
 }
 
 // Instruction preservation only; rendering is not runtime dispatch enforcement.
+func TestImplementorReviewPermissionScope(t *testing.T) {
+	d, err := agent.ParseFile(filepath.Join("..", "..", "agents", "implementor.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, p := range map[string]Profile{
+		"default":          {Model: "provider/test"},
+		"tool_allow":       {Model: "provider/test", Tools: map[string]bool{"subagent": true}},
+		"scoped_allowlist": {Model: "provider/test", Tools: map[string]bool{"*": false, "task": true}},
+		"closed_allowlist": {Model: "provider/test", Tools: map[string]bool{"*": false, "read": true}},
+		"tool_deny":        {Model: "provider/test", Tools: map[string]bool{"task": false}},
+		"role_deny":        {Model: "provider/test", Permissions: map[string]string{"task": "deny"}, Tools: map[string]bool{"subagent": true}},
+		"alias_ask":        {Model: "provider/test", Permissions: map[string]string{"subagent": "ask"}},
+		"task_ask":         {Model: "provider/test", Permissions: map[string]string{"task": "ask"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			body, _, _, err := Render("opencode", d, Mapping{Profiles: map[string]Profile{"worker": p}}, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			deny := "  - action: \"subagent\"\n    resource: \"*\"\n    effect: \"deny\"\n"
+			allow := "  - action: \"subagent\"\n    resource: \"code-reviewer\"\n    effect: \"allow\"\n"
+			if !strings.Contains(body, deny) {
+				t.Fatal("missing native destination cap")
+			}
+			wantAllow := name == "default" || name == "tool_allow" || name == "scoped_allowlist"
+			if strings.Contains(body, allow) != wantAllow {
+				t.Fatal("review exception widened a deny or disappeared")
+			}
+			if wantAllow && strings.LastIndex(body, deny) > strings.LastIndex(body, allow) {
+				t.Fatal("incorrect native last-match ordering")
+			}
+			// Last matching native rule determines the actual destination effect.
+			wantEffect := "deny"
+			if wantAllow {
+				wantEffect = "allow"
+			}
+			if name == "alias_ask" || name == "task_ask" {
+				wantEffect = "ask"
+			}
+			gotEffect := ""
+			for _, rule := range strings.Split(body, "  - action: ")[1:] {
+				if !strings.HasPrefix(rule, "\"subagent\"\n") {
+					continue
+				}
+				if strings.Contains(rule, "resource: \"*\"") || strings.Contains(rule, "resource: \"code-reviewer\"") {
+					for _, effect := range []string{"allow", "deny", "ask"} {
+						if strings.Contains(strings.Split(rule, "---\n")[0], "effect: \""+effect+"\"") {
+							gotEffect = effect
+						}
+					}
+				}
+			}
+			if gotEffect != wantEffect {
+				t.Fatalf("effective reviewer permission = %q, want %q", gotEffect, wantEffect)
+			}
+		})
+	}
+	for _, target := range []string{"opencode", "pi", "codex", "claude", "kilo", "antigravity"} {
+		m, err := LoadMapping(filepath.Join("..", "..", "adapters", target+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _, _, err := Render(target, d, m, false)
+		if err != nil || !strings.Contains(body, "code-reviewer") {
+			t.Fatalf("%s lost review contract: %v", target, err)
+		}
+		r, err := agent.ParseFile(filepath.Join("..", "..", "agents", "code-reviewer.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _, _, err = Render(target, r, m, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if target == "pi" && strings.Contains(strings.Split(body, "---\n")[1], "subagent") {
+			t.Error("Pi reviewer can delegate")
+		}
+		if target == "opencode" && !strings.Contains(body, "action: \"subagent\"\n    resource: \"*\"\n    effect: \"deny\"") {
+			t.Error("OpenCode reviewer can delegate")
+		}
+	}
+}
+
 func TestEvalDoDOpenCodeRendering(t *testing.T) {
 	for _, role := range []string{"implementor", "loop-supervisor"} {
 		t.Run(role, func(t *testing.T) {

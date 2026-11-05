@@ -80,12 +80,20 @@ evidence.
   trails for routine dev tasks).
 - Plan-supervisor validates baseline completeness before phase dispatch and
   independently reconciles every criterion before phase PASS.
-- Loop-supervisor validates before initial, retry and remediation implementation
-  dispatch and independently reconciles every criterion before final PASS.
+- Legacy loop-supervisor continuations retain baseline reconciliation; new tasks
+  delegate directly to implementor, without an intermediate loop supervisor.
 - Implementor validates before editing and reports results against the supplied
   baseline; missing criteria produce a precise gap, not manufactured criteria.
 - Direct atomic invocations also establish a baseline from authoritative task inputs
   before mutation; a coherent atomic task does not require a parent planner.
+
+Implementor uses mode all for atomic/direct and child entry, and dispatches only
+independent code-reviewer with the original baseline and frozen candidate/diff.
+Rejection resumes the same implementor and reviewer; missing/denied/transport-failed
+review cannot PASS. A nesting-limited host routes review through the parent on
+the same candidate, without adding an intermediate execution owner. Review verdict
+and native locator/session remain intact and visible to the parent. Ownership and
+budget details: [supervision-and-delivery.md](supervision-and-delivery.md#phase-ownership).
 
 Missing, empty, ambiguous or unresolvable criteria block implementation dispatch
 and edits, never PASS. Supervisors may repair packets only from authoritative
@@ -131,4 +139,3 @@ evidence on both sides of the seam:
   the independent reviewer runs the unchanged normal path; missing
   authoritative task/spec/diff inputs remain a task-context gap, never an
   engine outage.
-

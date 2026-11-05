@@ -90,7 +90,7 @@ tests and `go test ./...`.
 
 ## Discretionary QA Contract
 
-QA is recommended, not mandatory. `loop-supervisor` owns the QA decision: run,
+QA is recommended, not mandatory. The delivery supervisor owns the QA decision: run,
 skip, reuse, or defer. A plan supervisor may recommend surfaces and retry deferred
 QA at its discretion, without making QA dispatch a prerequisite for implementation.
 Blanket procedural requirements for independent QA do not override this policy;
@@ -200,19 +200,24 @@ or guarantee of model compliance. Required dispatch/return and transition ledger
 writes remain; unchanged observations do not generate redundant checkpoint writes.
 
 Canonical agents remain decoupled from host execution-ledger storage engines and databases.
-Storage for loop/plan execution ledgers is resolved exclusively through the declarative `<agent-hooks:invoke:record-ledger>`
-hook declared in those two supervisors' frontmatter. Bug-fixer keeps dispatch
+Storage for execution ledgers is resolved exclusively through the declarative `<agent-hooks:invoke:record-ledger>`
+hook. Plan-supervisor alone writes macro checkpoints, including implementor-reported
+phase history, counters, episodes and review handles; no parallel micro writer for
+that phase. Direct atomic implementor alone writes the existing micro checkpoint
+through the hook. Legacy loop-supervisor retains its micro writer for existing
+continuations only, without migration or reset. Bug-fixer keeps dispatch
 receipts in its declared handoff artifact, separately from the ticket; deploy-supervisor
 records release steps and child receipts in its declared release evidence. Both
 reuse recorded child continuation IDs and reconcile in-flight effects on resume.
-Canonical workers (`implementor`, `code-reviewer`, `planner`)
-must never write to or consult local ledger files or storage engines. They may
-consume objective task evidence and prior findings supplied by their supervisor.
+Code-reviewer and planner must never write to or consult local ledger files or
+storage engines. Implementor may use only its declared task checkpoint through the
+hook and its own permitted evidence; no direct storage-engine access or ambient
+histories. All may consume objective task evidence and supplied prior findings.
 
 ### Continuity and checkpoints
 
-The loop supervisor is the sole recovery owner for an atomic task. The plan
-supervisor preserves the DAG and resumes that phase supervisor's recorded
+The implementor is the sole local recovery owner for a phase/atomic task. The plan
+supervisor preserves the DAG and resumes that implementor's recorded
 session. Pass the recorded child continuation ID to the harness resume mechanism
 on every later dispatch for that phase or role. Open a new session only when new resolving authority arrives, the approved scope identity changes, or the recorded continuation is unavailable.
 Blocked status, missing child output, idle children, repeated gates, and context
@@ -228,7 +233,7 @@ artifacts or supplied context, not execution ledgers. Subsequent same-role dispa
 pass the recorded ID; in-flight effects are reconciled and completed projection
 receipts reused before any retry.
 
-The existing `record-ledger` hook supports `operation: load|record`. Supervisors
+The existing `record-ledger` hook supports `operation: load|record`. Checkpoint owners
 load the task's checkpoint after resolving the task and before dispatch; record
 the event and full current checkpoint before dispatch and after each return.
 The receipt carries a monotonically increasing `version`; records send its
@@ -295,12 +300,15 @@ The architecture enforces a Two-Tier Ledger Model:
 - **Macro-Ledger (`plan-supervisor`):** Tracks phase-level state transitions across the plan DAG.
   Emits structured events containing `tier: "macro"`, `plan_id`, `phase_id`, `objective`, `summary`,
   `dependencies`, `status: PENDING|IN_PROGRESS|DONE|BLOCKED`, `revision`, `timestamp`, and `blockers`.
-- **Micro-Ledger (`loop-supervisor`):** Tracks iteration-level transitions within an atomic task.
+- **Micro-Ledger (direct atomic `implementor`; legacy `loop-supervisor` continuations):** Tracks iteration-level transitions within an atomic task. Plan phases keep this history in the existing macro phase checkpoint instead of a duplicate ledger.
   Emits structured events containing `tier: "micro"`, `task_id`, `iteration`, `phase`, `status: IN_PROGRESS|PASS|FAIL|BLOCKED`,
   `mutation_count`, `review_rejections`, structured `findings` (id, classification, severity, breached_contract,
   evidence path:line, required_change), `remediation_targets`, and `timestamp`.
 
-Supervisors act as an unbiased **Curation Firewall** across child dispatches:
+Dispatchers act as an unbiased **Curation Firewall** across child dispatches.
+The actual dispatcher alone invokes pre/post-delegate hooks; fallback review uses
+the supervisor, not both supervisor and implementor. Original review verdicts and
+locators remain accessible to the parent, never filtered into apparent acceptance.
 - **Implementor Dispatches:** Supervisors forward only objective finding definitions (`F1: lease boundary equality in path:line`)
   and failing test gates from the ledger, stripping out subjective reviewer commentary, rhetorical critiques, or adversarial debate.
 - **Reviewer Dispatches:** Supervisors preserve the original contract and forward the remediation diff and specific objective criteria from the ledger
@@ -311,4 +319,3 @@ Supervisors act as an unbiased **Curation Firewall** across child dispatches:
   code-quality opinions or developer commentary. QA does not audit the entire plan.
 - **Expert Debugger Dispatches:** Supervisors forward strictly objective failing gate/test logs, breached contracts, and diffs,
   filtering out conversational histories.
-

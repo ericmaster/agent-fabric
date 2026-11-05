@@ -2,7 +2,7 @@
 
 `agents/code-reviewer.md` · profile: `reviewer` · mode: `all` · isolation: `sandbox`
 
-The Code Reviewer is an adversarial, read-only gate dispatched by the loop-supervisor in a
+The Code Reviewer is an adversarial, read-only, non-delegating gate dispatched by implementor (or parent fallback) in a
 fresh context. It cannot edit files. It returns a single structured JSON verdict.
 Its intake follows the fail-closed packet contract defined normatively in
 [`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md).
@@ -11,7 +11,7 @@ Its intake follows the fail-closed packet contract defined normatively in
 
 ```mermaid
 flowchart TD
-    START([Validated packet + diff from loop-supervisor]) --> LT
+    START([Original task/DoD + frozen diff/candidate]) --> LT
 
     subgraph "Load Task"
         LT["load-task hook\nEnrich or validate packet only\n(context gap → role-equivalent failure)"]
@@ -55,7 +55,7 @@ flowchart TD
         OUTPUT["Return exactly one JSON object"]
     end
 
-    OUTPUT --> DONE([Return to loop-supervisor])
+    OUTPUT --> DONE([Original verdict + locator visible to implementor and parent])
 
     style LT fill:#6366f1,color:#fff,stroke:none
 ```
