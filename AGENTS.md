@@ -36,7 +36,7 @@ internal/agent/          Agent definition parsing, validation, and hook schema c
 internal/adapter/        Multi-harness rendering engine and format converters
 internal/manifest/       Atomic state tracking (.agent-fabric-manifest.json)
 internal/retrospective/  Task retrospective: replay, dispatch, observation spool, drain worker
-internal/router/         Difficulty router: easy → implementor; complex → planner/implementor/reviewer
+internal/router/         Difficulty router: easy → implementor; complex → planner/implementor/code-reviewer (`agent-fabric route`)
 docs/                    Versioned wiki (docs-organization-blueprint.md, specs/, adr/, runbooks/)
 fixtures/                Golden test fixtures for adapter rendering (+ retrospective/opencode recorded events/envelopes)
 scripts/                 Release packaging and bootstrap tooling

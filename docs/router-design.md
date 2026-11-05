@@ -16,8 +16,8 @@ tareas y perdió en 4. Conclusión: por defecto ir directo; pagar el pipeline so
 Cada una suma 1 punto; `score >= 2` ⇒ complex.
 - Longitud: más de 120 palabras.
 - Archivos esperados (`--files`): más de 2.
-- Palabras clave (refactor, migrat, architect, schema, security, auth, concurren, rollback,
-  integration, distributed…): 1 punto por coincidencia, máximo 2.
+- Palabras clave como prefijo de palabra (refactor, migrat, architect, schema, security,
+  authentica, concurren, rollback, integration, distributed…): 1 punto c/u, máximo 2.
 - Tarea vacía ⇒ complex (fail-safe).
 
 Una sola señal no basta: los ejercicios Polyglot son enunciados largos de 1 archivo y deben ir directo.
@@ -25,7 +25,8 @@ Una sola señal no basta: los ejercicios Polyglot son enunciados largos de 1 arc
 ## Override y fallback
 - `--difficulty easy|complex` fuerza la ruta (gana sobre la heurística).
 - Si el implementor falla en una tarea easy (tests rojos, error), el orquestador llama
-  `--escalate "<motivo>"` y re-ejecuta con el pipeline completo. Escalar complex es no-op.
+  `--escalate "<motivo>"` y re-ejecuta con el pipeline completo. Escalar complex es no-op;
+  `--escalate` con `--difficulty easy` es error. Flags van antes del texto; stdin (`-`) ≤ 1 MiB.
 
 ## Extensión futura
 Llamada LLM barata (clasificador) solo en la zona gris (`score == 1`); no implementada.

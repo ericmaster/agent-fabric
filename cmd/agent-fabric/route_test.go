@@ -14,7 +14,8 @@ func TestRouteCLI(t *testing.T) {
 		stdin string
 		want  string
 	}{
-		{[]string{"implement leap year"}, "", "easy: implementor"},
+		{[]string{"implement leap year"}, "", "easy: implementor (score 0)\n"},
+		{[]string{"--difficulty", "complex", "--escalate", "x", "tiny"}, "", "override=complex)"},
 		{[]string{"--files", "6", "refactor the parser"}, "", "complex: planner -> implementor -> code-reviewer"},
 		{[]string{"--difficulty", "complex", "tiny"}, "", "complex:"},
 		{[]string{"--escalate", "tests failed", "tiny"}, "", "escalated: tests failed"},
@@ -37,8 +38,11 @@ func TestRouteCLI(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &d); err != nil || d.Difficulty != "easy" || len(d.Pipeline) != 1 {
 		t.Fatalf("json: %v %s", err, out.String())
 	}
-	for _, bad := range [][]string{{"--difficulty", "hard", "x"}, {"--files", "-1", "x"}} {
-		if err := runRoute(bad, strings.NewReader(""), &out); err == nil {
+	bads := [][]string{{"--difficulty", "hard", "x"}, {"--files", "-1", "x"}, {"--escalate", "  ", "x"},
+		{"--difficulty", "easy", "--escalate", "y", "x"}, {"task", "--json"}, {"-"}}
+	big := strings.Repeat("a", maxRouteStdin+1)
+	for _, bad := range bads {
+		if err := runRoute(bad, strings.NewReader(big), &out); err == nil {
 			t.Fatalf("%v: want error", bad)
 		}
 	}

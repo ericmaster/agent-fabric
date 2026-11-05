@@ -18,8 +18,8 @@ const (
 
 // Pipelines: easy goes straight to the implementor; complex runs the full chain.
 var (
-	EasyPipeline    = []string{"implementor"}
-	ComplexPipeline = []string{"planner", "implementor", "code-reviewer"}
+	easyPipeline    = []string{"implementor"}
+	complexPipeline = []string{"planner", "implementor", "code-reviewer"}
 )
 
 // Thresholds (see docs/router-design.md for rationale).
@@ -29,9 +29,10 @@ const (
 	ComplexScore = 2
 )
 
+// complexKeywords are matched as word prefixes (e.g. "migrat" matches "migration", "auth" not "author").
 var complexKeywords = []string{
 	"refactor", "migrat", "architect", "redesign", "concurren", "race",
-	"security", "auth", "schema", "multi-step", "across", "integration",
+	"security", "authentica", "authoriz", "oauth", "schema", "multi-step", "across", "integration",
 	"rollback", "performance", "protocol", "distributed",
 }
 
@@ -64,6 +65,10 @@ func Classify(t Task) Decision {
 	if t.Override == Easy || t.Override == Complex {
 		return decide(t.Override, 0, []string{"override=" + string(t.Override)})
 	}
+	if strings.TrimSpace(t.Text) == "" {
+		// Unknown work is not provably easy: fail safe to the full pipeline.
+		return decide(Complex, ComplexScore, []string{"empty task"})
+	}
 	score, reasons := 0, []string{}
 	words := len(strings.FieldsFunc(t.Text, unicode.IsSpace))
 	if words > MaxEasyWords {
@@ -74,21 +79,23 @@ func Classify(t Task) Decision {
 		score++
 		reasons = append(reasons, fmt.Sprintf("files=%d>%d", t.Files, MaxEasyFiles))
 	}
-	lower := strings.ToLower(t.Text)
+	tokens := strings.FieldsFunc(strings.ToLower(t.Text), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-'
+	})
 	hits := 0
 	for _, k := range complexKeywords {
-		if strings.Contains(lower, k) {
-			hits++
-			reasons = append(reasons, "keyword="+k)
+		if hits == 2 { // keyword contribution is capped at 2
+			break
+		}
+		for _, tok := range tokens {
+			if strings.HasPrefix(tok, k) {
+				hits++
+				reasons = append(reasons, "keyword="+k)
+				break
+			}
 		}
 	}
-	if hits > 0 {
-		score += min(hits, 2)
-	}
-	if strings.TrimSpace(t.Text) == "" {
-		// Unknown work is not provably easy: fail safe to the full pipeline.
-		return decide(Complex, ComplexScore, []string{"empty task"})
-	}
+	score += hits
 	if score >= ComplexScore {
 		return decide(Complex, score, reasons)
 	}
@@ -104,9 +111,9 @@ func Escalate(d Decision, reason string) Decision {
 }
 
 func decide(d Difficulty, score int, reasons []string) Decision {
-	p := EasyPipeline
+	p := easyPipeline
 	if d == Complex {
-		p = ComplexPipeline
+		p = complexPipeline
 	}
 	return Decision{Difficulty: d, Pipeline: append([]string{}, p...), Score: score, Reasons: reasons}
 }

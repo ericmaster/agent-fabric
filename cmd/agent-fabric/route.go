@@ -13,7 +13,9 @@ import (
 	"github.com/ericmaster/agent-fabric/internal/router"
 )
 
-// runRoute prints the pipeline for a task: agent-fabric route [--files N] [--difficulty auto|easy|complex] [--escalate REASON] [--json] TEXT|-
+const maxRouteStdin = 1 << 20
+
+// runRoute prints the pipeline for a task: agent-fabric route [flags] TEXT|-
 func runRoute(args []string, stdin io.Reader, stdout io.Writer) error {
 	fs := flag.NewFlagSet("route", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -22,7 +24,7 @@ func runRoute(args []string, stdin io.Reader, stdout io.Writer) error {
 	escalate := fs.String("escalate", "", "easy path failed with REASON: return the full pipeline")
 	asJSON := fs.Bool("json", false, "machine-readable output")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return err // flag.ErrHelp exits 0 via fail()
 	}
 	if *files < 0 {
 		return errors.New("--files must be >= 0")
@@ -31,21 +33,40 @@ func runRoute(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	reason := strings.TrimSpace(*escalate)
+	if reason == "" && *escalate != "" {
+		return errors.New("--escalate needs a non-blank reason")
+	}
+	if reason != "" && override == router.Easy {
+		return errors.New("--escalate conflicts with --difficulty easy")
+	}
+	for _, a := range fs.Args() {
+		if strings.HasPrefix(a, "-") && a != "-" {
+			return fmt.Errorf("flags must precede the task text: %s", a)
+		}
+	}
 	text := strings.Join(fs.Args(), " ")
 	if text == "-" {
-		b, err := io.ReadAll(io.LimitReader(stdin, 1<<20))
+		b, err := io.ReadAll(io.LimitReader(stdin, maxRouteStdin+1))
 		if err != nil {
 			return err
+		}
+		if len(b) > maxRouteStdin {
+			return fmt.Errorf("task on stdin exceeds %d bytes", maxRouteStdin)
 		}
 		text = string(b)
 	}
 	d := router.Classify(router.Task{Text: text, Files: *files, Override: override})
-	if *escalate != "" {
-		d = router.Escalate(d, *escalate)
+	if reason != "" {
+		d = router.Escalate(d, reason)
 	}
 	if *asJSON {
 		return json.NewEncoder(stdout).Encode(d)
 	}
-	_, err = fmt.Fprintf(stdout, "%s: %s (score %d; %s)\n", d.Difficulty, strings.Join(d.Pipeline, " -> "), d.Score, strings.Join(d.Reasons, ", "))
+	detail := fmt.Sprintf("score %d", d.Score)
+	if len(d.Reasons) > 0 {
+		detail += "; " + strings.Join(d.Reasons, ", ")
+	}
+	_, err = fmt.Fprintf(stdout, "%s: %s (%s)\n", d.Difficulty, strings.Join(d.Pipeline, " -> "), detail)
 	return err
 }
