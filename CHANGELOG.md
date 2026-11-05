@@ -5,6 +5,10 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ## [Unreleased]
 
+### Added
+
+- `agent-fabric route`: heuristic difficulty router (easy → implementor; complex → planner, implementor, code-reviewer) with override and escalation. Design: [`docs/router-design.md`](docs/router-design.md).
+
 ## [0.3.0] - 2026-10-31
 
 ### Added

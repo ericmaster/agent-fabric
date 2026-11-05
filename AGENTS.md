@@ -36,6 +36,7 @@ internal/agent/          Agent definition parsing, validation, and hook schema c
 internal/adapter/        Multi-harness rendering engine and format converters
 internal/manifest/       Atomic state tracking (.agent-fabric-manifest.json)
 internal/retrospective/  Task retrospective: replay, dispatch, observation spool, drain worker
+internal/router/         Difficulty router: easy → implementor; complex → planner/implementor/reviewer
 docs/                    Versioned wiki (docs-organization-blueprint.md, specs/, adr/, runbooks/)
 fixtures/                Golden test fixtures for adapter rendering (+ retrospective/opencode recorded events/envelopes)
 scripts/                 Release packaging and bootstrap tooling
@@ -89,7 +90,7 @@ print flags/defaults without loading sources or writing state (exit 0).
 
 ## Testing
 
-- Unit tests in `internal/agent`, `internal/adapter`, `internal/manifest`, `internal/retrospective`, and `cmd/agent-fabric`.
+- Unit tests in `internal/agent`, `internal/adapter`, `internal/manifest`, `internal/retrospective`, `internal/router`, and `cmd/agent-fabric`.
 - Golden fixture comparison in `internal/adapter/adapter_test.go` checks rendered output against `fixtures/`.
 - Skill/audit tests: `python3 -m unittest discover -s tests -p 'test_harness_review_audit.py'`. No provider/API key required.
 - Legacy retrospective tests use local mocks and preserve historical failure/permission/provenance guards; no live provider call is implied by passing them.

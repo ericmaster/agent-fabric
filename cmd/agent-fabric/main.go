@@ -82,6 +82,12 @@ func main() {
 		usage()
 		return
 	}
+	if cmd == "route" {
+		if err := runRoute(args, os.Stdin, os.Stdout); err != nil {
+			fail(err)
+		}
+		return
+	}
 	if cmd == "maintenance" {
 		if err := runMaintenance(args); err != nil {
 			fail(err)
@@ -154,7 +160,7 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, "agent-fabric guard check [--log-file ABSOLUTE_PATH] (JSON stdin; shell/read checks)")
-	fmt.Fprintln(os.Stderr, "agent-fabric install|sync|hub install SOURCE|list|validate|doctor|uninstall|maintenance|retrospective analyze|dispatch|status|enable|disable|lessons [flags]")
+	fmt.Fprintln(os.Stderr, "agent-fabric install|sync|hub install SOURCE|list|validate|doctor|uninstall|maintenance|route|retrospective analyze|dispatch|status|enable|disable|lessons [flags]")
 	fmt.Fprintln(os.Stderr, "Use agent-fabric <command> --help (or hub install --help) for flags and defaults.")
 }
 func fail(err error) {
