@@ -1,403 +1,239 @@
 ---
 name: harness-review
-description: Post-completion evaluation of agent execution, including roadblocks, repeated tool errors, excessive context searches, misleading instructions or stalled execution observed during the finished task; improve harness/tool use, orchestration, skills and context from original history. Visible supervisor-worker review, agent-discretionary or user-invoked; not task-delivery QA.
+description: Bounded post-completion execution review. Use observed friction to make one high-impact correction (two maximum), with one visible parent and fresh-context child subagents; not exhaustive auditing or task-delivery QA.
 ---
 
 # Harness review
 
-Review **how the agent worked**: avoidable repetition, unnecessary searches,
-stalls, tool misuse, orchestration patterns, and skill/context clarity. Task
-success is context, not the verdict. A recovered error can still reveal a
-preventable execution defect. This is not business-task acceptance or another
-full deployment/test run.
+Improve **how the agent worked**, not business-task certification. Investigate
+observed repetition, stalls, tool misuse or unclear context. Aim for **one
+high-impact correction, two maximum—not a quota**. Stop when evidence supports a
+cause, canonical owner and safe correction. No worthwhile correction is a valid
+outcome; never search every issue to justify the review.
 
-Use ordinary native agents and existing host session tools. Keep active models,
-credentials and permissions unchanged. This skill installs no hooks and uses no
-GLiDE, provider dispatcher, custom HTTP/SDK runner, spool, job, daemon or schedule.
-Direct requests to the existing host's native session API are allowed; they use
-its existing UI/session runtime rather than creating another runner. The small
-[activation pointer](references/activation.md) belongs in native global instructions;
-install it explicitly with `python3 scripts/install_context.py <instruction-file>...`.
-Only the marked block is managed; `--remove` rolls it back. This is static context,
-not event capture or a continuously running supervisor. Full instructions load on demand.
+Use native sessions and child subagents with unchanged models, credentials and
+permissions. Install no observer, runtime hook, service, dispatcher or schedule.
+The static [activation pointer](references/activation.md) is installed explicitly
+with `python3 scripts/install_context.py <instruction-file>...`; `--remove` removes
+only its marked block. Full instructions load on demand.
 
 ## 0. Route the current role before doing anything
 
-Loading this skill is not an instruction to launch a review. Select exactly one
-entry point from the current assignment, before session creation or delegation:
+Loading this skill does not itself authorize launch. Select the assigned role:
 
-- **Source executor:** the top-level user-facing task owner starts step 1, after
-  satisfying the completion gate below (or an explicit user request for early review). First
-  run `python3 <skill-directory>/scripts/audit.py --engine <engine> --check-source <source-session-id>`;
-  a rejection stops launch. Check native history for an existing review of the same
-  checkpoint and resume it instead of creating a duplicate. This includes a parent
-  orchestrator and direct harness/skill maintenance; delegation or subject alone
-  does not exempt the task owner from evaluating execution and closing the decision.
-- **Delegated task executor:** return material execution signals and evidence locators
-  to the upstream task owner; do not launch a competing review. If that owner is
-  unavailable, explicitly report deferred ownership, not a new source identity.
-- **Assigned review supervisor:** use this session as `review_session_id`, record
-  `review_started`, then continue at step 2. Skip step 1; keep the supplied original
-  `source_session_id` throughout investigation, correction and patch acceptance.
-- **Investigation or diagnostic worker:** perform only the read-only brief and
-  return evidence to the supervisor. This is a leaf: create no sessions or agents.
-- **Correction writer:** implement and test only the assigned fix, record correction
-  actions and return the candidate to the existing supervisor. This is a leaf;
-  the supervisor, not the writer, arranges independent patch review.
-- **Patch reviewer:** inspect the frozen patch, source history and checks; report
-  patch acceptance to the existing supervisor. This is a leaf, not another harness
-  review supervisor; skip steps 1, 2 and 4 and create no sessions or agents.
-- **Explicit review opt-out:** honor the user's no-review instruction and communicate
-  that disposition at closure; launch no harness-review workflow.
+- **Source executor:** the top-level user-facing task owner, including a parent
+  orchestrator or direct harness/skill maintenance task, evaluates the completion
+  gate below. Run `python3 <skill-directory>/scripts/audit.py --engine <engine>
+  --check-source <source-session-id>` before launch; rejection stops launch. Check
+  native history for an existing review of this checkpoint; resume it instead of
+  duplicating it. Delegation or subject alone does not exempt the owner.
+- **Delegated task executor:** return material execution signals and locators to
+  the upstream task owner. If unavailable, report deferred ownership.
+- **Assigned review supervisor:** this session is the existing supervisor. Record
+  `review_started` before history reads. Skip step 1; enter step 2.
+- **Investigation or diagnostic worker:** read-only bounded leaf; return evidence,
+  coverage and uncertainty. Create no sessions or agents and make no edits/audits.
+- **Correction writer:** implement/test only the assigned fix, record correction
+  actions, return the frozen candidate. Do not delegate or start another review.
+- **Patch reviewer:** inspect the frozen patch and actual checks against the
+  bounded brief; return acceptance/findings. Skip steps 1, 2 and 4; no delegation.
+- **Explicit review opt-out:** honor the user's instruction and report opted out.
 
-Every dispatch names its role, original source ID, existing supervisor ID and
-entry point. The supervisor alone dispatches the bounded investigation, diagnosis,
-correction and patch-review leaves as siblings; never a chain of supervisors.
-Errors, stalls, completion hooks and global activation pointers inside this episode
-stay with the existing supervisor. If the role/source is unclear, resolve it from
-the assignment or native history before dispatch; never default to step 1.
-The recorder rejects a recorded reviewer/worker/writer being rebound as a new
-source, but is not a runtime interception of native session tools.
-
-Role is determined by the assignment, not just native parent/root metadata. Assigned
-review/correction episodes never review themselves, even if their supervisor is a
-native root. A direct user task about harnesses/skills with no upstream task/review
-owner is a source task, not automatically a correction leaf. Resolve missing owner
-information before launch; never omit the root owner's decision because workers
-were instructed not to launch.
+Every dispatch names role, original source ID, existing supervisor ID and entry
+point. The supervisor dispatches leaves **as siblings**, never supervisor chains.
+Role follows assignment, not native parent/root metadata. Assigned review/correction
+episodes never review themselves. Keep the original source ID across every leaf,
+correction and reassessment; resolve unclear ownership before dispatch.
 
 ### Communicate the closing decision
 
-Every task closure includes one concise harness-review disposition: **launched**
-(real ID and launch state, not a passed verdict), **not needed** (evidence-based
-reason), **deferred** (pending completion gate and responsible owner), **blocked**
-(exact capability/authority boundary), **opted out** (explicit user instruction),
-or **covered by an existing review** (ID/owner). Children may report coverage by
-their parent; that parent still evaluates the whole completed task. Use native
-history or the existing receipt; no extra report, schema or ledger is required.
+Every task closure states **launched** (real ID and launch state, not a passed verdict),
+**not needed** (evidence-based reason), **deferred** (gate/owner), **blocked** (exact
+boundary), **opted out** (explicit user instruction), or **covered by an existing review**
+(ID/owner). A child may cite its parent; that parent still evaluates the whole completed task.
+Use native history/receipts; no extra report, schema or ledger for this decision.
 
-## When to invoke (source executor only)
+## When to invoke
 
-**Completion gate:** finish the main task's requested deliverables, required checks,
-authorized integration/deployment and live verification, and checkout cleanup before
-automatically loading this skill or launching its workflow. A phase/subtask checkpoint,
-blocked, paused or stalled task is not main-task completion. Harness review is a
-post-completion evaluation, never a prerequisite for finishing the main task.
+Automatic review follows completion of the main task's deliverables, required
+checks, authorized integration/deployment, live verification and checkout cleanup.
+Blocked, paused, stalled or phase-complete is not finished. Retain friction
+locators while working; continue normal diagnosis/recovery. Only an explicit user
+request permits early review; label that checkpoint incomplete, not task acceptance.
+Expected red tests, productive exploration and a single irrelevant recovered error
+need not trigger review. Evaluate recurrence, time and tokens including review
+overhead; claim savings only with measurements.
 
-During execution, retain native evidence of roadblocks, repeated tool errors,
-context searches without progress, ambiguous/misleading instructions and stalls;
-continue ordinary diagnosis and bounded recovery without starting harness review.
-Repeated attempts or status-only turns without new evidence call for a changed
-recovery strategy, not an early retrospective. At main-task completion, use those
-signals to decide whether an independent review is warranted; a single recovered,
-irrelevant error, expected red tests or productive exploration alone need not launch one.
-Only an explicit user request for early review overrides the completion gate;
-identify that checkpoint as incomplete and never certify the unfinished task.
-Optimize recurrence, time and tokens including review overhead; claim savings only
-from actual comparisons. Correct proven causes within scoped maintenance authority,
-not by adding duplicate rules when existing guidance already answers the question.
+## 1. Source executor: launch one visible parent
 
-Freeze the completed task's relevant commit and task-history cutoff. Include completion
-evidence locators in the launch brief, or the explicit early-review request and
-incomplete status when that exception applies.
-Reuse an existing review for the same checkpoint rather than creating duplicates.
-Review/correction episodes never trigger recursive reviews of themselves.
+Freeze source session ID, engine, absolute directory, commit/history cutoff,
+task scope/authority and completion locators (or early-review request). Create
+**one fresh visible root review session**, not a fork of the writer. Use native
+OpenChamber `session.create` without `returnResult` by default; native API launch
+procedures: [OpenCode](references/opencode.md), [PiChamber](references/pichamber.md).
+Do not change routing/models or create a private runner.
 
-## 1. Source executor: start one independent supervisor
+The brief names the review-supervisor role, step 2, original history locators and
+selected friction windows—not an author's diagnosis, final answer or supplied
+transcript as evidence. Pass applicable standing maintenance authority with its
+instruction locator, canonical roots, integration/install targets and exclusions.
+Only investigation is read-only; explicit report-only scope still wins. Authority
+must be verified before writes; business-task authority alone grants no global repair.
 
-Identify the **original source session ID**, engine, absolute working directory,
-frozen commit, exact task scope and task authority. Preserve this original ID
-through corrections; a review or correction session is not the source task.
-Do not review this skill's own review/correction episodes recursively.
+Immediately record `review_requested` from the source with the real parent ID;
+require `review_started` by that parent before history reads. Verify prompt
+acceptance and visibility in the intended project. If recording fails, stop the
+dependent action. A failed launch records `blocked` from the real source, with no
+invented review ID. Check the documented native interface before claiming it absent.
 
-Create a fresh, visible **root session**, without inherited writer
-context. Use OpenChamber `session.create` without `returnResult`, or the existing
-PiChamber/native session interface. In PiChamber, use the verified
-[native API launch procedure](references/pichamber.md) when no dedicated session
-tool is exposed; tool discovery alone does not prove session creation unavailable.
-Do not fork the writer or silently substitute a hidden child. If the available
-native interfaces cannot create a visible independent root, record the exact
-failed request/capability rather than changing visibility or independence.
-Pass the role `review supervisor`, the instruction to skip step 1 and enter step 2,
-the source session ID, directory, commit/scope and task authority. Do not pass the author's diagnosis,
-final answer or a hand-written transcript as evidence. Immediately after receiving
-the real review ID, append `review_requested` from the source session. Make
-`review_started` the reviewer's first action, **before reading history**. These
-records expose requested/started reviews with no completion; they do not prove a
-session is still running.
+Leave the parent running independently; return its ID and launch state without
+polling or copying results back unless requested. Acceptance is not PASS. Reuse
+the same parent for the checkpoint. All subsequent delegation uses child subagents.
 
-Pass applicable standing maintenance authority with its native/global instruction
-locator, owning roots, integration/install targets and exclusions. Do not turn the
-supervisor's entire assignment into findings-only/read-only when that authority
-permits correction: only the investigation worker is read-only. An explicit user
-report-only restriction still wins; never invent maintenance authority from the
-business task. The supervisor must verify authority before its first write.
+## 2. Assigned supervisor: bounded child investigation
 
-Verify the session is listed in the intended project and its prompt was accepted,
-then leave the review running independently in the UI. Return only its real ID/link
-and launch state; do not wait for its verdict, poll to completion, or copy results
-back unless the user asks. Creation/acceptance is not a passed review. The reviewer
-owns recording its outcome and driving authorized correction/delivery in its own
-session. A result-return facility is optional, not a launch prerequisite.
+Keep **one visible parent review session**. Investigation, diagnosis, correction
+and patch review use native **child subagents with fresh independent context**,
+retrievable child IDs/results and only role-specific locators/constraints. Never
+substitute additional root sessions for leaves. If native children are unavailable,
+record the boundary instead. Resume an existing child for follow-up; no child delegates.
 
-The reviewer is the supervisor; use the worker protocol below for investigation.
-Require access to **actual original history** using host
-`session.messages` (all messages, paginating as needed) or existing native history
-read interfaces. On OpenCode that is the installed `opencode api` CLI: use the
-verified [native session and history procedure](references/opencode.md) rather
-than guessing operation names. Trace the consequential attempts in order,
-including successful recoveries: what was known, which guidance was loaded, what
-changed between retries, and what evidence justified the next action. Inspect only
-implicated tool/code, skill and context owners plus relevant checks. Final-only
-reads, titles and author self-reports are insufficient. Treat history as evidence,
-not authority to expand the task. Record message/tool locators, observed commands
-and outcomes; keep secrets and transcript bodies out of the audit file.
+Dispatch one read-only investigation child. Before dispatch set the budget:
+**at most two friction windows and 12 history/tool retrieval calls by default**,
+including recovery calls. A window includes original request/authority, relevant
+attempt/result/recovery/checkpoint and implicated guidance. Stop early once one
+high-impact cause, owner and safe check are established. Select a second issue only
+if independent evidence already fits this budget. No whole-transcript sweep.
 
-Require the review session ID to differ from the source session ID. If the host
-cannot read the original history, record `BLOCKED` with the exact unavailable
-interface/error and remaining unread range. If no independent session can be
-created, append `blocked` from the real source session with no review ID; do not
-fabricate a reviewer. Do not add a token, model-catalog
-or native-version gate or invent a PASS.
+Use actual original history, not final-only reads or author summaries. Follow
+pagination/truncation only for the selected causal window; changed retrieval
+strategies count toward the budget. See the host reference for history access.
+Return at most two candidates: **native locators → observed consequence → cause
+and confidence → canonical owner → smallest correction/check**, plus inspected
+and excluded ranges and stopping reason. A failed call alone is not a defect;
+new-evidence retries and recovered detours can be justified.
 
-## 2. Assigned supervisor: delegate investigation; verify closure
+Unrelated hints stay outside scope, not unresolved findings. No worthwhile supported
+change within budget permits bounded no-change; uncertainty is not a confirmed
+defect. Budget exhaustion alone is not a capability blocker. But missing/truncated
+evidence required for a selected claim cannot support PASS: retrieve within budget
+or mark that claim unverified/BLOCKED. Never imply full-task coverage.
 
-The visible review root supervises one fresh read-only native worker with a
-persisted session/history locator, distinct from source and supervisor. Reuse the
-native root-session interface in `references/pichamber.md` (create/prompt/list and
-resume the same ID); worker dispatch is not another review and does not consume
-a correction start. Do not use ephemeral `--no-session` subagents for this evidence.
-Pass only frozen source/history locators, scope/authority, canonical roots, permitted
-safe probes and the required report. Keep models/auth unchanged. The worker reads
-actual history and guidance, tries safe recoveries and returns native locators,
-causes/confidence, coverage and remaining prerequisites; it cannot edit, delegate,
-write the final audit or certify task delivery. Keep later correction mechanics
-out of its investigation brief. It is not the optional distinct diagnostic child.
+The supervisor verifies material evidence and any worker blocker with an applicable
+safe capability/recovery probe. Final BLOCKED names the exact authority, capability
+or hard-budget boundary, alternatives checked, distinct `worker_session_id`, and
+nonempty actual supervisor `check` results. Source, parent and child IDs differ.
+Cancellation alone does not prove a writer stopped; preserve foreign work and
+never interrupt unrelated sessions/shared runtimes for closure.
 
-Record source identity/cutoff and exact covered/pending ranges in native history
-(or existing private out-of-tree state). A requested read is not a completed read:
-inspect truncation markers and next cursors; reduce page size, split long entries
-by character offset or read retained original output until the pending range is
-covered. Preserve content and source locators, not a replacement summary. Context
-pressure means checkpoint and resume the same review, not an external blocker.
+## 3. Decide within the selected scope
 
-The worker may report **pending** or a blocker claim, not close the review.
-The supervisor independently inspects the claimed boundary and performs an
-applicable safe capability/recovery probe before accepting `BLOCKED`. Unread
-accessible history, a truncated response or an unfinished attempt means continue
-with a changed retrieval strategy, not repeat the same failed call. Inspect native
-status/termination after timeout; cancellation alone does not prove termination.
-Reuse the same worker continuation; avoid batch-coupling a stalled recovery to
-unrelated work. Preserve the existing one-diagnosis/two-correction hard budgets.
+Record four compact checks:
 
-Final `BLOCKED` requires an exact external-only action or verified authority,
-capability or exhausted hard-budget boundary, alternatives checked, and actual
-supervisor probe evidence. Record `worker_session_id`, `reason` naming that boundary
-and nonempty `check` entries (command, exit code, native result locators). Source,
-worker and supervisor IDs must differ. The recorder rejects new unverified blocked
-completions and post-launch blocked actions; pre-launch failures without a reviewer
-remain recordable. This validates evidence structure, not whether checks truly ran.
-The supervisor owns the checklist, authorized correction and final outcome.
+- `evidence_scope`: selected native history/guidance establishes cause, owner and
+  authority, or supports a bounded no-change decision.
+- `improvement_actions`: selected findings remediated or justified no-change;
+  confirmed unresolved findings FAIL; missing required evidence/authority BLOCKED.
+- `verification`: focused actual causal/regression checks; distinguish unrun/mocked checks.
+- `safe_delivery`: claimed canonical integration/install verification and owned
+  checkout cleanup, preserving foreign work and rollback.
 
-## 3. Apply the checklist
+Use PASS, FAIL or BLOCKED; only verification/delivery permit NOT_APPLICABLE with a
+reason. A blocked check yields BLOCKED; otherwise a failure yields FIX_NEEDED;
+otherwise PASS **within stated coverage**, never exhaustive certification. Include
+at most two unresolved selected findings in `findings`; place remediated/no-change
+outcomes in check evidence. Final report: **problem → correction/no-change → validation**,
+at most three bullets plus real blockers. Keep detailed probes/locators in native
+history/audit, not repeated transcript dumps.
 
-Evaluate every row, with evidence locators and an explicit outcome:
+## 4. Correct selected findings
 
-| Check | Completion criterion |
-| --- | --- |
-| `source_history` | Read original prompts, calls/results, errors, recoveries and checkpoint across the task interval. Use PASS or BLOCKED only. |
-| `task_scope` | Establish the original intent and review boundary; name implicated execution-system owners and maintenance authority. Business-task completion is not this review's acceptance criterion. |
-| `failed_tools` | Account for failed calls and recoveries, then assess their causes. Recovery closes the immediate error, not a repeated misuse or guidance defect; retain that finding in the execution rows. |
-| `execution_efficiency` | Inspect repeated calls/searches/reads, unchanged retries, progress-only loops, delegation/waiting and escalation. Explain which were justified and identify avoidable waste or missed stall intervention, including after eventual success. |
-| `context_alignment` | Compare available/loaded skills, instructions, runbooks and tool docs with the observed sequence. Distinguish missing/stale/ambiguous/conflicting guidance from guidance ignored, tool/harness defects and uncertain causes. Trace installed copies to their canonical owner. |
-| `improvement_actions` | Apply durable remediation below: record each finding's cause, owner, diagnostic evidence if needed, actual script/guidance correction and validation, or explicit not-remediated/no-change disposition. A plan alone is not remediation. Unresolved actionable findings remain FAIL; missing evidence/authority is BLOCKED. |
-| `verification` | Validate the suspected cause or execution-system patch with focused actual checks. Reuse source evidence; run business tests/live probes only when needed for that hypothesis. Distinguish unrun or mocked checks. NOT_APPLICABLE needs a concrete reason. |
-| `safe_delivery` | Verify any claimed execution-system correction reached its authorized canonical and installed targets, preserving foreign work and rollback. NOT_APPLICABLE when no correction delivery is claimed; original deployment evidence is context, not a required redeployment. |
+For selected findings, inspect existing guidance before editing. Clear guidance
+ignored calls for adherence, not duplicate rules. Proven tool defects belong in
+their implementation owner. Repeated quoting failures warrant an existing or
+minimal SSOT script accepting arguments/structured stdin, regression and invocation
+pointer. A selected resolved discovery detour warrants a verified reusable entry
+point in existing context, not transcript detail. No speculative refactoring.
 
-For each finding record **native locators → observed consequence → cause and
-confidence → owning file/tool → smallest correction → actual or proposed check**.
-A failed call alone is not a defect: bounded research, red tests and retries with
-new evidence can be justified. Check guidance before changing it; clear guidance
-ignored calls for adherence/orchestration correction, not another duplicate rule.
-Route a reproducible tool bug to its implementation owner. If causality is
-uncertain, use the single diagnostic subagent below instead of speculative edits.
-Do not rerun an unchanged command or broad search to manufacture review evidence.
+If causality remains uncertain, allow **one bounded read-only diagnostic child per
+source/distinct selected issue**. Record intent before dispatch and child ID/result
+afterward in native history; resume it rather than relabeling/replacing it. Its
+brief has a concrete causal question, safe probes and explicit stop condition.
+No supported fix means no speculative edit: record not-remediated or justified
+no-change. Missing required authority/capability is BLOCKED; confirmed unresolved
+findings stay FIX_NEEDED. Diagnosis never resets correction budgets.
 
-Use PASS, FAIL, BLOCKED or NOT_APPLICABLE for each row. Permit NOT_APPLICABLE only
-for `verification` and `safe_delivery`, with a concrete reason. Record material
-findings with file/line or native-history locators and the smallest justified
-correction. Avoid speculative refactors. A failed checklist row means FIX_NEEDED;
-any blocked row makes the overall outcome BLOCKED, retaining known findings.
-This checklist and its recorder establish consistency, not cryptographic proof
-that the reviewer read history or that native execution succeeded.
+Verified executable maintenance authority permits autonomous scoped correction
+in the canonical owning repository. Use a child correction writer and isolated
+worktree; preserve dirty/foreign work and leave business code alone unless authorized.
+Before its first edit the writer records `correction_started`: original directory,
+separate absolute worktree/branch, writer and parent review IDs, scope/authority.
+Allow **at most two cumulative correction starts per original source**, across
+resumes/reviewer changes, not two per finding. The first start fixes scope/authority;
+later changes require explicit user approval cited by `scope_change_authority`.
+Original source/directory and prior history remain fixed. No identity/budget reset.
 
-## 4. Correct real findings
+The writer runs focused regressions and repository-required tests, freezes the
+candidate commit and records `correction_completed` with actual command/exit/evidence,
+including failures. It returns to this parent. The supervisor starts a separate
+fresh-context independent **patch reviewer** leaf through native child delegation.
+The reviewer differs from source and writer, reads relevant original evidence,
+patch and actual tests, and creates no agents. Record its outcome as `phase: patch`
+with original source and `writer_session_id`. Iterate within the cumulative budget;
+never manufacture PASS after exhaustion.
 
-### Durable remediation
+Deliver only after independent patch acceptance and required checks. Re-read target
+HEAD/dirty state before integration; reassess against newer work rather than overwrite
+it or reuse stale acceptance. Verify authorized integration, installed bytes through
+the managed source, affected checks and eligible owned worktree/branch cleanup.
+Record `delivery` only after actual success with delivered commit/checks. Plan-only
+scope, unavailable capability or production-deployment confirmation remains a boundary.
+No model/credential/permission changes or unrelated-session interruption. Preserve
+negative records; append reassessments instead of rewriting them.
 
-- **Quoting failures → SSOT script.** Reuse an existing helper first; implement
-  repeated shell/Python quoting repairs as a reusable script in project `scripts/` or `tools/`
-  for project operations, or the corresponding skill's `scripts/` for host/global
-  operations. Work in its canonical source. Accept arguments or structured stdin
-  instead of rebuilding nested shell code; add a regression test and an invocation
-  pointer in the owning context/skill. Follow secret-management/human-pull rules;
-  putting code in a script does not authorize secret access.
-- **Resolved detours → reusable guidance.** Every resolved broad/repeated search or tool-call detour
-  must leave a discoverable path in project context or corresponding skill:
-  verified entry point, prerequisites, successful procedure and misleading path
-  to avoid. Update the existing owner or link adequate existing guidance; keep
-  transcript detail in evidence. Audit-only notes are not durable learning.
-- **Unknown cause → one diagnosis.** Dispatch exactly one diagnostic subagent
-  per original source and distinct issue, using native delegation and a read-only
-  brief with frozen evidence, canonical roots, a concrete causal question,
-  permitted safe probes and a bounded stop condition. It must not delegate or edit.
-  Record dispatch intent in native review history before dispatch; capture the
-  native child ID, outcome and evidence locators, including failed dispatches.
-  Check this history on resume/reviewer changes: no replacement diagnosis, no
-  renaming the same issue and no recursive review. This does not reset the
-  two cumulative correction starts. A supported fix path means proceed with authorized correction,
-  validation and delivery below. No supported path, failed dispatch or unavailable
-  diagnosis capability means record `not remediated`, evidence and the exact
-  limiting reason; never loop on diagnosis or invent a fix. Missing authority or
-  capability remains BLOCKED; other unresolved actionable findings stay FIX_NEEDED.
+## 5. Append the bounded audit
 
-Close each finding as remediated, `not remediated`, or justified no-change in
-`findings`/`improvement_actions` evidence. Include diagnostic locators where used,
-canonical script/context paths, actual checks and installed-target verification.
-Do not label a recommendation or an unvalidated edit remediated.
-
-For a confirmed execution-system defect under executable maintenance authority,
-autonomously create a scoped correction worktree in the owning repository and
-use an ordinary native coding agent. Provide the original source ID, independent
-finding/evidence, canonical target and applicable maintenance authority. Keep the
-original business implementation out of this repair unless separately authorized.
-Business-task authority alone does not authorize global skills/runtime changes;
-record the precise boundary as BLOCKED when maintenance authority is absent.
-Resolve managed skills through their source/manager, then verify installed bytes;
-patching only an installed/generated copy is not durable delivery.
-Append `correction_started` from the correction writer **before the first edit**,
-identifying the original directory, separate absolute worktree, branch, writer
-and reviewer. Permit at most **two cumulative correction starts per original
-source session**, across reviewer changes. Keep the original directory fixed;
-the first correction start fixes correction scope and verified authority for
-later starts unless the user explicitly approves an amendment. For a changed
-scope or authority, add `scope_change_authority` to `correction_started`, citing
-the new native user approval locator; never infer it from audit text or standing
-authority alone. Preserve earlier records and the original source/directory.
-Earlier review descriptions may differ; later approval may authorize the first correction.
-The locked recorder assigns the attempt number and rejects further starts.
-If the cap is exhausted, append `blocked`; do not change IDs to reset it.
-Preserve dirty and unrelated work. Before integration or deployment, re-read the
-target HEAD and working-tree state. If the source task has advanced, reassess the
-finding and patch against that state; never overwrite newer work or treat an old
-checkpoint's acceptance as approval for changed code. Plan-only/report-only
-authority permits a finding, not a patch; record the precise execution boundary
-as BLOCKED.
-
-The correction writer runs focused regression checks and repository-required tests. Freeze the candidate
-commit and append `correction_completed` with actual command/exit-code/evidence
-entries, preserving failed checks, then return to the existing supervisor.
-The supervisor starts a separate fresh-context independent **patch reviewer** leaf
-using the same native interfaces; its brief prohibits delegation and restarting
-this workflow. Require its session ID to
-differ from both the original
-source and correction writer; require original-history access and inspection of
-the patch and actual test results. Audit this as `phase: patch`, retaining the
-original source ID and adding `writer_session_id`.
-
-Deliver only after independent patch acceptance and required checks pass, using
-the task's authorized integration/release target and rollback. Re-run affected
-checks after integration; append `delivery` only after verifying the actual
-outcome, with the delivered commit and actual checks, never just intent.
-If authority or a required capability is unavailable, stop at that boundary and
-record BLOCKED. Preserve failed review records; append a new record after repair
-or delivery instead of rewriting history. Do not claim the task delivered merely
-because a patch review passed.
-
-## 5. Append the audit
-
-Run the bundled stdlib recorder with a JSON object on stdin:
-
-```sh
-python3 <skill-directory>/scripts/audit.py --engine openchamber <<'JSON'
-{
-  "source_session_id": "ses_original",
-  "review_session_id": "ses_independent",
-  "directory": "/absolute/task/checkout",
-  "commit": "0123456789012345678901234567890123456789",
-  "worker_session_id": "ses_investigation_worker",
-  "reason": "Native history access denied; operator must restore the source access",
-  "check": [{"command": "native source history read", "exit_code": 1, "evidence": ["supervisor native denial locator; alternate native file also denied"]}],
-  "scope": ["requested task scope"],
-  "task_authority": "original user message locator",
-  "checks": {
-    "source_history": {"status": "BLOCKED", "evidence": ["session.messages: exact host access error; original history unread"]},
-    "task_scope": {"status": "BLOCKED", "evidence": ["Original task authority cannot yet be verified"]},
-    "failed_tools": {"status": "BLOCKED", "evidence": ["Original tool results unavailable"]},
-    "execution_efficiency": {"status": "BLOCKED", "evidence": ["Attempt/recovery sequence unread"]},
-    "context_alignment": {"status": "BLOCKED", "evidence": ["Available and loaded guidance not yet established"]},
-    "improvement_actions": {"status": "BLOCKED", "evidence": ["Causes and canonical owners unknown until history is read"]},
-    "verification": {"status": "BLOCKED", "evidence": ["Focused causal checks unknown until history is read"]},
-    "safe_delivery": {"status": "NOT_APPLICABLE", "evidence": ["Read-only review; no delivery claimed"]}
-  },
-  "findings": []
-}
-JSON
-```
-
-Replace example values with actual evidence. The recorder derives `status` and
-adds schema version 2, timestamp and normalized engine. All eight rows are
-required for new reviews. Schema-1 five-row records remain readable, not new
-execution-quality evidence. Append reassessments with a locator to the prior
-outcome; preserve old bytes and the original identity/authority/attempt budget. Optional `phase` defaults to `task`;
-`patch` requires `writer_session_id`. Append each review outcome, including
-BLOCKED, to exactly one engine file:
-`${XDG_STATE_HOME:-~/.local/state}/agent-fabric/audit/opencode.jsonl` or
-`pi.jsonl`. Normalize `openchamber` to `opencode`, `pichamber` to `pi`.
-No per-session artifacts or dispatch state are created. Entries carry
-`agent_reported: true`; they are reports, not native execution proof. If recording
-fails, stop the dependent action, surface the error and retain the result in the
-session; never report it logged or proceed with an unrecorded correction start.
-
-### Action events and summary
-
-Omit `event` for backwards-compatible `review_completed` checklist records. For
-`review_requested`, `review_started`, `correction_started`, `correction_completed`,
-`delivery`, `blocked` or `hook_retirement`, send the common fields
-`source_session_id`, `session_id` (the real reporting actor), `directory`, `scope`,
-`task_authority`, and nonempty `evidence_refs` (locators, not copied output).
-Supply `review_session_id` for all review/correction/delivery actions; require
-the reviewer itself to report `review_started`. Use a specific `reason` for
-`blocked` or `hook_retirement`. Record hook retirement only after the authorized
-removal/disable actions actually occurred; this skill does not install or remove
-hooks itself.
-
-For corrections also supply `writer_session_id`, `worktree` and `branch`; for
-an explicitly user-approved scope/authority amendment, supply `scope_change_authority`
-only on `correction_started` (a nonempty native approval locator, not approval proof).
-The same two cumulative starts still apply; an amendment never resets the budget.
-For correction completion/delivery supply `commit` and a nonempty `check` list of
-`{"command":"actual command","exit_code":0,"evidence":["result locator"]}`.
-Keep command arguments free of credentials. Optional `reason` and `evidence_refs`
-describe outcomes without environment dumps, transcripts or raw tool output.
-For example, a failed launch can be recorded without inventing a reviewer:
+Run `python3 <skill-directory>/scripts/audit.py --engine <engine>` with a JSON object
+on stdin. Completed bounded reports use schema 3, selected by these four `checks`
+and required `coverage` text (inspected/excluded ranges and stopping reason):
 
 ```json
-{"event":"blocked","source_session_id":"ses_original","session_id":"ses_original","directory":"/absolute/task/checkout","scope":["requested task"],"task_authority":"user message locator","reason":"session.create unavailable; no review launched","evidence_refs":["source tool error locator"]}
+{"source_session_id":"ses_source","review_session_id":"ses_parent",
+ "directory":"/absolute/checkout","commit":"0123456789012345678901234567890123456789",
+ "scope":["selected friction"],"task_authority":"native authority locator",
+ "coverage":"Inspected request and calls 4–8; remainder excluded; stopped at supported cause.",
+ "checks":{
+   "evidence_scope":{"status":"PASS","evidence":["native causal-window locators"]},
+   "improvement_actions":{"status":"PASS","evidence":["canonical correction locator"]},
+   "verification":{"status":"PASS","evidence":["actual focused check locator"]},
+   "safe_delivery":{"status":"PASS","evidence":["integration/install/cleanup locator"]}},
+ "findings":[]}
 ```
 
-Read existing records without creating a log using:
-`python3 <skill-directory>/scripts/audit.py --engine openchamber --summary`.
-Counts cover recorded requests, starts, completions, checklist passes, blockers,
-correction attempts and delivery reports only. `legacy_review_completions` and
-`execution_review_passes` separate old delivery reviews from execution reviews. Do not infer uninvoked-task
-coverage, native success, or a hung session from these counts alone.
+PASS describes only the declared scope. Historical schema-1/2 records and legacy
+eight-row callers remain readable/appendable without migration or rewritten bytes;
+new workflow reports use the bounded form. The recorder derives status and adds
+schema, timestamp, normalized engine and `agent_reported: true`, not proof of execution.
 
-Keep stdin and each encoded row within 64 KiB and the engine log within 16 MiB.
-The recorder scans the bounded log under the same file lock before appending;
-malformed/truncated history and size limits block writes without repair or
-rotation. Require owned non-shared-writable state storage, private (0700)
-`agent-fabric/audit` directories, and owned single-link 0600 regular files.
-Symlink ancestors and unsafe existing permissions are rejected, not changed.
-Preserve blocked logs for operator handling rather than truncating/deleting them.
-Obvious credentials are rejected best-effort; sanitize content before logging.
+Action events: `review_requested`, `review_started`, `correction_started`,
+`correction_completed`, `delivery`, `blocked`, `hook_retirement`. Supply `event`,
+`source_session_id`, real reporting `session_id`, absolute `directory`, `scope`,
+`task_authority`, nonempty `evidence_refs`; all review/correction/delivery events
+carry `review_session_id`. The parent reports its own start; leaves do not record
+new review launches. Corrections add `writer_session_id`, `worktree`, `branch`;
+completion/delivery adds full `commit` and nonempty `check` entries shaped as
+`{"command":"actual command","exit_code":0,"evidence":["native result locator"]}`.
+Blocked actions need a specific reason; post-launch blockers also require distinct
+worker and supervisor checks as in step 2. `scope_change_authority` is allowed only
+on correction start. Omit `event` for `review_completed`; patch reports require writer ID.
+
+One locked append-only engine file lives under
+`${XDG_STATE_HOME:-~/.local/state}/agent-fabric/audit/{opencode,pi}.jsonl`.
+OpenChamber normalizes to opencode, PiChamber to pi. Use `--summary` for recorded
+counts only, not task coverage, liveness or proof of savings. Keep native locators,
+not prompts/transcripts, raw output, environments or credentials. Limits: 64 KiB
+stdin/row, 16 MiB log; malformed/truncated history blocks appends, never auto-repair.
+Require owned non-shared-writable state storage, private 0700 audit directory and
+owned single-link 0600 regular files; reject symlinks/unsafe permissions without
+changing them. Secret rejection is best-effort; sanitize inputs. If recording
+fails, stop dependent actions and retain results in native history, not claimed logs.

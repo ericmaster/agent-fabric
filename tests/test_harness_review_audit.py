@@ -29,6 +29,15 @@ def blocker(value):
     return value
 
 
+def bounded_report():
+    value = report()
+    value['checks'] = {name: value['checks'][name] for name in
+                       ('improvement_actions', 'verification', 'safe_delivery')}
+    value['checks']['evidence_scope'] = dict(status='PASS', evidence=['native request and calls 4–8'])
+    value['coverage'] = 'Request and calls 4–8 inspected; remainder excluded; supported cause found.'
+    return value
+
+
 def event(name='review_requested'):
     value = report()
     value.pop('checks')
@@ -158,6 +167,48 @@ class TaskReviewAuditTests(unittest.TestCase):
             value['checks'].pop(key)
         self.run_cli(value, ok=False)
         self.assertFalse(self.state.exists())
+
+    def test_bounded_review_requires_coverage_and_limits_selected_findings(self):
+        value = bounded_report()
+        for invalid in (None, '', ' ', []):
+            self.run_cli(dict(value, coverage=invalid), ok=False)
+        missing = dict(value)
+        missing.pop('coverage')
+        self.run_cli(missing, ok=False)
+        self.assertEqual(self.run_cli(value)['status'], 'PASS')
+        self.assertEqual(self.rows()[0]['schema_version'], 3)
+        self.assertEqual(self.run_cli(summary=True)['bounded_review_passes'], 1)
+        self.assertEqual(self.run_cli(summary=True)['execution_review_passes'], 0)
+        value['checks']['improvement_actions']['status'] = 'FAIL'
+        self.run_cli(dict(value, findings=['one', 'two', 'three']), ok=False)
+        self.assertEqual(self.run_cli(dict(value, findings=['one', 'two']))['status'], 'FIX_NEEDED')
+        self.run_cli(dict(value, findings=['one'], status='PASS'), ok=False)
+
+    def test_bounded_blockers_and_mixed_schema_history_preserve_budgets(self):
+        self.run_cli()
+        self.run_cli(event('correction_started'))
+        path = self.state / 'agent-fabric/audit/opencode.jsonl'
+        before = path.read_bytes()
+        value = bounded_report()
+        value['checks']['evidence_scope']['status'] = 'BLOCKED'
+        self.run_cli(value, ok=False)
+        self.assertEqual(self.run_cli(blocker(value))['status'], 'BLOCKED')
+        self.assertTrue(path.read_bytes().startswith(before))
+        self.run_cli(event('correction_started'))
+        self.run_cli(event('correction_started'), ok=False)
+        self.assertEqual(self.run_cli(summary=True)['correction_attempts'], 2)
+        value['checks']['evidence_scope']['status'] = 'NOT_APPLICABLE'
+        self.run_cli(value, ok=False)
+
+    def test_bounded_schema_mismatch_is_rejected_without_rewriting_history(self):
+        self.run_cli(bounded_report())
+        path = self.state / 'agent-fabric/audit/opencode.jsonl'
+        row = self.rows()[0]
+        row['schema_version'] = 2
+        original = (json.dumps(row) + '\n').encode()
+        path.write_bytes(original)
+        self.run_cli(summary=True, ok=False)
+        self.assertEqual(path.read_bytes(), original)
 
     def test_legacy_reports_remain_readable_without_execution_pass_credit(self):
         # Spec: docs/specs/task-retrospective.md — append-only schema compatibility.
@@ -398,23 +449,26 @@ class TaskReviewAuditTests(unittest.TestCase):
         self.assertIn('--check-source', router)
         self.assertIn('Skip step 1', router)
         self.assertIn('as siblings', router)
-        self.assertIn('The supervisor starts a separate fresh-context independent **patch reviewer** leaf', skill)
+        self.assertIn('fresh-context independent **patch reviewer** leaf', skill)
         pointer = (CLI.parents[1] / 'references/activation.md').read_text()
         self.assertIn('top-level task owner', pointer)
         self.assertIn('Children report signals to their owner', pointer)
         self.assertIn('opted out (explicit user instruction)', pointer)
         launch = (CLI.parents[1] / 'references/pichamber.md').read_text()
         self.assertIn('**Supervisor launch:**', launch)
-        self.assertIn('**Leaf launch:**', launch)
-        self.assertIn('not entry at step 2 or a new review checklist', launch)
-        self.assertIn('do not append `review_requested` or `review_started` for that dispatch', launch)
+        self.assertIn('native child-subagent delegation, not these root-creation routes', launch)
+        self.assertNotIn('**Leaf launch:**', launch)
+        for requirement in ('one visible parent review session', '12 history/tool retrieval calls',
+                            'two maximum—not a quota', 'No whole-transcript sweep',
+                            'never exhaustive certification'):
+            self.assertIn(requirement, skill)
 
     def test_root_owns_review_decision_even_for_delegation_or_skill_maintenance(self):
         # Spec: docs/specs/task-retrospective.md — role ownership, not a topic exemption.
         skill = (CLI.parents[1] / 'SKILL.md').read_text()
         normalized = ' '.join(skill.split())
         for requirement in ('top-level user-facing task owner', 'parent orchestrator',
-                            'direct harness/skill maintenance', 'upstream task owner',
+                             'direct harness/skill maintenance', 'upstream task owner',
                             'native parent/root metadata', 'subject alone does not exempt',
                             'Assigned review/correction episodes never review themselves',
                             'that parent still evaluates the whole completed task'):

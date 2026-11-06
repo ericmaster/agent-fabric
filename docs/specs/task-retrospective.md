@@ -10,7 +10,16 @@ Task output is supporting evidence, not the primary verdict or an invitation to
 repeat deployment QA. Reuse existing evidence; run only checks needed to establish
 a suspected cause or validate its correction.
 
-For each material pattern, record native locators, observed consequence, causal
+The objective is bounded improvement: one high-impact correction by default, two
+maximum, never a quota. Stop once selected evidence establishes cause, canonical
+owner and safe correction. Default investigation: at most two friction windows
+and 12 history/tool retrieval calls including recovery. No full-history coverage
+or exhaustive issue inventory is required. Record inspected/excluded ranges and
+the stopping reason; PASS certifies only that bounded scope. No worthwhile supported
+change is a valid no-change outcome. Budget exhaustion alone is not a capability
+blocker; a selected claim missing required causal evidence cannot pass.
+
+For each selected pattern, record native locators, observed consequence, causal
 classification (missing/stale/ambiguous guidance, guidance ignored, tool/harness
 defect, orchestration misuse, justified exploration, or uncertain), the canonical
 owner, and the smallest preventive correction with a runnable or replay check.
@@ -102,20 +111,21 @@ files; the executor's summary alone is insufficient. Missing native
 history is `blocked`, never a passing review. Preserve native identity and resume
 the same review/correction session when continuing its work.
 
-The visible independent root is the **supervisor**. It dispatches one fresh native
-read-only **worker** with a distinct persisted session ID/history, the frozen
-source, authority and bounded investigation scope. Use the existing native session
-API for both roles; do not use ephemeral `--no-session` children for review evidence.
-The worker reads actual original history, checks guidance and safe recoveries,
-and returns findings, coverage locators and unresolved prerequisites. It does not
-write final audit outcomes, certify delivery, edit files or delegate again. Reuse
-that worker's continuation instead of replacing it on a pending response.
+The visible independent root is the single **parent supervisor**. All investigation,
+diagnosis, correction and patch review use native **child subagents**, with fresh
+independent context, retrievable child IDs/results and role-specific bounded briefs.
+The root-session API is only for the parent launch, never a leaf fallback. If native
+children are unavailable, record the boundary rather than creating extra visible
+roots. Investigation is one read-only child; it reads selected original history and
+guidance and returns at most two candidates, locators, coverage and stopping reason.
+It cannot edit, delegate or write final outcomes. Resume the same child for follow-up.
 
 A worker blocker is a claim, not a final outcome. The supervisor independently
 checks the worker's evidence and performs an applicable safe capability/recovery
-probe. Truncated output, unread accessible history, context pressure and unfinished
-work are **pending**, not external blockers: reduce pages/long lines, inspect the
-original retained output, keep exact covered/pending ranges and continue or resume.
+probe. Within a selected window, truncated output and unread accessible history
+require a changed retrieval strategy within budget, not an unsupported PASS.
+Keep exact inspected/excluded ranges; unrelated hints remain outside selected
+scope. Context pressure alone is not an external blocker.
 Never rerun unchanged failed reads. A hard budget/policy boundary remains a real
 limit; record its exhausted attempts rather than reset it. Native cancellation
 is not proof of child termination; isolate uncertain writers before recovery.
@@ -129,15 +139,16 @@ pre-launch failures without a reviewer remain recordable. The recorder validates
 this evidence structure, not whether probes truly ran. Historical schema-1/2
 records remain readable and byte-preserved without retroactive requirements.
 
-Follow the fixed checklist in the skill. Every new review includes
-`execution_efficiency`, `context_alignment` and `improvement_actions` alongside
-the five source/boundary/evidence/safety rows. Delivery-only evidence cannot
-satisfy these execution rows. Distinguish observed checks from unrun suggestions
-and unsupported benefit claims. Record `PASS`, `FIX_NEEDED` or `BLOCKED` with
-evidence; an unresolved execution finding cannot accompany `PASS`. Reviewer and source session IDs
-must differ. Prefer a normal root session over a hidden subagent so the user can
-follow the review. Use existing roles/models/authentication; no private SDK runner
-or version-specific provider registration is required.
+Use the skill's four bounded checks: `evidence_scope`, `improvement_actions`,
+`verification`, `safe_delivery`. Scope/authority remain common report fields;
+`coverage` states inspected/excluded history and stopping reason. At most two
+selected unresolved findings are allowed; remediated/no-change outcomes belong
+in check evidence. Unselected hints are not unresolved findings. Record PASS,
+FIX_NEEDED or BLOCKED only for the declared scope. Verification/delivery alone
+permit NOT_APPLICABLE with a reason. Preserve focused tests, independent patch
+acceptance, authority and safe delivery; avoid unrelated checklist work. Final
+report: problem → correction/no-change → validation, at most three bullets plus
+real blockers. Reviewer and source differ; keep roles/models/authentication unchanged.
 
 Default to asynchronous launch with no result return. After receiving a real ID,
 record `review_requested`, submit the prompt requiring `review_started` before
@@ -156,7 +167,7 @@ existing helper first: project-specific operations live in project `scripts/` or
 shell code; add a regression test and a discoverable invocation pointer. Preserve
 secret-management/human-pull rules; scripts do not grant new secret access.
 
-Every resolved broad/repeated search or tool-call detour must leave a reusable
+A selected resolved broad/repeated search or tool-call detour must leave a reusable
 path in project context or the corresponding skill: verified entry point,
 prerequisites, successful procedure and the misleading path to avoid. Update the
 existing owner or link adequate existing guidance, not a transcript or duplicate
@@ -178,7 +189,7 @@ Final review findings must distinguish remediated, not remediated and justified
 no-change outcomes. Include diagnostic locators where applicable, canonical
 script/context paths, actual validation and installed-target evidence; planned
 work is not remediation. Use existing findings/evidence fields and native session
-history; no new audit schema, dispatcher, role or persistent side ledger is needed.
+history; no dispatcher, role or persistent side ledger is needed.
 
 ## Autonomous correction
 
@@ -236,13 +247,14 @@ negative, interrupted and incomplete actions. A summary reports recorded outcome
 and missing completions, not proof of model benefit or a denominator of all tasks:
 tasks for which the model never invokes the skill are unobserved.
 
-New records use schema version 2. New completed reports require all eight rows;
-the recorder rejects five-row delivery-only submissions. Existing schema-1 records
-remain readable and byte-preserved, including negative records and cumulative
-correction counts. Summary reports legacy completions separately from schema-2
-execution-review passes; old PASS does not establish execution quality. Reassessment
-appends a new outcome with prior-record and source-history locators, never rewrites
-history or resets original source identity/authority/budgets.
+Bounded completed reports use schema 3: four checks, nonempty `coverage`, and at
+most two findings. Schema-1/2 history remains readable and byte-preserved; legacy
+eight-row callers may still append schema 2, but the active workflow uses the
+bounded form. Action events retain schema 2 and the same locked cumulative
+correction budget across schema versions. Five-row delivery-only new submissions
+remain rejected. Summary separates legacy completions, schema-2 execution passes
+and schema-3 bounded passes; none implies exhaustive task coverage. Reassessment
+appends outcomes without rewriting history or resetting identity/authority/budgets.
 
 Audit records are explicitly agent-reported. Independent session/history and
 command evidence must corroborate consequential success claims. No signatures,
@@ -301,6 +313,7 @@ default 0.5 passes) are omitted. Output still marks `advisory:true`.
 and `applicability` when recording lessons/suggestions. Consumers treat them as
 weighted advisory context, not instructions.
 
-Validation: audit unit tests, full Go suite, release fixture and a visible native
-root-session review using a real source session. A logging/dispatch smoke is not
-evidence that an autonomous correction or deployment actually occurred.
+Validation: audit unit tests, full Go suite and release fixtures. Instruction
+contracts verify bounded scope and parent/child topology, not actual model behavior;
+native review evidence is required for claims about runtime execution. A dispatch
+smoke is not evidence that correction or deployment occurred.

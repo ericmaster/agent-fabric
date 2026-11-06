@@ -2,7 +2,7 @@
 
 Use the already-running OpenCode service through the installed `opencode api`
 CLI. It is the same first-party HTTP surface the UI uses: no SDK, scripted
-dispatcher, new server, private runner or hidden child is needed. Do not inspect
+dispatcher, new server or private runner is needed. Do not inspect
 credentials or host configuration, and do not invent a port; pass `--server`
 only for a documented origin. Keep the source session's agent/model tuple, which
 `session.get` reports.
@@ -35,8 +35,9 @@ id, type and time, plus outcome when present. The first page may set
 `order=asc|desc`; continuation passes the opaque `cursor` **alone**. `cursor`
 combined with `order` is rejected
 (`InvalidCursorError: Cursor cannot be combined with order`) and an altered cursor
-is rejected too. Follow `cursor.next` until it is null or empty: that, not a
-title or the newest assistant answer, is the end of the paged range.
+is rejected too. Follow `cursor.next` only through the selected friction window
+within the investigation budget. A null cursor ends the paged range, not proof
+that any uninspected task interval was covered.
 
 `limit` is a maximum, not a guarantee, and tool or CLI output may truncate a large
 response. Capture the response in a private file you own under an authorized path
@@ -45,6 +46,12 @@ one message with `session.message.get`. A truncated body or a 4xx JSON body is
 incomplete coverage, never absent history; report the exact unread range.
 
 ## Launch a root and prompt
+
+These routes launch the single visible parent only. Investigation, diagnosis,
+correction and patch review use native child-subagent tools with fresh independent
+context and retrievable IDs/results. Resume child continuations; never create
+additional roots as a delegation fallback. Record a capability boundary if native
+children are unavailable.
 
 ```json
 {"title": "Harness review — <scope>",
