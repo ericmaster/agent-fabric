@@ -7,8 +7,13 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ### Changed
 
+- Make fresh direct implementor execution ledger-free with compact truthful output; preserve parent macro ownership and explicit legacy continuity. Resolve implementor's ledger hook to an on-demand reference instead of embedding its body/template; other roles remain unchanged.
 - Make the top-level task owner evaluate harness review across delegated work, including direct harness/skill maintenance, and communicate its decision at every closure; preserve nonrecursive assigned review episodes and native-context installation.
 - Delegate phases and bounded fixes directly to implementor, which owns tests/remediations and independent code review in the same session. Retain loop-supervisor only for existing continuations, with unchanged history/budgets. Scope OpenCode implementor delegation to code-reviewer; preserve fail-closed review, single-owner hooks/checkpoints, and direct reviewer fallback when nesting is unavailable.
+
+### Added
+
+- `agent-fabric route`: advisory difficulty router (easy → implementor; complex → planner), with explicit override/escalation and no dispatch or automatic retry. Contract: [`docs/specs/difficulty-router.md`](docs/specs/difficulty-router.md).
 
 ## [0.3.0] - 2026-10-31
 

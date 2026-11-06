@@ -550,6 +550,108 @@ func TestMigrateMovedManagedFilesRemovesOnlyUnmodifiedArtifact(t *testing.T) {
 	}
 }
 
+// Spec: docs/specs/agent-fabric.md — role-specific on-demand ledger reference.
+func TestLeanLedgerHookRendering(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	hooks := filepath.Join(home, ".agent-hooks")
+	if err := os.MkdirAll(filepath.Join(hooks, "implementor"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const sentinel = "LEDGER_BODY_SENTINEL_DO_NOT_INLINE"
+	write := func(path, content string, mode os.FileMode) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(content), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(hooks, "record-ledger.md"), sentinel, 0o600)
+	write(filepath.Join(hooks, "record-ledger.sh"), "#!/bin/sh\nexit 0\n", 0o700)
+	root := filepath.Join("..", "..")
+	paths, err := filepath.Glob(filepath.Join(root, "agents", "*.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range paths {
+		d, err := agent.ParseFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(d.Body, "<agent-hooks:invoke:record-ledger>") {
+			continue
+		}
+		t.Run(d.ID, func(t *testing.T) {
+			rendered, err := renderHookPlaceholders(d, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d.ID != "implementor" {
+				if !strings.Contains(rendered.Body, sentinel) {
+					t.Fatal("other ledger owners must retain eager Markdown behavior")
+				}
+				return
+			}
+			if strings.Contains(rendered.Body, sentinel) || !strings.Contains(rendered.Body, filepath.Join(hooks, "record-ledger.md")) {
+				t.Fatal("implementor must reference resolved Markdown without embedding its body")
+			}
+			mappings, err := filepath.Glob(filepath.Join(root, "adapters", "*.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, path := range mappings {
+				mapping, err := adapter.LoadMapping(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				target := strings.TrimSuffix(filepath.Base(path), ".json")
+				out, _, _, err := adapter.Render(target, rendered, mapping, false)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, want := range []string{"zero ledger operations", "parent alone persists macro state", "Missing continuation identity", "original reviewer sessions", "unresolved", "cumulative budgets/hard limits", "transport-failed review is incomplete, never PASS", "at most 200 words"} {
+					if !strings.Contains(out, want) {
+						t.Errorf("%s lost lean policy %q", target, want)
+					}
+				}
+				if strings.Contains(out, sentinel) {
+					t.Errorf("%s inlined ledger body", target)
+				}
+			}
+		})
+	}
+	// Existing scoped-script > global-Markdown > global-script precedence survives.
+	script := filepath.Join(hooks, "implementor", "record-ledger.sh")
+	write(script, "#!/bin/sh\nexit 0\n", 0o700)
+	d, err := agent.ParseFile(filepath.Join(root, "agents", "implementor.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"script", "markdown", "absent"} {
+		t.Run(kind, func(t *testing.T) {
+			want := script
+			if kind == "markdown" {
+				want = filepath.Join(hooks, "implementor", "record-ledger.md")
+				write(want, sentinel, 0o600)
+			}
+			if kind == "absent" {
+				for _, path := range []string{script, filepath.Join(hooks, "implementor", "record-ledger.md"), filepath.Join(hooks, "record-ledger.md"), filepath.Join(hooks, "record-ledger.sh")} {
+					if err := os.Remove(path); err != nil {
+						t.Fatal(err)
+					}
+				}
+				want = "persistence for an explicit legacy checkpoint continuation is unavailable"
+			}
+			out, err := renderHookPlaceholders(d, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out.Body, want) || strings.Contains(out.Body, sentinel) || strings.Contains(out.Body, "Checkpoint fields:") {
+				t.Fatalf("lost on-demand %s reference or inlined body/template", kind)
+			}
+		})
+	}
+}
+
 func TestRenderHookPlaceholdersUsesGlobalHooksOnly(t *testing.T) {
 	home := t.TempDir()
 	project := t.TempDir()

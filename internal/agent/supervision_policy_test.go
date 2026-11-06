@@ -93,6 +93,33 @@ func TestPhaseClosureAndCompactPlanning(t *testing.T) {
 
 // Spec: docs/specs/agent-fabric.md — portable supervision instructions
 // These cases assert shipped instruction paths, not runtime model compliance.
+func TestLeanDirectParentAndLegacyPolicy(t *testing.T) {
+	d, err := ParseFile(filepath.Join("..", "..", "agents", "implementor.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Join(strings.Fields(d.Body), " ")
+	for name, wants := range map[string][]string{
+		"fresh-direct":        {"user invocation without a parent packet or supplied checkpoint/continuation identity", "requires zero ledger operations", "do not load or write a micro ledger", "independent review is still mandatory", "not a new fixed retry limit for fresh direct work"},
+		"parent-phase":        {"parent alone persists macro state", "add no micro ledger", "Return only the phase delta"},
+		"legacy-continuation": {"retains its explicit loading/persistence instructions", "original reviewer sessions", "unresolved findings and cumulative budgets/hard limits", "Missing continuation identity is a precise gap", "An absent or failed load cannot prove freshness", "An installed persistence error stops dispatch", "never successful loading or a fresh-start allowance"},
+		"review-and-output":   {"Missing, denied, pending or transport-failed review is incomplete, never PASS", "complete original verdict", "resume the same reviewer", "at most 200 words", "once in the existing private evidence store", "name failed/unrun checks explicitly"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, want := range wants {
+				if !strings.Contains(body, want) {
+					t.Errorf("missing instruction contract %q", want)
+				}
+			}
+		})
+	}
+	for _, obsolete := range []string{"In direct atomic work, load/record", "Initial soft budget is three mutations", "absent hook means inline state"} {
+		if strings.Contains(body, obsolete) {
+			t.Errorf("unconditional legacy instruction retained: %q", obsolete)
+		}
+	}
+}
+
 func TestDirectPhaseOwnershipAndReview(t *testing.T) {
 	for role, wants := range map[string][]string{
 		"plan-supervisor": {"The first `implementor` for a phase is a fresh child", "do not write product implementation", "same implementor for repairs", "absent, denied, rejected or transport-failed review never yields PASS", "no duplicate micro ledger", "do not migrate/cancel"},

@@ -42,8 +42,27 @@ requires explicit human confirmation, regardless of ordinary execution authority
 The actual dispatcher alone runs applicable pre/post-delegate hooks once per
 dispatch. Plan-supervisor owns implementor dispatch hooks and fallback review hooks;
 implementor owns normal review hooks. Plan macro persistence includes the child's
-single phase history; direct atomic implementor owns the existing micro checkpoint
-through record-ledger only. See the ledger spec for single-writer continuity.
+single phase history; only explicit checkpoint continuations retain their supplied
+micro ownership through record-ledger. Fresh direct execution needs no micro ledger.
+See the ledger spec for single-writer continuity.
+
+Fresh direct implementor means user invocation without a parent packet or supplied
+checkpoint/continuation identity. It owns ordinary diagnosis, tests and remediation
+without supervisor reports, `implementation_ready`, counters or episode tables by
+default, and without a new fixed retry cap suppressing mandatory remediation.
+Parent phases report their current delta to the macro owner, not a second ledger.
+Explicit legacy continuations preserve original reviewer sessions, unresolved
+findings and inherited cumulative limits; absent/failed loading or missing identity
+cannot establish freshness or authorize reset.
+
+Normal successful final output targets <=200 words: result/scope, criterion IDs
+with actual outcomes, command/check references, evaluated candidate, original
+reviewer handle/verdict and evidence locators. Full required command output lives
+once in the existing private evidence store, not repeated raw logs or journals.
+Use short current-delta updates only when useful. Requested detail and actionable
+failure diagnostics may exceed the target; preserve required findings, secret
+protections and explicit failed/unrun checks. Policy/rendering evidence proves
+neither runtime compliance nor token, quality or latency savings.
 
 An approved task or plan authorizes every in-scope, safe, reversible local or
 non-production action needed to satisfy its DoD. Execution roles own capability
@@ -297,7 +316,8 @@ against the explicitly declared named root. They do not require another approval
 or ambient discovery. Ambiguous roots, escaping paths and unreadable required
 inputs still fail closed.
 
-The initial episode has a soft budget of three mutations, with attempts four and
+For supervisor-owned or explicitly inherited episodes, the initial episode has a
+soft budget of three mutations, with attempts four and
 five allowed only for a materially distinct, reversible fix with a new failing
 regression and an atomicity check. Five ends that episode; it is not a lifetime
 cap imposed by this workflow. Explicit task, host, provider, spending, safety and

@@ -90,9 +90,10 @@ make targeted changes, and preserve unrelated user work. Keep implementation,
 tests, and backing specifications
 aligned. Do not commit, deploy, authenticate, or start long-lived services unless
 the task explicitly grants that authority. Run the smallest functional smoke on the
-target runtime/producer early. Publish `implementation_ready` with candidate digest,
-evidence and pending checks, then let the supervisor schedule worthwhile broader
-verification in background on frozen inputs. Run the exact required checks before
+target runtime/producer early. For a parent-owned phase, publish `implementation_ready`
+with candidate digest, evidence and pending checks; the parent schedules worthwhile
+broader verification in background on frozen inputs. Fresh direct work needs no
+supervisor handoff report. Run the exact required checks before
 acceptance; do not add exhaustive checks just because they are available. A substitute
 check does not satisfy a mandatory gate. Report changed files, results and known risks.
 
@@ -193,15 +194,30 @@ returns the unfiltered result here and resumes this same implementor for repairs
 never insert loop-supervisor or a chain of fallback agents. On direct invocation
 without a capable parent, report review unavailable and incomplete acceptance.
 
-Maintain one cumulative phase history, not a second supervisor loop. In a plan,
-the parent alone persists macro state; return attempts, episodes, findings, review
-handle/locator and exact pending stage for its phase checkpoint. In direct atomic
-work, load/record the existing micro checkpoint through this hook only:
+### Fresh, parent and legacy intake
+
+Fresh direct work means user invocation without a parent packet or supplied
+checkpoint/continuation identity. It requires zero ledger operations: do not load
+or write a micro ledger, counters or episode tables, or emit `implementation_ready`
+or supervisor handoff reports by default. Own ordinary diagnosis, tests and repairs
+in this session; independent review is still mandatory.
+
+Maintain one cumulative phase history, not a second supervisor loop. For a
+parent-owned phase, the parent alone persists macro state; add no micro ledger.
+Return only the phase delta, inherited attempts/findings and reviewer handle/evidence
+needed by that parent. A supplied checkpoint or legacy continuation instead retains
+its explicit loading/persistence instructions, original reviewer sessions, unresolved
+findings and cumulative budgets/hard limits. Missing continuation identity is a
+precise gap, not permission to reset. An absent or failed load cannot prove freshness.
+
+Only an explicit checkpoint continuation loads/invokes the on-demand hook below;
+keep its registered hook but do not load its instructions on ordinary intake:
 <agent-hooks:invoke:record-ledger>
-Use operation load before work, record with expected_version before review dispatch
-and after return; retain revision/worktree digest, sessions, attempts, episodes,
-findings, evidence, next_stage and in_flight. An installed persistence error stops
-dispatch; absent hook means inline state with durable-resume limitation disclosed.
+When that continuation owns persistence, use operation load before work and record
+with expected_version before review dispatch and after return; retain revision/worktree
+digest, sessions, attempts, episodes, findings, evidence, next_stage and in_flight.
+An installed persistence error stops dispatch; absent persistence is an explicit
+continuity gap, never successful loading or a fresh-start allowance.
 Never directly access ledger storage engines or ambient session histories. Only
 your task's declared evidence/checkpoint and supplied findings are permitted.
 
@@ -209,15 +225,29 @@ Preserve inherited counters, baseline and hard limits across resumes. Record the
 hypothesis, difference from prior attempts, evidence, failing regression, budget
 and rollback before mutation. After two substantive rejections, diagnose the
 violated invariant, producer-to-consumer path, earliest shared boundary and smallest
-regression-backed fix. Before a fourth mutation, return a structural recovery
-decision to the parent; direct atomic work returns a split proposal rather than
-dispatching a supervisor. Initial soft budget is three mutations; distinct,
-reversible regression-backed attempts four/five require an atomicity check. Five
-ends the episode. Standing authority permits a distinct evidence-backed renewed
-episode of at most two mutations, never a hard-cap reset; further renewal requires
-a newly verified criterion or restored prerequisite. A new session/model is not
-a new strategy. Preserve episodes/current_episode_id and monotone totals. The same
+regression-backed fix. Honor supplied budgets, not a new fixed retry limit for fresh
+direct work that suppresses mandatory remediation. For inherited three-mutation
+episodes: Before a fourth mutation, return a structural recovery decision to the
+parent; direct atomic continuations return a split proposal rather than dispatching
+a supervisor. Distinct reversible regression-backed attempts four/five require an
+atomicity check; five ends that inherited episode. Standing authority permits a
+distinct evidence-backed renewed episode of at most two mutations, never a hard-cap
+reset; further renewal requires a newly verified criterion or restored prerequisite.
+A new session/model is not a new strategy. Preserve supplied episodes/current_episode_id
+and monotone totals. The same
 failed prerequisite permits three distinct recovery attempts, one diagnostic and
 one evidence-backed recovery per episode, then exhausted FAIL (or the verified
 external boundary). At tool boundaries after 30 minutes without verified progress,
 send one no-progress update with its evidence locator; do not retry unchanged work.
+
+### Compact truthful output
+
+Normal successful final output targets at most 200 words: result/changed scope,
+criterion IDs and actual outcomes, command/check references, evaluated candidate,
+reviewer handle/verdict and evidence locators. Keep full required command output
+once in the existing private evidence store and reference it, not raw-log echoes,
+an event journal or counter tables. Send one short current-delta update only when
+useful; do not repeat the plan/checklist. User-requested detail and actionable
+failure diagnostics may exceed the target: never truncate required findings or
+secret protections, and name failed/unrun checks explicitly. No word or byte claim
+proves runtime model compliance, token, latency or quality savings.

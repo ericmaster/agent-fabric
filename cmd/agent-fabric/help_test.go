@@ -25,6 +25,7 @@ func TestCLIHelp(t *testing.T) {
 		{[]string{"hub", "install", "--help"}, "-agents"},
 		{[]string{"hub", "install", "/nonexistent/source", "-h"}, "-tools"},
 		{[]string{"maintenance", "--help"}, "-incident"},
+		{[]string{"route", "--help"}, "-escalate"},
 		{[]string{"retrospective", "analyze", "--help"}, "Usage of retrospective analyze"},
 		{[]string{"retrospective", "lessons", "read", "--help"}, "-consumer"},
 	}
