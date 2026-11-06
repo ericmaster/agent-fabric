@@ -203,8 +203,11 @@ Canonical agents remain decoupled from host execution-ledger storage engines and
 Storage for execution ledgers is resolved exclusively through the declarative `<agent-hooks:invoke:record-ledger>`
 hook. Plan-supervisor alone writes macro checkpoints, including implementor-reported
 phase history, counters, episodes and review handles; no parallel micro writer for
-that phase. Direct atomic implementor alone writes the existing micro checkpoint
-through the hook. Legacy loop-supervisor retains its micro writer for existing
+that phase. Fresh direct implementor performs zero ledger operations; only explicit
+checkpoint continuations retain their supplied micro loading/persistence instructions
+through the on-demand hook. Preserve original reviewer identities, unresolved findings
+and inherited budgets. Missing continuation identity or absent/failed loading is a
+precise gap, never proof of fresh work or permission to reset. Legacy loop-supervisor retains its micro writer for existing
 continuations only, without migration or reset. Bug-fixer keeps dispatch
 receipts in its declared handoff artifact, separately from the ticket; deploy-supervisor
 records release steps and child receipts in its declared release evidence. Both
@@ -236,6 +239,8 @@ receipts reused before any retry.
 The existing `record-ledger` hook supports `operation: load|record`. Checkpoint owners
 load the task's checkpoint after resolving the task and before dispatch; record
 the event and full current checkpoint before dispatch and after each return.
+Fresh direct implementor and parent-owned phases without explicit checkpoints are
+not micro checkpoint owners; parent macro owners retain their existing duties.
 The receipt carries a monotonically increasing `version`; records send its
 `expected_version`. A stale writer reloads and reconciles, never overwrites.
 An in-flight dispatch must be reconciled before a retry, even if no child session
@@ -300,7 +305,7 @@ The architecture enforces a Two-Tier Ledger Model:
 - **Macro-Ledger (`plan-supervisor`):** Tracks phase-level state transitions across the plan DAG.
   Emits structured events containing `tier: "macro"`, `plan_id`, `phase_id`, `objective`, `summary`,
   `dependencies`, `status: PENDING|IN_PROGRESS|DONE|BLOCKED`, `revision`, `timestamp`, and `blockers`.
-- **Micro-Ledger (direct atomic `implementor`; legacy `loop-supervisor` continuations):** Tracks iteration-level transitions within an atomic task. Plan phases keep this history in the existing macro phase checkpoint instead of a duplicate ledger.
+- **Micro-Ledger (explicit checkpoint `implementor`; legacy `loop-supervisor` continuations):** Tracks iteration-level transitions within an existing atomic continuation, not fresh direct work. Plan phases keep this history in the existing macro phase checkpoint instead of a duplicate ledger.
   Emits structured events containing `tier: "micro"`, `task_id`, `iteration`, `phase`, `status: IN_PROGRESS|PASS|FAIL|BLOCKED`,
   `mutation_count`, `review_rejections`, structured `findings` (id, classification, severity, breached_contract,
   evidence path:line, required_change), `remediation_targets`, and `timestamp`.

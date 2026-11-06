@@ -10,6 +10,7 @@ last_checked: 2026-10-30
 
 ## Companion Specifications
 
+- [difficulty-router.md](difficulty-router.md) — Recommendation-only route CLI and owning entrypoints.
 - [secret-guard.md](secret-guard.md) — Standalone shell/read guard CLI contract, limits, and private denial audit. Opt-in Pi discovery install is explicit; it is not default enforcement.
 - [delegation-and-evaluation.md](delegation-and-evaluation.md) — Fresh-context Delegation Packet contract, pre-implementation evaluation baseline, and external pre-review evidence.
 - [supervision-and-delivery.md](supervision-and-delivery.md) — Autonomous execution contract, bounded episodes, delivery ownership and checkout closure, native asynchronous orchestration, phase closure, and bug intake orchestrator.
@@ -173,6 +174,13 @@ absent hooks are omitted so its default generated output is unchanged. The gener
 file is therefore deterministic until its next install or sync. Hooks own their
 own caching, logging, input transport, and failure semantics; canonical agents
 only follow the rendered invocation instruction.
+
+Exception: implementor's registered `record-ledger` event renders only an on-demand
+reference to the resolved Markdown or executable, not its body/template. Resolution
+order and path guards are unchanged. Only an explicit checkpoint continuation
+loads/invokes it; missing persistence is disclosed as a continuity gap, never proof
+of freshness. Fresh direct and parent-owned phases without an explicit checkpoint
+do not load it. Other roles retain eager resolution behavior.
 
 The Codex adapter emits valid role-config values (`workspace-write` for writable
 roles) and keeps resolved Agent Fabric hook instructions inside

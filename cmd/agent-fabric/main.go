@@ -82,6 +82,12 @@ func main() {
 		usage()
 		return
 	}
+	if cmd == "route" {
+		if err := runRoute(args, os.Stdin, os.Stdout); err != nil {
+			fail(err)
+		}
+		return
+	}
 	if cmd == "maintenance" {
 		if err := runMaintenance(args); err != nil {
 			fail(err)
@@ -154,7 +160,7 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, "agent-fabric guard check [--log-file ABSOLUTE_PATH] (JSON stdin; shell/read checks)")
-	fmt.Fprintln(os.Stderr, "agent-fabric install|sync|hub install SOURCE|list|validate|doctor|uninstall|maintenance|retrospective analyze|dispatch|status|enable|disable|lessons [flags]")
+	fmt.Fprintln(os.Stderr, "agent-fabric install|sync|hub install SOURCE|list|validate|doctor|uninstall|maintenance|route|retrospective analyze|dispatch|status|enable|disable|lessons [flags]")
 	fmt.Fprintln(os.Stderr, "Use agent-fabric <command> --help (or hub install --help) for flags and defaults.")
 }
 func fail(err error) {
@@ -771,6 +777,15 @@ func regularFile(path string, executable bool) bool {
 }
 
 func hookInvocation(agentID, event string, resolution hookResolution, sourceRoot string) string {
+	if agentID == "implementor" && event == "record-ledger" {
+		if resolution.markdown != "" {
+			return fmt.Sprintf("Only for an explicit checkpoint continuation, read `record-ledger` instructions in `%s` on demand. Do not load them for fresh direct work or a parent-owned phase without an explicit checkpoint.", resolution.markdown)
+		}
+		if resolution.script != "" {
+			return fmt.Sprintf("Only for an explicit checkpoint continuation, invoke executable `%s` as instructed by the supplied checkpoint. Do not invoke it for fresh direct work or a parent-owned phase without an explicit checkpoint.", resolution.script)
+		}
+		return "No `record-ledger` hook is installed; persistence for an explicit legacy checkpoint continuation is unavailable. Report the precise continuity gap; do not treat absent or failed loading as fresh work or reset inherited state. Fresh direct work needs no ledger."
+	}
 	if resolution.markdown != "" {
 		content, err := os.ReadFile(resolution.markdown)
 		if err == nil && len(strings.TrimSpace(string(content))) > 0 {
