@@ -44,6 +44,19 @@ Local tests reuse the installed Pi parser/loader without provider calls:
 `cd extensions/pi && npm test`. Set `PI_PACKAGE` to the actual Pi package root
 when testing a PiChamber-bundled host rather than the global installation.
 
+If installed Pi differs from a test's pinned version, preserve that failure and
+use an isolated local fixture, not a host upgrade. Under a private (0700) fixture
+directory, create private HOME/cache/tmp directories and two distinct empty 0600
+files, `user.npmrc` and `global.npmrc`; do not set both config paths to `/dev/null`
+(npm rejects double-loading one file). From that directory, use a clean `env -i`
+with the existing toolchain `PATH`, private `HOME`, `TMPDIR`, `npm_config_cache`,
+`npm_config_userconfig` and `npm_config_globalconfig` pointing to those paths.
+Run `npm install --prefix "$fixture" --ignore-scripts --no-audit --no-fund --save-exact @earendil-works/pi-coding-agent@<pinned-version>`
+there, replacing the placeholder with the exact version asserted by the relevant
+tests. Set both `PI_PACKAGE` and `AGF_PI_PACKAGE` to the actual package root,
+`$fixture/node_modules/@earendil-works/pi-coding-agent`, for the relevant Node tests
+and `go test ./...`; retain fixture-run logs without changing host configuration.
+
 ## Secret guard runtime
 
 `extensions/pi/secret-guard.ts` can check stock `bash` and `read` `tool_call`
