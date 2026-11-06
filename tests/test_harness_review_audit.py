@@ -391,22 +391,42 @@ class TaskReviewAuditTests(unittest.TestCase):
         skill = (CLI.parents[1] / 'SKILL.md').read_text()
         router = skill.split('## 0. Route the current role before doing anything', 1)[1].split(
             '## When to invoke', 1)[0]
-        for role in ('Source executor', 'Assigned review supervisor', 'Investigation or diagnostic worker',
-                     'Correction writer', 'Patch reviewer', 'Skill repair / explicit review opt-out'):
+        for role in ('Source executor', 'Delegated task executor', 'Assigned review supervisor',
+                     'Investigation or diagnostic worker', 'Correction writer', 'Patch reviewer',
+                     'Explicit review opt-out'):
             self.assertIn(f'**{role}:**', router)
         self.assertIn('--check-source', router)
         self.assertIn('Skip step 1', router)
         self.assertIn('as siblings', router)
         self.assertIn('The supervisor starts a separate fresh-context independent **patch reviewer** leaf', skill)
         pointer = (CLI.parents[1] / 'references/activation.md').read_text()
-        self.assertIn('original task executors only', pointer)
-        self.assertIn('non-delegating leaves', pointer)
-        self.assertIn('user opt-outs', pointer)
+        self.assertIn('top-level task owner', pointer)
+        self.assertIn('Children report signals to their owner', pointer)
+        self.assertIn('opted out (explicit user instruction)', pointer)
         launch = (CLI.parents[1] / 'references/pichamber.md').read_text()
         self.assertIn('**Supervisor launch:**', launch)
         self.assertIn('**Leaf launch:**', launch)
         self.assertIn('not entry at step 2 or a new review checklist', launch)
         self.assertIn('do not append `review_requested` or `review_started` for that dispatch', launch)
+
+    def test_root_owns_review_decision_even_for_delegation_or_skill_maintenance(self):
+        # Spec: docs/specs/task-retrospective.md — role ownership, not a topic exemption.
+        skill = (CLI.parents[1] / 'SKILL.md').read_text()
+        normalized = ' '.join(skill.split())
+        for requirement in ('top-level user-facing task owner', 'parent orchestrator',
+                            'direct harness/skill maintenance', 'upstream task owner',
+                            'native parent/root metadata', 'subject alone does not exempt',
+                            'Assigned review/correction episodes never review themselves',
+                            'that parent still evaluates the whole completed task'):
+            self.assertIn(requirement, normalized)
+        self.assertNotIn('Skill repair / explicit review opt-out', skill)
+        self.assertNotIn('only an original business-task session', skill)
+        closure = skill.split('### Communicate the closing decision', 1)[1].split('## When to invoke', 1)[0]
+        for decision in ('launched', 'not needed', 'deferred', 'blocked', 'opted out',
+                         'covered by an existing review'):
+            self.assertIn(f'**{decision}**', closure)
+        self.assertIn('real ID and launch state, not a passed verdict', closure)
+        self.assertIn('no extra report, schema or ledger', closure)
 
     def test_first_correction_accepts_later_authority_and_varied_review_prose(self):
         self.run_cli(event())

@@ -40,8 +40,31 @@ phase/subtask-complete states do not satisfy this gate. Only an explicit user re
 for early review overrides it; label that source checkpoint incomplete. Expected red
 tests and productive exploration alone are not triggers. Load the full workflow only on
 activation; no continuous supervisor, observer, transcript import, GLiDE, drain,
-model schedule or additional service. Invocation remains model-discretionary,
-not guaranteed; active sessions require their native context reload.
+model schedule or additional service. Evaluation and a communicated closure decision
+are required; launch remains evidence-based and model-discretionary, not guaranteed.
+Active sessions require their native context reload.
+
+## Decision ownership and closure
+
+The top-level user-facing task owner evaluates execution across its own session and
+delegated work. Delegating implementation does not delegate this closing duty. A
+direct task to repair harnesses or skills is eligible just like any other task:
+the subject alone is not an exemption. Assigned review/correction participants
+remain inside their existing review episode and never start a review of that episode.
+Native root status alone does not turn an assigned review supervisor into a new source.
+
+Ordinary delegated executors return material execution signals and evidence locators
+to their task owner, which evaluates the whole task after completion. Without an
+assigned upstream task/review owner, the direct executor owns that decision. If the
+upstream owner is unavailable, report deferred ownership explicitly; do not silently
+drop the signals or manufacture a replacement source identity.
+
+Every task closure communicates one concise harness-review decision: launched (real
+review ID and launch state, not PASS), not needed (evidence-based reason), deferred
+(pending completion gate and responsible owner), blocked (exact capability/authority
+boundary), opted out (explicit user instruction), or covered by an existing review
+(ID/owner). A child may say covered by its parent, but the parent must still decide.
+This uses native conversation/receipt evidence; no new audit schema or side ledger.
 
 Optimize recurrence, elapsed time and tokens including review overhead. Reuse
 existing evidence and owners, compare actual checks before/after a correction,
@@ -49,14 +72,14 @@ and do not claim savings without measurements or weaken correctness gates.
 
 ## Independent review
 
-Route the current assignment before any launch: only the original source executor
+Route the current assignment before any launch: only the top-level task owner/source executor
 enters skill step 1; an assigned supervisor records its own start and enters step
 2. Investigation, diagnostic, correction and patch-review assignments are
 non-delegating leaves under that same supervisor, not new source tasks or review
 supervisors. Dispatch briefs name role, original source ID, supervisor and entry
 point. The supervisor arranges patch review after the writer returns; neither
-writer nor patch reviewer restarts the workflow. Skill-repair tasks and explicit
-user opt-outs launch no harness review. Resolve ambiguous roles before dispatch.
+writer nor patch reviewer restarts the workflow. Explicit user opt-outs prevent
+launch, not communication of the decision. Resolve ambiguous roles before dispatch.
 
 Before native session creation, run the recorder's read-only `--check-source ID`
 preflight and check native history for an existing review of the checkpoint.

@@ -1,9 +1,12 @@
 # Harness review
 
-After main-task completion (including required checks, authorized delivery and cleanup),
-load `skills/harness-review/SKILL.md` to evaluate execution friction. During execution,
-retain evidence and continue ordinary recovery; blocked or paused is not complete.
-Only an explicit user request for early review overrides this gate.
+The top-level task owner evaluates execution friction after main-task completion
+(including required checks, authorized delivery and cleanup), including delegated
+work and direct harness/skill maintenance. Communicate the decision at every closure;
+see [decision ownership and closure](../specs/task-retrospective.md#decision-ownership-and-closure).
+Children report signals upward; assigned review episodes remain nonrecursive.
+During execution retain evidence and continue ordinary recovery; blocked or paused
+is not complete. Only an explicit user request for early review overrides this gate.
 `/task-review` is a deprecated, model-disabled redirect; migrate external callers
 and remove it when none remain. It has no scripts or second workflow.
 
@@ -14,7 +17,10 @@ in the native global instruction files actually loaded by the host, for example:
 
 ```bash
 python3 ~/.agents/skills/harness-review/scripts/install_context.py \
-  ~/.pi/agent/AGENTS.md ~/.config/opencode/AGENTS.md ~/.codex/AGENTS.md
+  ~/.pi/agent/AGENTS.md ~/.config/opencode/AGENTS.md ~/.codex/AGENTS.md \
+  ~/.gemini/GEMINI.md ~/.config/kilo/AGENTS.md \
+  ~/.claude/rules/harness-review.md \
+  ~/.copilot/instructions/harness-review.instructions.md ~/.hermes/SOUL.md
 ```
 
 Use the active override file instead if native context precedence selects one;
@@ -22,6 +28,17 @@ verify its loader before claiming coverage. This manages only a marked block,
 preserving other context and modes. Repeat safely; use the same command with
 `--remove` to roll back the pointer. Reload only an owned idle session; existing
 sessions are not silently restarted or guaranteed to receive new instructions.
+
+These are default local roots for Pi, OpenCode/OpenChamber, Codex, AGY,
+Kilo CLI, Claude Code, Copilot CLI and Hermes. For Hermes also install into each
+configured profile's `SOUL.md`; it loads from the selected `HERMES_HOME`, not cwd.
+Copilot discovers user-level `instructions/**/*.instructions.md`; Claude Code
+loads user rules from `.claude/rules/`. Kilo's global `AGENTS.md` must respect
+`KILO_CONFIG_DIR` precedence. Check actual native root/override settings before
+claiming coverage; skill availability is not evidence that activation is loaded.
+This propagates instructions, not a new runtime hook or permission change. Engines
+without a verified native review-launch/history route report that exact limitation,
+not a fabricated launch; the closing decision still applies.
 
 The independent visible root supervises a persisted read-only investigation worker.
 Use the existing native session API, not ephemeral `--no-session` children. Worker

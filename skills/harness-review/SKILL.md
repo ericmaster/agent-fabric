@@ -26,11 +26,16 @@ not event capture or a continuously running supervisor. Full instructions load o
 Loading this skill is not an instruction to launch a review. Select exactly one
 entry point from the current assignment, before session creation or delegation:
 
-- **Source executor:** only an original business-task session starts step 1, after
+- **Source executor:** the top-level user-facing task owner starts step 1, after
   satisfying the completion gate below (or an explicit user request for early review). First
   run `python3 <skill-directory>/scripts/audit.py --engine <engine> --check-source <source-session-id>`;
   a rejection stops launch. Check native history for an existing review of the same
-  checkpoint and resume it instead of creating a duplicate.
+  checkpoint and resume it instead of creating a duplicate. This includes a parent
+  orchestrator and direct harness/skill maintenance; delegation or subject alone
+  does not exempt the task owner from evaluating execution and closing the decision.
+- **Delegated task executor:** return material execution signals and evidence locators
+  to the upstream task owner; do not launch a competing review. If that owner is
+  unavailable, explicitly report deferred ownership, not a new source identity.
 - **Assigned review supervisor:** use this session as `review_session_id`, record
   `review_started`, then continue at step 2. Skip step 1; keep the supplied original
   `source_session_id` throughout investigation, correction and patch acceptance.
@@ -42,8 +47,8 @@ entry point from the current assignment, before session creation or delegation:
 - **Patch reviewer:** inspect the frozen patch, source history and checks; report
   patch acceptance to the existing supervisor. This is a leaf, not another harness
   review supervisor; skip steps 1, 2 and 4 and create no sessions or agents.
-- **Skill repair / explicit review opt-out:** repair or inspect the skill directly
-  in the current session under the user's scope; launch no harness-review workflow.
+- **Explicit review opt-out:** honor the user's no-review instruction and communicate
+  that disposition at closure; launch no harness-review workflow.
 
 Every dispatch names its role, original source ID, existing supervisor ID and
 entry point. The supervisor alone dispatches the bounded investigation, diagnosis,
@@ -53,6 +58,23 @@ stay with the existing supervisor. If the role/source is unclear, resolve it fro
 the assignment or native history before dispatch; never default to step 1.
 The recorder rejects a recorded reviewer/worker/writer being rebound as a new
 source, but is not a runtime interception of native session tools.
+
+Role is determined by the assignment, not just native parent/root metadata. Assigned
+review/correction episodes never review themselves, even if their supervisor is a
+native root. A direct user task about harnesses/skills with no upstream task/review
+owner is a source task, not automatically a correction leaf. Resolve missing owner
+information before launch; never omit the root owner's decision because workers
+were instructed not to launch.
+
+### Communicate the closing decision
+
+Every task closure includes one concise harness-review disposition: **launched**
+(real ID and launch state, not a passed verdict), **not needed** (evidence-based
+reason), **deferred** (pending completion gate and responsible owner), **blocked**
+(exact capability/authority boundary), **opted out** (explicit user instruction),
+or **covered by an existing review** (ID/owner). Children may report coverage by
+their parent; that parent still evaluates the whole completed task. Use native
+history or the existing receipt; no extra report, schema or ledger is required.
 
 ## When to invoke (source executor only)
 

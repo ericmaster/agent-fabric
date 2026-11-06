@@ -78,11 +78,26 @@ class ContextTests(unittest.TestCase):
     def test_pointer_is_small_and_does_not_load_full_workflow(self):
         # Spec: docs/specs/task-retrospective.md
         text = ACTIVATION.read_text()
-        self.assertLess(len(text.split()), 125)
+        self.assertLess(len(text.split()), 220)
         for trigger in ('tool errors', 'context searches', 'ambiguous', 'stalls'):
             self.assertIn(trigger, text)
         self.assertIn('review/correction', text)
         self.assertNotIn('task-review', text)
+
+    def test_pointer_assigns_root_ownership_and_requires_a_closing_decision(self):
+        # Spec: docs/specs/task-retrospective.md — shared native-context contract.
+        text = ' '.join(ACTIVATION.read_text().split())
+        for requirement in ('top-level task owner', 'parent orchestrator',
+                            'direct harness/skill maintenance',
+                            'Delegation does not remove this duty',
+                            'Children report signals to their owner',
+                            'Assigned review/correction episodes',
+                            'subject alone is not an exemption', 'Every closure states',
+                            'launched (ID)', 'not needed (reason)', 'deferred (gate/owner)',
+                            'blocked (boundary)', 'opted out (explicit user instruction)',
+                            'covered (review ID/owner)'):
+            self.assertIn(requirement, text)
+        self.assertNotIn('skill-repair episodes and user opt-outs launch nothing', text)
 
     def test_pointer_defers_review_until_main_task_completion(self):
         # Spec: docs/specs/task-retrospective.md — completion gate.
