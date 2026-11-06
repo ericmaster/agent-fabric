@@ -3,7 +3,7 @@ title: "Spec: standalone secret guard"
 type: spec
 status: active
 covers: internal/guard/, cmd/agent-fabric/guard.go
-last_checked: 2026-10-29
+last_checked: 2026-11-06
 ---
 
 # Standalone secret guard
@@ -12,7 +12,8 @@ last_checked: 2026-10-29
 commands or opens submitted file contents. This voluntarily invoked check is **not
 installed enforcement**, a sandbox, general secret detection, or output screening.
 Callers must honor both deny and error before executing/reading anything themselves.
-No adapter, installer, model, endpoint, SDK, daemon or server is configured by it.
+The default check configures no installer, model, endpoint, SDK, daemon or server.
+Optional screening below is off until explicitly enabled and is not installed enforcement.
 
 ## Protocol
 
@@ -28,12 +29,13 @@ JSON values are invalid. Read requests must not contain nonempty `command` or
 Sensitive input belongs on stdin, not argv. No environment expansion, command
 lookup or shell startup file loading occurs.
 
-Responses contain only `version: 1`, `decision`, `reason`, `policy_version: 1`:
+Shell and read responses contain only `version: 1`, `decision`, `reason`, `policy_version: 1`.
+An `op: "screen"` response may also include `status` and, when they are short tokens that do not repeat the submitted text, `model` and `revision`:
 
 | Decision | Reason | Exit |
 |---|---|---|
 | allow | no_match | 0 |
-| deny | environment_dump, proc_environ_read | 1 |
+| deny | environment_dump, proc_environ_read, model_sensitive | 1 |
 | error | invalid_request, limit_exceeded, unsupported_shell, parse_error, unsupported_dynamic_shell | 2 |
 
 Errors never echo request text, parser excerpts, paths, values or exceptions.
@@ -236,6 +238,52 @@ when it is that exact destination string. Release archives and bootstrap stage
 `extensions/opencode/secret-guard.ts` and do not enable the entry. Loaded
 behavior is [OpenCode runtime](#opencode-runtime). Operator command:
 [opencode-secret-guard](../runbooks/opencode-secret-guard.md).
+
+## Optional screening
+
+Screening is a second, fail-open layer. It is off unless the caller sets both
+`AGF_GUARD_SCREEN=1` and `AGF_GUARD_SCREEN_TRUST=1`. Install does not enable it.
+The threshold defaults to 0.99 and is an operational cutoff, not a calibrated
+accuracy claim. `AGF_GUARD_SCREEN_THRESHOLD` may set another finite value in
+`(0, 1]`; an invalid value fails open.
+
+A typed assessment is `safe`, `sensitive`, or `unknown`, plus optional native
+confidence, model, and revision. Deterministic deny wins and does not call a
+provider. Uncertain, error, timeout, busy, oversize, malformed, missing score,
+invalid score, missing credentials, and callback failure allow, with that fixed
+status and no routine pass log. A public assessment field that is present but not the required JSON string
+or number, including `null`, fails open as `malformed` and is not a model
+denial. `AGF_GUARD_SCREEN_THRESHOLD` must be a JSON number in `(0, 1]`;
+`null` and other nonnumeric values fail open and do not select the default. Only
+`sensitive` plus a finite score in `[0, 1]` at or above the threshold may deny,
+reason `model_sensitive`, layer `model`. That denial uses the existing
+metadata-only audit. Safe results with a high score do not deny. A label-only
+Decide result has no confidence and never blocks.
+
+The only HTTP adapter is Decide. Its classify URL is taken only from
+`GLINER_DECIDE_API_URL` and must be the exact `https` URL, with no userinfo,
+query, or fragment. Header values come from `GLINER_DECIDE_HEADERS`
+(`Header=ENV_NAME` comma list) at request time. Off, untrusted, non-TLS, or
+missing credentials send zero requests. The client uses TLS 1.2+, refuses
+redirects, and does not use an implicit proxy. Connect budget is 200ms. The total budget is one absolute deadline captured
+before the callback starts, the earlier of the caller deadline and 1s. That
+same instant cancels the callback, fires the timeout, and rejects a ready
+result, including a callback that ignores cancellation. A later result is
+discarded and is not audited. Zero retries;
+no chunking or truncation. A caller-supplied `assessment` is policy input for
+a fake scored screener; it is not Decide confidence.
+
+The verified Decide wire is `text` plus the fixed `secret_disclosure` schema
+only. Local admission does not send when text exceeds 4096 code points, the
+body exceeds 65536 bytes, or the response exceeds 64KiB. The combined budget
+is 512 subwords of that schema's collator formatting plus text. The fixed
+prefix is 20 subwords of the pinned Unigram tokenizer
+(`fastino/GLiNER2.5-multi-Decide` at `a35a0cd3b7a0f00f2effc576f454cd48fa98aa5f`,
+`byte_fallback` false). Only printable ASCII is admitted. Its normalizer does
+not expand that input, and metaspace prepend plus a character partition is at
+most two subwords per non-space character, including a collator-added period.
+Non-ASCII and control text fails open as `oversize` and is not sent. Above 512
+also fails open as `oversize`. This is not a UTF-8 byte ceiling.
 
 ## Limits and verification
 

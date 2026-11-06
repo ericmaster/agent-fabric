@@ -5,6 +5,10 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ## [Unreleased]
 
+### Added
+
+- Optional fail-open screening in `guard check`: typed assessment and one Decide HTTP adapter. A label-only result never denies; malformed public status and a noncooperative callback fail open inside the 1s budget. Off by default; not installed enforcement.
+
 ### Changed
 
 - Bound harness review to one high-impact correction by default (two maximum), selected history windows and compact scope-qualified outcomes; use one visible parent with fresh-context child subagents and retain historical audits/correction budgets.
