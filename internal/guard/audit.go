@@ -30,15 +30,7 @@ func AppendDenial(path, source string, response Response) error {
 	if response.Decision != "deny" {
 		return nil
 	}
-	layer := "deterministic"
-	switch response.Reason {
-	case "environment_dump", "proc_environ_read":
-	case ReasonModelSensitive:
-		layer = "model"
-	default:
-		return errAudit
-	}
-	if !validSource(source) {
+	if !validSource(source) || (response.Reason != "environment_dump" && response.Reason != "proc_environ_read") {
 		return errAudit
 	}
 	if source == "" {
@@ -55,7 +47,7 @@ func AppendDenial(path, source string, response Response) error {
 		Rule          string `json:"rule"`
 		PolicyVersion int    `json:"policy_version"`
 		Layer         string `json:"layer"`
-	}{time.Now().UTC().Format(time.RFC3339Nano), hex.EncodeToString(id[:]), source, response.Reason, 1, layer}
+	}{time.Now().UTC().Format(time.RFC3339Nano), hex.EncodeToString(id[:]), source, response.Reason, 1, "deterministic"}
 	line, err := json.Marshal(record)
 	if err != nil {
 		return errAudit

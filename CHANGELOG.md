@@ -5,9 +5,9 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ## [Unreleased]
 
-### Added
+### Removed
 
-- Optional fail-open screening in `guard check`: typed assessment and one Decide HTTP adapter. A label-only result never denies; malformed public status and a noncooperative callback fail open inside the 1s budget. Off by default; not installed enforcement.
+- Withdraw unreleased optional fail-open Decide screening from `guard check`. `op: "screen"` and request fields `text`, `assessment`, and `model` are invalid. Historical screening environment names do not configure a model client. Deterministic shell and read checks are unchanged.
 
 ### Changed
 

@@ -12,15 +12,13 @@ import (
 const MaxInput = 64 << 10
 
 type Request struct {
-	Version    int             `json:"version"`
-	Op         string          `json:"op"`
-	Command    string          `json:"command"`
-	Paths      []string        `json:"paths"`
-	Cwd        string          `json:"cwd"`
-	Shell      string          `json:"shell"`
-	Source     string          `json:"source"`
-	Text       string          `json:"text,omitempty"`
-	Assessment json.RawMessage `json:"assessment,omitempty"`
+	Version int      `json:"version"`
+	Op      string   `json:"op"`
+	Command string   `json:"command"`
+	Paths   []string `json:"paths"`
+	Cwd     string   `json:"cwd"`
+	Shell   string   `json:"shell"`
+	Source  string   `json:"source"`
 }
 
 type Response struct {
@@ -28,14 +26,9 @@ type Response struct {
 	Decision      string `json:"decision"`
 	Reason        string `json:"reason"`
 	PolicyVersion int    `json:"policy_version"`
-	Status        string `json:"status,omitempty"`
-	Model         string `json:"model,omitempty"`
-	Revision      string `json:"revision,omitempty"`
 }
 
-func result(decision, reason string) Response {
-	return Response{Version: 1, Decision: decision, Reason: reason, PolicyVersion: 1}
-}
+func result(decision, reason string) Response { return Response{1, decision, reason, 1} }
 
 func Error(reason string) Response { return result("error", reason) }
 
@@ -64,7 +57,7 @@ func DecodeRequest(input []byte) (Request, string) {
 	}
 	for key, value := range fields {
 		switch key {
-		case "version", "op", "command", "paths", "cwd", "shell", "source", "text", "assessment":
+		case "version", "op", "command", "paths", "cwd", "shell", "source":
 		default:
 			return req, "invalid_request"
 		}
@@ -77,20 +70,6 @@ func DecodeRequest(input []byte) (Request, string) {
 	}
 	if req.Op == "shell" {
 		if _, ok := fields["command"]; !ok {
-			return req, "invalid_request"
-		}
-	}
-	if _, ok := fields["text"]; ok && req.Op != "screen" {
-		return req, "invalid_request"
-	}
-	if _, ok := fields["assessment"]; ok && req.Op != "screen" {
-		return req, "invalid_request"
-	}
-	if req.Op == "screen" {
-		if _, ok := fields["text"]; !ok {
-			return req, "invalid_request"
-		}
-		if _, ok := fields["command"]; ok || len(req.Paths) != 0 || req.Shell != "" {
 			return req, "invalid_request"
 		}
 	}
@@ -133,8 +112,6 @@ func Check(req Request) Response {
 			}
 		}
 		return result("allow", "no_match")
-	case "screen":
-		return screenRequest(req)
 	}
 	return Error("invalid_request")
 }
