@@ -4,10 +4,10 @@
   "artifacts": [
     {
       "id": "agent-fabric-architecture-lifecycle",
-      "title": "Agent Fabric — Human-First Workflow & Hook Review",
+      "title": "Agent Fabric — Current vs Proposed Workflow",
       "type": "html",
       "file": "agent-fabric-architecture-lifecycle.html",
-      "description": "Human-first planning preserved; source-session findings, twelve-role review and nimbler-ops hook simplification proposals",
+      "description": "Side-by-side workflow comparison, exact Fabric and Ops changes, and seven concrete examples preserving human understanding",
       "tags": [
         "architecture",
         "lifecycle",
@@ -15,11 +15,12 @@
         "harness-review",
         "simplification",
         "hooks",
+        "comparison",
         "tailwind",
         "mermaid"
       ],
       "createdAt": "2026-09-01T16:16:44.484Z",
-      "updatedAt": "2026-11-11T17:32:46.565Z"
+      "updatedAt": "2026-11-11T18:37:16.351Z"
     },
     {
       "id": "agent-fabric-task-retrospective-implementation-plan",
