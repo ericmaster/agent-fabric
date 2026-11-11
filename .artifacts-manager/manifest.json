@@ -4,22 +4,21 @@
   "artifacts": [
     {
       "id": "agent-fabric-architecture-lifecycle",
-      "title": "Agent Fabric Architecture & Extended Lifecycle",
+      "title": "Agent Fabric — Workflow Review & Simplification",
       "type": "html",
       "file": "agent-fabric-architecture-lifecycle.html",
-      "description": "11-agent inspector, reviewed execution handoffs, bounded recovery, durable continuity, scoped release authority, and portable compiler",
+      "description": "Evidence-backed Nimblerbot V2 harness review, twelve-role assessment, and proposed single-owner workflow",
       "tags": [
         "architecture",
         "lifecycle",
         "agents",
-        "deploy",
-        "a11y",
-        "orchestration",
+        "harness-review",
+        "simplification",
         "tailwind",
         "mermaid"
       ],
       "createdAt": "2026-09-01T16:16:44.484Z",
-      "updatedAt": "2026-09-15T22:32:21.000Z"
+      "updatedAt": "2026-11-11T17:23:23.541Z"
     },
     {
       "id": "agent-fabric-task-retrospective-implementation-plan",

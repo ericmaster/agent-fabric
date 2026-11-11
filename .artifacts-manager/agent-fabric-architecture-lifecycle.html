@@ -1,246 +1,50 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agent Fabric — Architecture & Extended Lifecycle</title>
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-  <style>
-    body { background: #090d16; color: #e2e8f0; font-family: system-ui, sans-serif; }
-    .fabric-panel { background: #131b2e; border: 1px solid #ffffff18; border-radius: .75rem; padding: 1.25rem; min-width: 0; }
-    .fabric-choice { border: 1px solid #ffffff20; border-radius: .5rem; padding: .6rem .85rem; text-align: left; }
-    .fabric-choice[aria-selected="true"], .fabric-choice[aria-pressed="true"] { border-color: #06b6d4; background: #06b6d41a; color: #67e8f9; }
-    button:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 2px solid #a5b4fc; outline-offset: 3px; }
-    .fabric-viewport { overflow: auto; max-width: 100%; max-height: 680px; border: 1px solid #ffffff18; border-radius: .5rem; padding: 1rem; background: #090d16; }
-    .mermaid svg { display: block; max-width: none !important; }
-    .mermaid[data-mermaid-state="error"] { white-space: pre-wrap; color: #fecdd3; }
-    [hidden] { display: none !important; }
-    code, pre { overflow-wrap: anywhere; }
-  </style>
-</head>
-<body class="p-4 md:p-8">
-  <div class="max-w-7xl mx-auto space-y-6">
-    <header class="border-b border-white/10 pb-6 space-y-3">
-      <div class="text-xs text-cyan-300 uppercase tracking-widest">11 canonical roles · 5 harness adapters · Durable task authority</div>
-      <h1 class="text-2xl md:text-3xl font-bold text-white">Agent Fabric Architecture & Extended Lifecycle</h1>
-      <p class="text-sm text-slate-300">Reviewed workflows: independent acceptance, bounded recovery, continuation reuse, and scoped release verification.</p>
-      <p class="text-xs text-slate-400">Source: <code>agents/*.md</code> and <code>docs/specs/agent-fabric.md</code>. This view summarizes the contract; it is not a runtime orchestrator.</p>
-      <nav class="flex flex-wrap gap-2" role="tablist" aria-label="Architecture views">
-        <button class="fabric-choice" id="tab-lifecycle" role="tab" aria-controls="panel-lifecycle" aria-selected="true" data-tab="lifecycle">Lifecycle</button>
-        <button class="fabric-choice" id="tab-agents" role="tab" aria-controls="panel-agents" aria-selected="false" tabindex="-1" data-tab="agents">Agent inspector (11)</button>
-        <button class="fabric-choice" id="tab-recovery" role="tab" aria-controls="panel-recovery" aria-selected="false" tabindex="-1" data-tab="recovery">Recovery & continuity</button>
-        <button class="fabric-choice" id="tab-release" role="tab" aria-controls="panel-release" aria-selected="false" tabindex="-1" data-tab="release">Release & QA</button>
-        <button class="fabric-choice" id="tab-compiler" role="tab" aria-controls="panel-compiler" aria-selected="false" tabindex="-1" data-tab="compiler">Portable compiler</button>
-      </nav>
-    </header>
-
-    <main>
-      <section id="panel-lifecycle" role="tabpanel" aria-labelledby="tab-lifecycle" class="space-y-5">
-        <div class="fabric-panel space-y-4">
-          <h2 class="text-lg font-semibold text-white">From intent to verified delivery</h2>
-          <p class="text-sm">Direct execution intent supplies standing authority. Plan-only and report-only requests stop at their deliverables. A reviewed plan has one projection and dispatch owner.</p>
-          <div class="fabric-viewport" tabindex="0" aria-label="Lifecycle diagram, scroll to explore">
-            <pre class="mermaid" data-mermaid-source="flowchart TD&#10;U[User intent] --&gt; P[Planner: grounded vertical slices]&#10;U --&gt; B[Bug fixer: plain-language intake]&#10;B --&gt; R[Optional report reviewer]&#10;R --&gt; B&#10;B --&gt; T[Persist ticket and triage]&#10;T -- exec-ready --&gt; L[Loop supervisor]&#10;T -- needs-plan --&gt; P&#10;P --&gt; PR[Plan reviewer: current candidate]&#10;PR -- REVISE within cap --&gt; P&#10;PR -- PASS --&gt; O[Single projection owner: planner or bug fixer]&#10;O -- executable scope --&gt; D[Decompose hook or inline DAG]&#10;D --&gt; S[Plan supervisor]&#10;S -- eligible phase --&gt; L&#10;L --&gt; I[Implementor]&#10;I --&gt; C[Code reviewer: static ACCEPT]&#10;C --&gt; Q[QA runner: dynamic PASS]&#10;Q --&gt; E[Supervisor evidence reconciliation]&#10;E -- phase PASS --&gt; S&#10;S -- all phases PASS --&gt; DONE[Task delivery verified]&#10;DONE -- scoped release task only --&gt; DEP[Deploy supervisor]">flowchart TD
-U[User intent] --> P[Planner: grounded vertical slices]
-U --> B[Bug fixer: plain-language intake]
-B --> R[Optional report reviewer]
-R --> B
-B --> T[Persist ticket and triage]
-T -- exec-ready --> L[Loop supervisor]
-T -- needs-plan --> P
-P --> PR[Plan reviewer: current candidate]
-PR -- REVISE within cap --> P
-PR -- PASS --> O[Single projection owner: planner or bug fixer]
-O -- executable scope --> D[Decompose hook or inline DAG]
-D --> S[Plan supervisor]
-S -- eligible phase --> L
-L --> I[Implementor]
-I --> C[Code reviewer: static ACCEPT]
-C --> Q[QA runner: dynamic PASS]
-Q --> E[Supervisor evidence reconciliation]
-E -- phase PASS --> S
-S -- all phases PASS --> DONE[Task delivery verified]
-DONE -- scoped release task only --> DEP[Deploy supervisor]</pre>
-          </div>
-        </div>
-        <div class="grid md:grid-cols-3 gap-4">
-          <article class="fabric-panel"><h3 class="text-cyan-300 font-semibold mb-2">Acceptance before execution</h3><p class="text-sm">Two plan-review passes by default. A rejected or explicitly published candidate may be stored, but execution requires PASS on the current candidate and no blocking findings.</p></article>
-          <article class="fabric-panel"><h3 class="text-cyan-300 font-semibold mb-2">Self-locating handoffs</h3><p class="text-sm">Packets declare roots, revision/worktree, scope, inputs, permitted paths, commands, DoD, evidence, rollback, and unresolved-locator behavior. Missing authority stops intake; ordinary setup remains operational work.</p></article>
-          <article class="fabric-panel"><h3 class="text-cyan-300 font-semibold mb-2">Independent, continued review</h3><p class="text-sm">Initial reviewers are independent of authors. Later dispatches resume their own recorded sessions with refreshed packets and objective findings, never author transcripts or rationalizations.</p></article>
-        </div>
-      </section>
-
-      <section id="panel-agents" role="tabpanel" aria-labelledby="tab-agents" hidden>
-        <div class="grid md:grid-cols-[240px_minmax(0,1fr)] gap-5">
-          <div id="agent-list" class="flex flex-col gap-2" aria-label="Canonical agents"></div>
-          <article class="fabric-panel space-y-5" aria-live="polite">
-            <div><h2 id="agent-name" class="text-xl font-bold text-white"></h2><p id="agent-meta" class="text-xs text-cyan-300 mt-2"></p></div>
-            <p id="agent-description" class="text-sm"></p>
-            <dl class="space-y-4 text-sm">
-              <div><dt class="text-slate-400">Declared hooks</dt><dd id="agent-hooks" class="font-mono mt-1"></dd></div>
-              <div><dt class="text-slate-400">Canonical permissions</dt><dd id="agent-permissions" class="font-mono mt-1"></dd></div>
-              <div><dt class="text-slate-400">Responsibility and handoff</dt><dd id="agent-contract" class="mt-1"></dd></div>
-              <div><dt class="text-slate-400">Result summary (full schema lives in the canonical definition)</dt><dd id="agent-result" class="font-mono mt-1"></dd></div>
-            </dl>
-            <p class="text-xs text-slate-400">Permissions above are canonical declarations. Adapters and host policy determine effective capabilities; missing permission returns to the supervisor for authorized recovery.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="panel-recovery" role="tabpanel" aria-labelledby="tab-recovery" class="space-y-5" hidden>
-        <div class="fabric-panel space-y-4">
-          <h2 class="text-lg font-semibold text-white">Bounded recovery, never counter resets</h2>
-          <p class="text-sm">Replacement DAGs require current plan-reviewer PASS before materialization or execution. The plan supervisor owns this two-pass review, including direct atomic handoffs; unresolved rejection returns terminal FAIL.</p>
-          <div class="fabric-viewport" tabindex="0" aria-label="Recovery diagram, scroll to explore">
-            <pre class="mermaid" data-mermaid-source="flowchart TD&#10;F[Failure or child BLOCKED claim] --&gt; K{Classify evidence}&#10;K -- setup or packet --&gt; FIX[Supervisor repair and capability probes]&#10;FIX -- resolved --&gt; RESUME[Resume recorded child at pending stage]&#10;FIX -- verified external boundary --&gt; BLOCK[BLOCKED: exact action and failed probes]&#10;K -- code or QA defect --&gt; STRIKE{Second rejection or repeat?}&#10;STRIKE -- no --&gt; RETRY[Bounded remediation]&#10;STRIKE -- yes --&gt; DBG[Expert debugger or reuse recorded diagnosis]&#10;DBG --&gt; ATOMIC{Still one coherent path?}&#10;ATOMIC -- yes and budget remains --&gt; RETRY&#10;ATOMIC -- yes and exhausted --&gt; FAIL[Terminal FAIL: exhausted]&#10;ATOMIC -- no --&gt; SPLIT[One structural split per lineage]&#10;SPLIT --&gt; BASE[Stable base and deterministic slices]&#10;BASE --&gt; ACCEPT[Independent review and QA per slice]&#10;ACCEPT --&gt; INTEGRATE[Plan supervisor integrates accepted outputs]&#10;INTEGRATE --&gt; UNION[Aggregate acceptance on one integrated revision]&#10;RETRY --&gt; RESUME">flowchart TD
-F[Failure or child BLOCKED claim] --> K{Classify evidence}
-K -- setup or packet --> FIX[Supervisor repair and capability probes]
-FIX -- resolved --> RESUME[Resume recorded child at pending stage]
-FIX -- verified external boundary --> BLOCK[BLOCKED: exact action and failed probes]
-K -- code or QA defect --> STRIKE{Second rejection or repeat?}
-STRIKE -- no --> RETRY[Bounded remediation]
-STRIKE -- yes --> DBG[Expert debugger or reuse recorded diagnosis]
-DBG --> ATOMIC{Still one coherent path?}
-ATOMIC -- yes and budget remains --> RETRY
-ATOMIC -- yes and exhausted --> FAIL[Terminal FAIL: exhausted]
-ATOMIC -- no --> SPLIT[One structural split per lineage]
-SPLIT --> BASE[Stable base and deterministic slices]
-BASE --> ACCEPT[Independent review and QA per slice]
-ACCEPT --> INTEGRATE[Plan supervisor integrates accepted outputs]
-INTEGRATE --> UNION[Aggregate acceptance on one integrated revision]
-RETRY --> RESUME</pre>
-          </div>
-        </div>
-        <div class="grid md:grid-cols-2 gap-4 text-sm">
-          <article class="fabric-panel space-y-2"><h3 class="font-semibold text-cyan-300">Budgets and ownership</h3><p>Three normal mutations; attempts four and five require a materially distinct, in-scope reversible fix and new failing regression. Five is the absolute scope cap. Structural review occurs after diagnostics and before mutation four.</p><p>The loop supervisor owns atomic recovery. The plan supervisor materializes splits and integrates outputs. Replacement counters inherit attributable attempts; aggregate gates own no unique implementation work.</p></article>
-          <article class="fabric-panel space-y-2"><h3 class="font-semibold text-cyan-300">Checkpoint protocol</h3><p>Loop: micro-ledger. Plan: macro-ledger. <code>record-ledger</code> loads before dispatch and records before dispatch / after return with <code>expected_version</code>. Reconcile in-flight work; stale writers reload.</p><p>Preserve scope, root, revision/worktree, next stage, sessions, counters, findings, evidence and blockers. No hook: explicit inline checkpoint. Installed persistence error: pause dispatch and recover.</p><p>Bug-fixer uses a separate handoff artifact; deploy-supervisor records release effects and child receipts in release evidence.</p></article>
-        </div>
-      </section>
-
-      <section id="panel-release" role="tabpanel" aria-labelledby="tab-release" class="space-y-5" hidden>
-        <div class="fabric-panel space-y-4">
-          <h2 class="text-lg font-semibold text-white">Release authority is scoped and durable</h2>
-          <p class="text-sm">A release task names target, deployment DoD, rollback and traceable authority. Verify once; choose proportional safeguards without repeated prompts. Passing code phases alone never invents a release objective.</p>
-          <div class="fabric-viewport" tabindex="0" aria-label="Release diagram, scroll to explore">
-            <pre class="mermaid" data-mermaid-source="flowchart LR&#10;A[Verify scoped authority and prerequisite evidence] --&gt; P[Pre-deploy: target and checkpoint]&#10;P --&gt; D[Build and canary deploy]&#10;D --&gt; M[Migration, smoke, payload and target SHA checks]&#10;M -- PASS --&gt; V[VERIFIED]&#10;M -- FAIL --&gt; R[Rollback or compensating recovery]&#10;R -- restored --&gt; RB[ROLLED_BACK]&#10;R -- restoration unverified --&gt; F[FAILED]&#10;V --&gt; E[Post-deploy: RELEASE_EVIDENCE.md]&#10;RB --&gt; E&#10;F --&gt; E">flowchart LR
-A[Verify scoped authority and prerequisite evidence] --> P[Pre-deploy: target and checkpoint]
-P --> D[Build and canary deploy]
-D --> M[Migration, smoke, payload and target SHA checks]
-M -- PASS --> V[VERIFIED]
-M -- FAIL --> R[Rollback or compensating recovery]
-R -- restored --> RB[ROLLED_BACK]
-R -- restoration unverified --> F[FAILED]
-V --> E[Post-deploy: RELEASE_EVIDENCE.md]
-RB --> E
-F --> E</pre>
-          </div>
-        </div>
-        <div class="grid md:grid-cols-3 gap-4 text-sm">
-          <article class="fabric-panel"><h3 class="font-semibold text-cyan-300 mb-2">Static vs dynamic authority</h3><p>Code reviewer owns types, static checks, security invariants and mental mutation checks. QA owns executed regression, runtime, persistence, payload and visual evidence. Missing dynamic evidence routes to QA, not another code rejection.</p></article>
-          <article class="fabric-panel"><h3 class="font-semibold text-cyan-300 mb-2">Conditional accessibility</h3><p>End-user UI: WCAG 2.2 audit, including labels, contrast, focus and keyboard behavior. Backend, CLI, library and headless work: NOT_APPLICABLE. Prove new tests fail without the behavior when feasible.</p></article>
-          <article class="fabric-panel"><h3 class="font-semibold text-cyan-300 mb-2">Evidence and boundaries</h3><p>Use actual tool-permitted evidence locators. Secrets stay in process memory. External capability, credentials, unresolved product intent and explicit policy/scope boundaries are verified blockers. Exhausted local repair is FAIL.</p></article>
-        </div>
-      </section>
-
-      <section id="panel-compiler" role="tabpanel" aria-labelledby="tab-compiler" class="space-y-5" hidden>
-        <div class="fabric-panel space-y-4">
-          <h2 class="text-lg font-semibold text-white">Canonical workflows → native harness configuration</h2>
-          <div class="fabric-viewport" tabindex="0" aria-label="Compiler diagram, scroll to explore">
-            <pre class="mermaid" data-mermaid-source="flowchart LR&#10;A[agents Markdown: complete portable workflows] --&gt; V[Validate source set]&#10;M[Adapter JSON mappings and user overrides] --&gt; V&#10;V --&gt; H[Resolve host hooks once at install or sync]&#10;H --&gt; R[Render native configuration]&#10;R --&gt; OC[OpenCode]&#10;R --&gt; KI[Kilo]&#10;R --&gt; AG[Antigravity CLI]&#10;R --&gt; CO[Codex]&#10;R --&gt; CL[Claude Code]&#10;R --&gt; S[Atomic manifest ownership and hashes]">flowchart LR
-A[agents Markdown: complete portable workflows] --> V[Validate source set]
-M[Adapter JSON mappings and user overrides] --> V
-V --> H[Resolve host hooks once at install or sync]
-H --> R[Render native configuration]
-R --> OC[OpenCode]
-R --> KI[Kilo]
-R --> AG[Antigravity CLI]
-R --> CO[Codex]
-R --> CL[Claude Code]
-R --> S[Atomic manifest ownership and hashes]</pre>
-          </div>
-          <ul class="list-disc pl-5 text-sm space-y-2">
-            <li>Role profiles: planner, worker, reviewer, supervisor, qa and solver. Models and tool syntax are adapter-owned.</li>
-            <li>Hooks enrich or validate authoritative inputs; they never repair a non-self-locating handoff by searching ambient state.</li>
-            <li>Exact-agent OpenCode overrides apply after profile mappings. Sync only touches the appropriate manifest-owned destinations.</li>
-            <li>Modified managed files are preserved unless force is explicitly selected. Generated files and manifest form a guarded write operation.</li>
-            <li>Canonical repetition across independently installed agents preserves complete role contracts. Within a role, each rule has one governing section.</li>
-          </ul>
-        </div>
-      </section>
-    </main>
-  </div>
-  <script>
-    // Summaries of canonical metadata and contracts, not duplicate executable schemas.
-    const agents = {
-      'planner': ['planner', 'primary', 'sandbox', 'load-task, pre-plan, post-plan, decompose', 'edit: allow; bash: allow; task: allow', 'Authors grounded, independently reviewed vertical-slice plans.', 'Clarify decision-critical gaps; publish within the review cap. Execute handoff only with current reviewer PASS and owned projection. Return to bug-fixer when it owns dispatch.', 'Phase-block plan, review disposition, authority and handoff locators'],
-      'plan-reviewer': ['reviewer', 'subagent', 'sandbox', 'pre-plan', 'edit: deny; bash: allow', 'Validates plan completeness, dependencies, safety and testable completion.', 'Independent first review; resume own session on revision. Audit every phase for vertical slice, DoD, dependencies and rollback. No plan edits.', 'verdict: PASS | REVISE; coverage, phase assessments, findings, confidence'],
-      'plan-supervisor': ['supervisor', 'primary', 'workspace', 'load-task, pre-plan, label, decompose, record-ledger', 'edit: allow; bash: allow; task: allow', 'Coordinates a pre-decomposed phase DAG.', 'Resume each phase supervisor. Own macro checkpoint, split materialization and integration. Dependents wait for verified prerequisite evidence; aggregate acceptance uses one integrated revision.', 'Phase evidence: PASS | FAIL | BLOCKED; cumulative counters and recovery disposition'],
-      'loop-supervisor': ['supervisor', 'all', 'workspace', 'load-task, record-ledger; pre/post-delegate for implementor, code-reviewer, qa-runner, expert-debugger', 'edit: allow; bash: allow; task: allow', 'Owns one atomic implementation, review and QA loop.', 'Curate objective findings; preserve role sessions and micro checkpoints. Diagnose repeats / second substantive rejection; bound mutation and split only overbroad scopes.', 'status: PASS | FAIL | BLOCKED; recovery: none | retry | split | exhausted | external_block'],
-      'implementor': ['worker', 'subagent', 'sandbox', 'load-task', 'edit: allow; bash: allow; network: deny', 'Implements one atomic task and returns exact evidence.', 'Inspect before editing; preserve user work. Trace affected invariants and prove relevant regressions. Return capability requests to supervisor; no self-certification or independent review dispatch.', 'Changed files, exact commands and results, evidence, risks and unresolved requirements'],
-      'code-reviewer': ['reviewer', 'subagent', 'sandbox', 'load-task', 'edit: deny; bash: allow; network: deny', 'Read-only static and semantic review.', 'Ground every rejection in the original contract and inspectable code evidence. Classify new, repeat and scope-blocker findings. Environment BLOCKED is a recovery claim; dynamic checks belong to QA.', 'verdict: ACCEPT | REJECT | BLOCKED; static analysis, contract adherence and findings'],
-      'qa-runner': ['qa', 'subagent', 'sandbox', 'None', 'edit: deny; bash: allow; network: deny', 'Runs deterministic and visual verification.', 'Execute required commands; verify behavior and side effects. UI-only WCAG 2.2 auditing, hollow-mock detection and feasible pre-patch regression checks. Setup requests respect role permissions.', 'outcome_verdict: PASS | FAIL | BLOCKED; automated, visual, accessibility and anti-cheat evidence'],
-      'expert-debugger': ['solver', 'subagent', 'sandbox', 'None', 'edit: deny; bash: allow; network: deny', 'Produces a bounded root-cause remediation brief.', 'Use up to three hypotheses when uncertain; reuse prior probes. Trace first invalid state and earliest shared enforcement boundary. Diagnose without editing; supervisor owns recovery.', 'Failure classification, root cause, tactical intervention, suggested checks'],
-      'deploy-supervisor': ['supervisor', 'primary', 'workspace', 'load-task, pre-deploy, post-deploy', 'edit: allow; bash: allow; task: allow', 'Executes a scoped, authorized post-merge release.', 'Verify authority and prerequisites once. Checkpoint, canary, migration and smoke checks; compare authorized target SHA. Reconcile effects on resume and verify rollback or compensating recovery.', 'release_status: DEPLOYED | VERIFIED | FAILED | ROLLED_BACK | BLOCKED; RELEASE_EVIDENCE.md'],
-      'bug-fixer': ['supervisor', 'primary', 'workspace', 'load-task, label, persist-ticket, decompose', 'edit: allow; bash: allow; task: allow', 'Plain-language bug intake and autonomous fix dispatch.', 'One ticket per defect; optional report review and triage. exec-ready goes to loop supervisor; needs-plan goes through planner PASS, explanation, single-owner projection and plan supervisor. Preserve child receipts separately from ticket.', 'Portable report + triage; explanation HTML; ticket and continuation locators'],
-      'report-reviewer': ['reviewer', 'subagent', 'sandbox', 'None', 'edit: deny; bash: allow', 'Audits one bug report independently.', 'Find missing details, ambiguity and inconsistency without inventing facts or re-interviewing. Optional initial pass plus one re-review in its own session.', 'verdict: PASS | REVISE; field-cited findings and plain-language questions']
-    };
-    const tabs = [...document.querySelectorAll('[data-tab]')];
-    function switchTab(id) {
-      tabs.forEach(button => {
-        const selected = button.dataset.tab === id;
-        button.setAttribute('aria-selected', String(selected));
-        button.tabIndex = selected ? 0 : -1;
-        document.getElementById('panel-' + button.dataset.tab).hidden = !selected;
-      });
-    }
-    tabs.forEach((button, index) => {
-      button.addEventListener('click', () => switchTab(button.dataset.tab));
-      button.addEventListener('keydown', event => {
-        let next;
-        if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
-        if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
-        if (event.key === 'Home') next = 0;
-        if (event.key === 'End') next = tabs.length - 1;
-        if (next === undefined) return;
-        event.preventDefault();
-        switchTab(tabs[next].dataset.tab);
-        tabs[next].focus();
-      });
-    });
-    function showAgent(id) {
-      const [profile, mode, isolation, hooks, permissions, description, contract, result] = agents[id];
-      const values = { name: id, meta: `profile: ${profile} · mode: ${mode} · isolation: ${isolation}`, hooks, permissions, description, contract, result };
-      Object.entries(values).forEach(([key, value]) => { document.getElementById('agent-' + key).textContent = value; });
-      document.querySelectorAll('[data-agent]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.agent === id)));
-    }
-    Object.keys(agents).forEach(id => {
-      const button = document.createElement('button');
-      button.className = 'fabric-choice text-sm';
-      button.dataset.agent = id;
-      button.textContent = id;
-      button.addEventListener('click', () => showAgent(id));
-      document.getElementById('agent-list').append(button);
-    });
-    showAgent('planner');
-  </script>
-  <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.17.1/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'dark', flowchart: { htmlLabels: false, useMaxWidth: false, wrappingWidth: 240 }, sequence: { useMaxWidth: false }, class: { useMaxWidth: false }, state: { useMaxWidth: false }, er: { useMaxWidth: false }, gantt: { useMaxWidth: false } });
-    let sequence = 0;
-    for (const element of document.querySelectorAll('.mermaid[data-mermaid-source]')) {
-      const source = element.dataset.mermaidSource;
-      try {
-        await mermaid.parse(source);
-        const { svg, bindFunctions } = await mermaid.render(`fabric-diagram-${++sequence}`, source);
-        element.innerHTML = svg;
-        element.dataset.mermaidState = 'rendered';
-        bindFunctions?.(element);
-      } catch (error) {
-        element.textContent = source;
-        element.dataset.mermaidState = 'error';
-        console.error('Mermaid rendering error:', error);
-      }
-    }
-  </script>
-</body>
-</html>
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent Fabric — Workflow Review & Simplification</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<style>
+body{background:#090d16;color:#e2e8f0;font-family:system-ui,sans-serif;margin:0}*{box-sizing:border-box}button:focus-visible,a:focus-visible,.fabric-scroll:focus-visible{outline:2px solid #22d3ee;outline-offset:4px}button{cursor:pointer}.fabric-shell{max-width:1180px;margin:auto;padding:28px 20px}.fabric-card{background:#131b2e;border:1px solid #ffffff14;border-radius:14px;padding:22px;min-width:0}.fabric-shell p,.fabric-shell li{line-height:1.65}.fabric-shell p{margin:10px 0}.fabric-shell h2{font-size:1.35rem;font-weight:700;margin-bottom:14px}.fabric-shell h3{font-weight:650;color:#67e8f9}.fabric-shell code{font-size:.8rem;overflow-wrap:anywhere}.fabric-shell small{color:#94a3b8}.fabric-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:24px 0}.fabric-tabs button,.fabric-role{padding:10px 14px;border:1px solid #ffffff20;border-radius:9px;background:#131b2e;text-align:left}.fabric-tabs [aria-selected=true],.fabric-role[aria-pressed=true]{background:#164e63;border-color:#22d3ee;color:white}.fabric-scroll{overflow:auto;max-width:100%;scrollbar-width:auto;padding:10px}.fabric-scroll svg{width:auto!important;max-width:none!important;height:auto!important}.fabric-shell [hidden]{display:none!important}.fabric-table{overflow:auto}.fabric-table table{width:100%;border-collapse:collapse;min-width:640px}.fabric-table th,.fabric-table td{text-align:left;padding:12px;border-bottom:1px solid #ffffff14;vertical-align:top}.fabric-table th{color:#67e8f9}.fabric-note{border-left:3px solid #f59e0b;padding-left:16px}.fabric-shell a{color:#67e8f9;text-decoration:underline}.fabric-shell ul,.fabric-shell ol{padding-left:22px;list-style:revert}.fabric-shell li{margin:7px 0}.fabric-source{overflow-wrap:anywhere}.fabric-role-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}.fabric-inspector{border-top:2px solid #06b6d4;margin-top:18px}.fabric-stat{font-size:2rem;font-weight:750;letter-spacing:-.04em}@media(max-width:600px){.fabric-shell{padding:20px 12px}.fabric-card{padding:16px}}
+</style></head><body><main class="fabric-shell">
+<header><p class="text-cyan-300 text-xs tracking-widest uppercase">Agent Fabric / Early harness review / 11 November 2026</p><h1 class="text-3xl md:text-5xl font-bold tracking-tight mt-3">Fewer handoffs.<br><span class="text-cyan-300">One agent owns delivery.</span></h1><p class="text-slate-400 max-w-3xl mt-4">Review of the Nimblerbot V2 planning session and the planner-to-delivery contracts. Recommendation: make single-owner execution the default; use independent reviews for concrete risk, not as a universal production line.</p><p class="fabric-note text-sm">Review and proposed redesign, not an installed workflow change. Source task remains incomplete. The evidence does not establish that a smaller model would have finished sooner.</p></header>
+<nav class="fabric-tabs" role="tablist" aria-label="Review sections"><button role="tab" id="tab-findings" aria-controls="findings" aria-selected="true" data-panel="findings">Findings</button><button role="tab" id="tab-simple" aria-controls="simple" aria-selected="false" data-panel="simple" tabindex="-1">Simpler workflow</button><button role="tab" id="tab-roles" aria-controls="roles" aria-selected="false" data-panel="roles" tabindex="-1">Role review</button><button role="tab" id="tab-rollout" aria-controls="rollout" aria-selected="false" data-panel="rollout" tabindex="-1">Rollout &amp; evidence</button></nav>
+<section id="findings" role="tabpanel" aria-labelledby="tab-findings">
+<div class="grid md:grid-cols-3 gap-4 mb-5"><article class="fabric-card"><div class="fabric-stat">3.48M</div><h3>Reported source input tokens</h3><p class="text-sm text-slate-400">Plus 49.79M cache-read and 201,689 output tokens. Native cumulative counters for the planner session, not a tree-wide total or measured bill.</p></article><article class="fabric-card"><div class="fabric-stat">5</div><h3>Consecutive quota failures</h3><p class="text-sm text-slate-400">Hourly attempts in the inspected late window failed with actual provider.quota errors. This interval is not evidence of voluntary refusal.</p></article><article class="fabric-card"><div class="fabric-stat">1,768</div><h3>Rendered lines across five roles</h3><p class="text-sm text-slate-400">Planner, plan reviewer, supervisor, implementor and code reviewer. File-size measure, not proof every line is loaded on every turn.</p></article></div>
+<div class="grid md:grid-cols-2 gap-5">
+<article class="fabric-card"><small>OBSERVED · HIGH CONFIDENCE</small><h2>1. Clarification becomes a UI project</h2><p>The initial request explicitly wanted to escape setup complexity and endless loops. The loaded pre-plan overlay nevertheless required an HTML questionnaire and browser validation. A refused browser connection added a recovery step; the browser-pool route eventually passed.</p><p><strong>Remove:</strong> mandatory questionnaire publishing and browser QA from ordinary planning. Ask decision-critical questions directly. Keep artifacts when requested, as in this review.</p><p class="text-sm text-slate-400">Observed cost was modest; this does not explain the whole multi-day task. Owner: planner interview hook and its installed pre-plan overlay.</p><details><summary class="text-cyan-300 cursor-pointer">Native evidence</summary><p class="fabric-source text-xs">Request: msg_1bdb527a0001YUWWl73gbKuDqB<br>Overlay: msg_1bdb553fb00163xk59ETonizoV / call_c9a221af1b864db2885328bcad688c37<br>Failure: msg_1bdb72ea5001a65ueNG2KTc0gf / call_44a6ee625d3f495488215c706dd28023<br>Recovery: msg_1bdb794c7001pqtAPzVJWm1AfT / call_a1951d8798c3455a9783c319ef8c2bb6</p></details></article>
+<article class="fabric-card"><small>OBSERVED · MEDIUM CAUSAL CONFIDENCE</small><h2>2. Resuming becomes re-admission</h2><p>An ordinary continuation to the same supervisor restated four roots, eight required inputs, verdict hashes, mutation allocations and extensive restrictions. Subsequent source reports describe another fingerprint and verdict-hash reconciliation before repair allocation.</p><p><strong>Remove:</strong> full fresh-child intake on unchanged continuations. Resume the same owner with the pending action, changed facts and a checkpoint link. Revalidate only affected evidence.</p><p class="text-sm text-slate-400">Compact deltas are already required in the supervisor contract. This is partly an adherence problem, not a reason to add another instruction. Underlying child operations were not independently reviewed.</p><details><summary class="text-cyan-300 cursor-pointer">Native evidence</summary><p class="fabric-source text-xs">Verification: msg_1cb4078ae001LMaA8Og4kMa19x<br>Rebrief: msg_1cb409a37001guh3ILOOe0kOiq / call_013fdae91e1e44a9a3a8b560f3b5994b<br>Later report: msg_1cb768863001jYXIwsUNMxQtwE</p></details></article>
+<article class="fabric-card"><small>CONTRACT REVIEW · DIRECTLY OBSERVED</small><h2>The defaults disagree</h2><p>Global guidance prefers one native agent and opt-in supervisors. The planner instead requires current plan-reviewer PASS, decomposition and supervisor handoff. Even direct implementor execution requires independent review and a checkpoint protocol.</p><p>The planner avoids routine cryptographic trails; the supervisor requires immutable baseline identity and phase closure receipts carrying hashes, episodes, budgets and cleanup proofs. These controls serve valid needs but impose a large fixed cost on small work.</p><p class="text-sm text-slate-400">This establishes policy tension, not proof that each rule caused a particular source delay. Resolve the default once in the owning contract and render it consistently.</p></article>
+<article class="fabric-card"><small>COUNTEREVIDENCE &amp; LIMITS</small><h2>Not every blocker is invented</h2><p>The source has real subscription/credit failures, including a requested Grok review and five later quota errors. Respecting model and spending boundaries was legitimate. No provider switch is authorized by this report.</p><p>The original goal includes WhatsApp onboarding, per-bot runtimes, two environments, hybrid flows, APIs and several migrations. That is substantial work even with a simpler harness. Start with one useful end-to-end slice; do not silently delete the remaining product requirements.</p><p class="text-sm text-slate-400">No reliable active-work duration, orchestration percentage, full descendant count or smaller-model counterfactual was measured.</p></article>
+</div></section>
+<section id="simple" role="tabpanel" aria-labelledby="tab-simple" hidden><article class="fabric-card"><small>PROPOSED DEFAULT · NOT YET INSTALLED</small><h2>One owner, from clarification to verified result</h2><div class="fabric-scroll" tabindex="0" aria-label="Proposed workflow diagram; scroll horizontally to inspect"><pre class="mermaid" data-mermaid-source="flowchart LR&#10;A[Clarify outcome] --&gt; B[One owner implements and tests]&#10;B --&gt; C{Material risk or required review?}&#10;C -- yes --&gt; D[One focused independent review]&#10;D -- concrete defect --&gt; B&#10;C -- no --&gt; E[Verify and deliver]&#10;D -- accepted --&gt; E">flowchart LR
+A[Clarify outcome] --> B[One owner implements and tests]
+B --> C{Material risk or required review?}
+C -- yes --> D[One focused independent review]
+D -- concrete defect --> B
+C -- no --> E[Verify and deliver]
+D -- accepted --> E</pre></div><p class="text-slate-400 text-sm">The owner can use a discovery or review leaf for a distinct question. That leaf does not become another delivery supervisor. Production deployment still requires explicit confirmation.</p></article>
+<div class="grid md:grid-cols-2 gap-5 mt-5"><article class="fabric-card"><h2>Small task contract</h2><ol><li><strong>Outcome:</strong> observable user result and what is out of scope.</li><li><strong>Context:</strong> repository, relevant files and ownership constraints.</li><li><strong>Checks:</strong> required repository gates plus the smallest meaningful behavioral verification.</li><li><strong>Authority:</strong> what may be changed or deployed; preserve actual permission boundaries.</li><li><strong>Checkpoint:</strong> current revision/diff, passed checks, pending action and real blocker, if any.</li></ol><p>No separate baseline JSON, phase ledger or hash manifest for routine work. Git and native command/session evidence remain available. Stronger provenance stays where the actual task needs it.</p></article><article class="fabric-card"><h2>When to add a role</h2><ul><li><strong>Planner:</strong> unresolved architecture or a genuinely multi-deliverable project, or a plan-only request.</li><li><strong>Plan review:</strong> irreversible choices, significant spending, migrations or cross-system risk; not prose polishing.</li><li><strong>Code review:</strong> security, authorization, persistence, concurrency, a required project gate or explicit user request.</li><li><strong>Parallel worker:</strong> independent deliverable with a demonstrated benefit; one writer per shared checkout.</li><li><strong>Deployment specialist:</strong> release complexity merits one, under explicit production authority.</li></ul><p class="text-sm text-slate-400">These are proposed routing rules. Current mandatory gates remain in force until the canonical contracts are changed.</p></article><article class="fabric-card"><h2>Recovery without episode bureaucracy</h2><p>After a repeated failure, state the failed hypothesis, new evidence and smallest changed approach. If nothing changed, do not rerun. Keep the same owner and reuse passing checks.</p><p>Replace mutation-count paperwork with a task-level resource limit only when one is actually assigned. Report a no-progress decision when the approach is exhausted; do not reset hard budgets or manufacture acceptance. Real quota, credentials and scope boundaries remain real.</p></article><article class="fabric-card"><h2>A smaller model is an experiment</h2><p>Keep the configured model during this review. In a separately authorized pilot, compare the single-owner route on a similar task using an approved lower-cost model.</p><p>Measure time to working slice, user nudges, cost where reported, defects and acceptance. Do not infer dollars from a zero-valued subscription cost counter or use token reduction as a substitute for correctness.</p></article></div></section>
+<section id="roles" role="tabpanel" aria-labelledby="tab-roles" hidden><article class="fabric-card"><h2>Review every role; keep only useful boundaries</h2><p class="text-slate-400">Click a role for its current obligation, proposed disposition and canonical edit target. Recommendations are not deployed behavior.</p><div class="fabric-role-grid" id="role-list"></div><div class="fabric-inspector pt-5" aria-live="polite"><h2 id="role-name"></h2><p id="role-current"></p><h3 id="role-action"></h3><p id="role-proposal"></p><p class="text-sm text-slate-400" id="role-source"></p></div></article><article class="fabric-card mt-5"><h2>Keep the portable compiler</h2><p>Canonical <code>agents/*.md</code> and adapter mappings remain the source for native harness configuration. Validation, ownership-aware manifests, permission preservation and deterministic rendering are useful infrastructure; the problem is the process being rendered.</p><p>Change canonical definitions and owning contracts together, then verify managed installed output. Editing only a generated agent would leave the next sync able to restore the old behavior.</p><p class="text-sm text-slate-400">The previous artifact still showed loop-supervisor as the normal route, mandatory QA and a fixed five-mutation scope cap. Current source instead deprecates new loop supervisors, makes QA discretionary and permits bounded renewed episodes. This update removes that misleading snapshot.</p></article></section>
+<section id="rollout" role="tabpanel" aria-labelledby="tab-rollout" hidden><article class="fabric-card"><h2>Two changes, not twelve more policies</h2><div class="fabric-table"><table><thead><tr><th>Change</th><th>Canonical targets</th><th>Acceptance</th></tr></thead><tbody><tr><td><strong>1. Single-owner default</strong><br>Planning/review become proportional modes. Remove mandatory questionnaire and automatic supervisor routing for routine tasks.</td><td><code>agents/planner.md</code>, <code>agents/plan-reviewer.md</code>, <code>agents/implementor.md</code>, <code>agents/bug-fixer.md</code>; owning supervision/delegation specs; installed pre-plan hook through its verified source owner.</td><td>A small reversible task reaches an implemented, tested result without planner/reviewer/supervisor ceremony. A risky task still invokes required review. Explicit plan-only requests do not implement.</td></tr><tr><td><strong>2. Compact continuation</strong><br>One checkpoint, one pending action; invalidate only evidence affected by changes. Remove ordinary-task episode and receipt bureaucracy.</td><td><code>agents/plan-supervisor.md</code>, <code>agents/implementor.md</code>, <code>docs/specs/supervision-ledger-and-qa.md</code>, <code>docs/specs/delegation-and-evaluation.md</code>; generated hook text and installed agent outputs.</td><td>An unchanged resume does not reconstruct the full packet or duplicate review. Changed code invalidates affected checks. Real quota produces a precise wait/blocker; no duplicate workers or false PASS.</td></tr></tbody></table></div><p class="fabric-note mt-5">Sequence: settle this design → one scoped canonical patch → required tests and independent patch review → managed sync verification → one bounded pilot. Preserve active legacy continuations; do not rewrite their rules mid-flight. Roll back the scoped commit and managed render if the pilot loses required evidence or safety.</p></article>
+<div class="grid md:grid-cols-2 gap-5 mt-5"><article class="fabric-card"><h2>Success means delivery improves</h2><ul><li>First useful runtime result arrives before orchestration expands.</li><li>No routine “please continue” prompts needed between authorized steps.</li><li>Review findings cite material defects, not formatting or new scope.</li><li>No repeat full review or full test suite without changed inputs or a real verification requirement.</li><li>Failed checks stay failed; production approval, secret handling, foreign work and spending boundaries survive simplification.</li></ul><p>Capture baseline and pilot results from native history. No arbitrary speedup target is claimed here.</p></article><article class="fabric-card"><h2>Coverage and provenance</h2><p class="fabric-source text-sm">Source: <code>ses_e424ad8e1ffehYpOrIRl5vnzDq</code> — “MVP de Nimblerbot V2”.<br>Review owner: <code>ses_e3462e763ffeCjF191MWpT6BgU</code>.<br>Investigation leaf: <code>ses_e346268f2ffeDxEG1gs2To07jx</code>.</p><p>Native sample: first 16 messages and a 50-message continuation; latest 65 messages. Two friction windows, 12 investigator retrieval calls including one failed pagination call and recovery. Supervisor independently checked source metadata, original request, late rebrief and a quota failure.</p><p>Excluded: intervening execution, independent descendant histories, full product tests and recovery completion. Contract review covers the canonical role surfaces and installed core-role size, not every hook implementation or every harness adapter.</p><p class="text-sm text-slate-400">Source revision: <code>d601840a8699a72df1d45e4d5c0b051c1b9e661d</code>. Native outcome “succeeded” describes a turn, not completion of the requested product. Private raw captures remain private.</p></article></div>
+<details class="fabric-card mt-5"><summary class="text-cyan-300 cursor-pointer">Exact contract and counterevidence locators</summary><ul class="text-sm"><li>Global single-agent default: <code>~/.config/opencode/AGENTS.md</code>, “Interactive default”.</li><li>Planner: <code>agents/planner.md:121–126,150–164,175–177,238–257</code>; reviewer: <code>agents/plan-reviewer.md:45–63</code>.</li><li>Supervisor: <code>agents/plan-supervisor.md:77–80,169–198,342–370,372–404,539–563</code>; implementor: <code>agents/implementor.md:165–223</code>.</li><li>Reviewer scope discipline: <code>agents/code-reviewer.md:61–85,104–127</code>.</li><li>Historical pre-plan overlay: <code>~/.agent-hooks/planner/pre-plan.md</code>; its live canonical source still needs ownership resolution before editing.</li><li>Quota errors: <code>msg_1ca2b1f66001bWIybItqEB7Wex</code>, <code>msg_1ca627061001s1Y5GnN2gCcCH1</code>, <code>msg_1ca99a154001WgWwuDy0jAoZTB</code>, <code>msg_1cad0ce5c0019D9jgX81U2yCly</code>, <code>msg_1cb0825880013wUCLGQq4jnaOi</code>.</li><li>Requested Grok review credit failure: <code>call_39ef83fc6a904a1bae5f676509598915</code>.</li></ul></details></section>
+<footer class="mt-8 text-xs text-slate-500">Updated existing lifecycle artifact · Evidence-backed early review + proposed operating model · No source-task acceptance or measured savings claimed</footer>
+</main><script>
+const roles={
+'planner':['Authors plans; requires current reviewer PASS and supervisor handoff for execution.','MAKE OPTIONAL','For small work, planning is a short step by the delivery owner. For plan-only or architectural work, produce outcome, boundaries, smallest slice and checks. No mandatory HTML interview.','agents/planner.md'],
+'plan-reviewer':['Audits phase shape, dependencies, evidence and rollback; has an anti-bloat rubric.','KEEP FOR MATERIAL PLAN RISK','One focused pass when needed; one correction pass on concrete blockers. Do not make small implementation work wait for a plan document. Preserve the existing prohibition on invented requirements.','agents/plan-reviewer.md'],
+'implementor':['Owns implementation, testing, independent review dispatch and episode/checkpoint bookkeeping.','MAKE THE DEFAULT OWNER','Implement, diagnose, verify and deliver in one session. Use one focused review only when justified or mandated. Replace routine micro-ledgers with a concise native checkpoint.','agents/implementor.md'],
+'code-reviewer':['Independent static/semantic gate with grounded defects and continued review.','KEEP, NARROW THE TRIGGER','Keep defect grounding and full first-pass findings. Re-review the repair delta, not the entire unchanged project. Do not replace useful execution evidence with extra reviewer ceremonies.','agents/code-reviewer.md'],
+'plan-supervisor':['Coordinates phases, macro ledger, recovery partitioning, evidence reconciliation and delivery.','OPT IN FOR REAL COORDINATION','Use only when independent workers or long-lived release coordination justify it. One orchestration level; no supervisor supervising another supervisor.','agents/plan-supervisor.md'],
+'loop-supervisor':['Deprecated for new tasks; retained for existing continuations.','RETIRE FROM NEW ROUTES','Keep legacy sessions recoverable. Remove stale discovery and documentation that still advertises this as the normal execution path. Do not migrate active work by resetting its history.','agents/loop-supervisor.md'],
+'qa-runner':['Separate runtime/visual verifier; current supervisor contract makes its dispatch discretionary.','CAPABILITY, NOT STAGE','The owner runs meaningful checks. Delegate specialized independent QA only when useful. Required behavioral evidence remains required even when no QA agent is launched.','agents/qa-runner.md'],
+'expert-debugger':['Read-only root-cause specialist returning a remediation brief.','ON-DEMAND LEAF','Use for a specific unresolved causal question after the owner has evidence. Do not require a new diagnostic agent simply because an iteration counter crossed a threshold.','agents/expert-debugger.md'],
+'deploy-supervisor':['Owns scoped release execution, smoke checks and rollback evidence.','SPECIALIZE ONLY WHEN NEEDED','The delivery owner can perform ordinary authorized release work. Keep the specialist for complex migration/release coordination; retain explicit production approval.','agents/deploy-supervisor.md'],
+'bug-fixer':['Intake and triage, ticket persistence, optional report review, then implementation/planning handoff.','MERGE ROUTINE FIXES INTO OWNER','Reproduce and fix directly when outcome and authority are clear. Capture tickets only when the workflow needs them. Avoid intake-to-plan-to-supervisor handoff chains for small defects.','agents/bug-fixer.md'],
+'report-reviewer':['Optional review of report completeness and ambiguity.','REMOVE FROM DEFAULT ROUTE','Reserve for ambiguous reports that truly block investigation. The executor can usually ask one targeted question or reproduce the issue directly.','agents/report-reviewer.md'],
+'learning-corrector':['Dedicated canonical role for instruction correction.','KEEP OUT OF PRODUCT DELIVERY','Harness maintenance is a separate explicit or evidence-triggered task. Do not make instruction correction or recursive retrospectives a prerequisite for shipping product work.','agents/learning-corrector.md']};
+const roleList=document.getElementById('role-list');function showRole(name){const [current,action,proposal,source]=roles[name];document.getElementById('role-name').textContent=name;document.getElementById('role-current').textContent='Current: '+current;document.getElementById('role-action').textContent=action;document.getElementById('role-proposal').textContent=proposal;document.getElementById('role-source').textContent='Canonical owner: '+source;roleList.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.textContent===name)))}Object.keys(roles).forEach(name=>{const b=document.createElement('button');b.className='fabric-role text-sm';b.textContent=name;b.addEventListener('click',()=>showRole(name));roleList.append(b)});showRole('planner');
+const tabs=[...document.querySelectorAll('[data-panel]')];function selectTab(button){tabs.forEach(b=>{const selected=b===button;b.setAttribute('aria-selected',String(selected));b.tabIndex=selected?0:-1;document.getElementById(b.dataset.panel).hidden=!selected})}tabs.forEach((b,i)=>{b.addEventListener('click',()=>selectTab(b));b.addEventListener('keydown',e=>{let n;if(e.key==='ArrowRight')n=(i+1)%tabs.length;if(e.key==='ArrowLeft')n=(i+tabs.length-1)%tabs.length;if(e.key==='Home')n=0;if(e.key==='End')n=tabs.length-1;if(n!==undefined){e.preventDefault();selectTab(tabs[n]);tabs[n].focus()}})});
+</script><script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.17.1/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'dark',flowchart:{htmlLabels:false,useMaxWidth:false,wrappingWidth:240},sequence:{useMaxWidth:false},class:{useMaxWidth:false},state:{useMaxWidth:false},er:{useMaxWidth:false},gantt:{useMaxWidth:false}});
+let i=0;for(const element of document.querySelectorAll('pre.mermaid[data-mermaid-source]')){const source=element.dataset.mermaidSource;try{await mermaid.parse(source);const {svg,bindFunctions}=await mermaid.render('fabric-review-'+(++i),source);element.innerHTML=svg;element.dataset.mermaidState='rendered';bindFunctions?.(element)}catch(error){element.textContent=source;element.dataset.mermaidState='error';console.error(error)}}
+</script></body></html>
