@@ -6,7 +6,7 @@ x-agent-fabric:
   schema: 1
   profile: worker
   effort: high
-  visibility: hidden
+  visibility: public
   isolation: sandbox
   permissions:
     edit: allow

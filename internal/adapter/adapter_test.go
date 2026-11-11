@@ -298,6 +298,9 @@ func TestImplementorReviewPermissionScope(t *testing.T) {
 				t.Fatal(err)
 			}
 			deny := "  - action: \"subagent\"\n    resource: \"*\"\n    effect: \"deny\"\n"
+			if !strings.Contains(body, "mode: all\n") || !strings.Contains(body, "hidden: false\n") {
+				t.Fatal("implementor must support selection and child entry")
+			}
 			allow := "  - action: \"subagent\"\n    resource: \"code-reviewer\"\n    effect: \"allow\"\n"
 			if !strings.Contains(body, deny) {
 				t.Fatal("missing native destination cap")

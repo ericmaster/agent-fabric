@@ -112,7 +112,7 @@ func TestDirectPhaseOwnershipAndReview(t *testing.T) {
 					t.Errorf("missing %q", want)
 				}
 			}
-			if role == "implementor" && (d.Mode != "all" || d.Fabric.Permissions["task"] != "allow" || d.Fabric.Permissions["network"] != "deny") {
+			if role == "implementor" && (d.Mode != "all" || d.Fabric.Visibility != "public" || d.Fabric.Permissions["task"] != "allow" || d.Fabric.Permissions["network"] != "deny") {
 				t.Error("atomic/child review capability changed")
 			}
 			if role == "code-reviewer" && (d.Fabric.Permissions["edit"] != "deny" || d.Fabric.Permissions["task"] != "deny") {

@@ -63,7 +63,7 @@ source rather than flattening ordered resource scopes into an action map. Model/
 effort-only overrides preserve the rules byte-for-byte.
 legacy managed hub files retain their old format until refreshed from their owner.
 
-Implementor supports direct and child entry (`mode: all`) and explicitly permits
+Implementor is public/selectable, supports direct and child entry (`mode: all`), and explicitly permits
 task delegation only for independent code-reviewer. OpenCode appends native
 `subagent/* deny`, then `subagent/code-reviewer allow` (or `ask`, preserving
 explicit confirmation) only if effective role/tool policy permits delegation;
