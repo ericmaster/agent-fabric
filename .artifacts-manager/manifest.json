@@ -4,21 +4,22 @@
   "artifacts": [
     {
       "id": "agent-fabric-architecture-lifecycle",
-      "title": "Agent Fabric — Workflow Review & Simplification",
+      "title": "Agent Fabric — Human-First Workflow & Hook Review",
       "type": "html",
       "file": "agent-fabric-architecture-lifecycle.html",
-      "description": "Evidence-backed Nimblerbot V2 harness review, twelve-role assessment, and proposed single-owner workflow",
+      "description": "Human-first planning preserved; source-session findings, twelve-role review and nimbler-ops hook simplification proposals",
       "tags": [
         "architecture",
         "lifecycle",
         "agents",
         "harness-review",
         "simplification",
+        "hooks",
         "tailwind",
         "mermaid"
       ],
       "createdAt": "2026-09-01T16:16:44.484Z",
-      "updatedAt": "2026-11-11T17:23:23.541Z"
+      "updatedAt": "2026-11-11T17:32:46.565Z"
     },
     {
       "id": "agent-fabric-task-retrospective-implementation-plan",
