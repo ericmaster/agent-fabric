@@ -5,6 +5,9 @@
 The Implementor owns one atomic task or plan phase: diagnosis, edits, tests and
 remediations in one session. It dispatches only independent code-reviewer and
 never self-certifies. Direct entry requires no planner or intermediate supervisor.
+Fresh direct entry performs zero ledger operations; parent phases retain macro
+ownership. Explicit checkpoint continuations load the on-demand ledger reference
+and preserve reviewer identities, unresolved findings and inherited limits.
 Its intake follows the fail-closed packet contract defined normatively in
 [`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md); the diagram assumes required
 inputs resolved before normal repository inspection.
@@ -56,7 +59,7 @@ flowchart TD
 | Hook | When | Purpose |
 |---|---|---|
 | `load-task` | Start | Enrich or validate supplied packet context; never reconstruct a known locator |
-| `record-ledger` | Direct atomic only | Existing micro checkpoint; plan phases report history to macro owner |
+| `record-ledger` | Explicit checkpoint continuation only | On-demand reference; fresh direct work has no ledger, parent phases have no duplicate micro writer |
 | `pre/post-delegate-code-reviewer` | Actual review dispatch only | Implementor, or parent fallback, never both |
 
 ## Scope Constraints
