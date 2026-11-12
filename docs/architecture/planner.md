@@ -4,7 +4,7 @@
 
 The Planner authors grounded, independently reviewed implementation plans as executable vertical
 slices. It never implements phases itself; under standing execution intent,
-decomposition and `plan-supervisor` dispatch are orchestration rather than
+decomposition and selected execution-owner dispatch are orchestration rather than
 self-implementation.
 Fresh discovery and review children receive the self-locating handoff defined
 normatively in [`docs/specs/delegation-and-evaluation.md`](../specs/delegation-and-evaluation.md).
@@ -72,9 +72,15 @@ flowchart TD
 
     PROPOSE --> PPOST --> READY{Execution intent + current review PASS\nand planner owns handoff?}
     READY -- "No · return candidate and review disposition" --> DONE([Stop or return to caller])
-    READY -- Yes --> DEC["decompose hook (optional)\nHost-owned projection"]
-    DEC --> PSUP["plan-supervisor\nAutonomous phase execution"]
+    READY -- Yes --> ROUTE{Reviewed execution mode}
+    ROUTE -- direct --> IMP["implementor\nTests, review fixes and delivery"]
+    ROUTE -- coordinated --> DEC["decompose hook when useful\nHost-owned projection"]
+    DEC --> PSUP["plan-supervisor\nOne coordinator, bounded slices"]
+    IMP --> PROJECTED
     PSUP --> PROJECTED([Host-owned result])
+    IMP -- exhausted approach --> AMEND["Planner Amend with existing diagnosis\nPreserve objective, progress and budgets"]
+    PSUP -- exhausted approach --> AMEND
+    AMEND --> REVIEWER
 
     style LT fill:#6366f1,color:#fff,stroke:none
     style PP fill:#a855f7,color:#fff,stroke:none
@@ -98,5 +104,6 @@ flowchart TD
 |---|---|---|
 | **Author** | New goal, brief, file, or task seed | — |
 | **Refine** | Eligible draft plan exists | Must still be a draft; not approved, projected, or blocked by children |
+| **Amend** | Existing diagnosis and exhausted approach | Pause affected writers; review versioned contract delta against original objective; return to existing owner, preserve IDs/evidence/budgets |
 | **Publish** | User instructs writing the plan to the task system | Write the current candidate; skip remaining reviews and earlier hooks |
 | **Execution handoff** | Direct execution intent or trusted executable task | Current reviewer PASS, no blocking findings, stored body + authority receipt; caller-owned projection returns to caller |

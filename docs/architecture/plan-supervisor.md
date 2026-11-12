@@ -53,9 +53,9 @@ flowchart TD
         FAIL_CLASS["Classify failure\nenvironment · defect · spec-drift · flaky"]
         DIAG["Consume child diagnosis + checkpoint\nno second diagnostic at parent level"]
         STRUCT{"Structurally overbroad\nafter diagnostic?"}
-        CAP_SPLIT{"Strict DoD-preserving\npartition exists?"}
         FREEZE["Freeze failed checkpoint\nReturn to stable revision"]
-        SPLIT["Materialize deterministic slices\nwith decompose hook or inline DAG"]
+        AMEND["Planner Amend + independent review\nPreserve objectives, IDs and budgets"]
+        SPLIT["Record deterministic execution slices\nin amended macro DAG, retain remote IDs"]
         AGG["Original phase becomes\naggregate acceptance gate"]
         REBR["Refresh same phase packet\n+ diagnostic locator\nincrement attempt count"]
         EXHAUST{Recovery budget\nexhausted?}
@@ -66,12 +66,13 @@ flowchart TD
     RESULT -- "FAIL / BLOCKED" --> FAIL_CLASS
     FAIL_CLASS -->|"validated recovery packet"| DIAG
     DIAG --> STRUCT
-    STRUCT -- Yes --> FREEZE
+    STRUCT -- Yes --> AMEND
     STRUCT -- No --> REBR --> EXHAUST
     EXHAUST -- "No · refreshed phase packet" --> DISPATCH
-    EXHAUST -- Yes --> CAP_SPLIT
-    CAP_SPLIT -- Yes --> FREEZE --> SPLIT --> AGG --> DEC
-    CAP_SPLIT -- No --> EXTERNAL
+    EXHAUST -- Yes --> AMEND
+    AMEND -- reviewed partition --> FREEZE --> SPLIT --> AGG --> SEL
+    AMEND -- reviewed atomic alternative --> REBR
+    AMEND -- no eligible alternative --> EXTERNAL
     EXTERNAL -- No --> DONE_FAIL([Atomic phase failed with evidence])
     EXTERNAL -- Yes --> ESCALATE --> DONE_BLOCKED([Plan blocked / escalated])
 
@@ -96,7 +97,7 @@ flowchart TD
 |---|---|---|
 | `load-task` | 1 | Resolve plan source; build phase DAG |
 | `pre-plan` | Pre-dispatch | Validate source plan before any mutation |
-| `decompose` | Pre-dispatch and structural recovery | Materialize initial or replacement phases into task-system (if installed); otherwise update inline DAG |
+| `decompose` | Initial materialization | Create initial phases when useful; active-plan Amend retains remote IDs and updates the macro DAG |
 | `label` | After each PASS | Record phase state in task-system |
 | `record-ledger` | Before selection/dispatch and after return | Load checkpoint; record event + checkpoint with expected_version |
 
@@ -130,7 +131,7 @@ The Plan Supervisor acts as a curation firewall between phases:
 |---|---|
 | Successful non-final phase | Continue immediately — no human pause |
 | Phase explicitly `operator-required` | Pause and wait for human action |
-| Soft episode budget exhausted | Delivery owner evaluates a distinct bounded recovery under standing authority; history and hard limits remain |
+| Soft episode budget exhausted | Planner reviews a distinct amendment; owner verifies receipt before bounded recovery; history and hard limits remain |
 | QA execution blocker | Record deferred checks; retry at discretion, continue implementation with verified functional prerequisites |
 | Child or command still running | IN_PROGRESS; wait, no equivalent dispatch or repeated audits |
 | No DoD-preserving split and verified external gate | Produce `PLAN_ESCALATION.md`; stop |
@@ -152,6 +153,6 @@ The Plan Supervisor acts as a curation firewall between phases:
 The plan supervisor integrates accepted slice outputs into one recorded revision;
 dependent slices consume verified predecessor changes. Aggregate acceptance runs
 against that integrated revision. Soft exhaustion requires a distinct evidence-backed
-strategy, not another user instruction; explicit hard caps still bind. QA is recommended and owned by the delivery supervisor;
+strategy through reviewed planner Amend, not another user instruction; explicit hard caps still bind. QA is recommended and owned by the delivery supervisor;
 acceptance requires substantive evidence, not a QA session. Reduced delivery reuses
 the verified deployed revision and declares deferred and defective behavior.

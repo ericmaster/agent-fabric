@@ -11,6 +11,7 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ### Changed
 
+- Route coherent plans directly to implementor and dependent slices through one coordinator; require minimum testable results and diagnosis-driven, independently reviewed amendments preserving objectives, progress and hard budgets.
 - Make implementor public/selectable while retaining direct and child entry and existing permissions.
 - Bound harness review to one high-impact correction by default (two maximum), selected history windows and compact scope-qualified outcomes; use one visible parent with fresh-context child subagents and retain historical audits/correction budgets.
 - Document isolated exact-version Pi test fixtures with private, distinct npm configuration paths and explicit Node/Go package selectors.

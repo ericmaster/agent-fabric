@@ -16,14 +16,27 @@ ledger hooks, deterministic support, and QA contracts live in [supervision-ledge
 
 ### Phase ownership
 
-New tasks use `plan-supervisor -> implementor -> code-reviewer`, or direct atomic
-implementor. Bug-fixer dispatches implementor for exec-ready tickets. Supervisors
+Planner recommends direct `implementor -> code-reviewer` for a coherent task or
+`plan-supervisor -> implementor -> code-reviewer` for dependent/parallel slices,
+with a one-sentence rationale checked by plan review. Direct implementor owns
+authorized integration and delivery. Coordinated work uses one coordination layer,
+never nested supervisors. Bug-fixer dispatches implementor for exec-ready tickets. Supervisors
 retain plan/DAG, macro budgets, global acceptance, integration and delivery; they
 do not implement product changes. Implementor owns diagnosis, edits, relevant
 tests and remediations in one recorded session and may delegate only code-reviewer.
 Planner remains the planning owner. Loop-supervisor is deprecated for new tasks;
 existing continuations keep their identity, workflow, evidence and budgets without
 migration/cancellation/reset. Legacy loop-specific contracts below apply only there.
+
+Each slice ends in a minimum viable testable result: useful working behavior,
+smallest exercisable path, reproducible demo/test and explicit deferrals. Apply a
+subtraction test before adding infrastructure or optional generality. Required
+safety, isolation and reliability remain in scope; a necessary prefactor proves
+preserved behavior and names what it unblocks. Component contracts may be exercised
+independently, but mocks alone cannot establish integrated acceptance. The coordinator
+keeps compact dependencies, accepted revisions, open findings and next actions;
+workers receive bounded contracts rather than whole-plan transcripts. A justified
+routing change carries accepted evidence and pending work without restarting planning.
 
 Review is independent, read-only and non-delegating. Freeze base/diff/candidate,
 supply original task/DoD and objective evidence without author conversation or
@@ -45,7 +58,7 @@ implementor owns normal review hooks. Plan macro persistence includes the child'
 single phase history; direct atomic implementor owns the existing micro checkpoint
 through record-ledger only. See the ledger spec for single-writer continuity.
 
-An approved task or plan authorizes every in-scope, safe, reversible local or
+An execution-authorized task or plan authorizes every in-scope, safe, reversible local or
 non-production action needed to satisfy its DoD. Execution roles own capability
 recovery: adapt command invocation and tool-compatible artifact paths, select a
 free port, start and stop local services, create and clean disposable fixtures,
@@ -63,7 +76,7 @@ dispatch, implementation, review, QA, bounded recovery, reversible local/Dev
 setup, task-owned fixture cleanup, task-owned commits, and task-status updates.
 Agents continue through those stages without asking for repeated confirmation.
 `plan-only`, `report-only`, and equivalent explicit non-goals stop execution;
-otherwise a planning or defect-fix request proceeds autonomously. Execution handoff
+viewing or approving a planning artifact alone is not execution authority. Execution handoff
 requires plan-reviewer PASS on the current candidate and no unresolved blocking
 findings. Publication after the two-pass review cap or in Publish mode may retain
 unresolved findings, but never authorizes execution. A delegated planner honors
@@ -188,9 +201,9 @@ are reference material only and may be selectively reapplied after inspection,
 never inherited wholesale.
 
 The plan supervisor owns composition into one recorded integration revision.
-It also owns replacement-DAG acceptance: obtain independent plan-reviewer PASS
-before materialization or execution, including direct atomic split proposals.
-Use at most two passes, resume the reviewer, and revise the same deterministic
+The planner owns affected contract amendments and obtains independent plan-reviewer
+PASS; the coordinator verifies that receipt before execution, including split proposals.
+The planner uses at most two passes, resumes the reviewer, and revises the same deterministic
 slices without resetting counters; unresolved rejection returns terminal FAIL.
 An original plan's PASS does not cover a changed replacement DAG.
 Dependent replacements consume verified predecessor changes on top of the stable
@@ -199,14 +212,16 @@ invalidated gates rerun. Aggregate acceptance verifies the integrated revision
 containing all accepted outputs, never only isolated PASS reports.
 
 When a parent plan exists, `implementor` returns `recovery.mode: split` and a
-validated split proposal to `plan-supervisor`. The plan supervisor invokes the
-`decompose` hook, materializes replacement slices and dependencies, blocks later
-phases on the aggregate gate, and continues without human confirmation. On direct
+validated split proposal to `plan-supervisor`. The plan supervisor returns it to
+planner Amend, verifies the review receipt, records replacement scopes/dependencies
+in the amended macro DAG, blocks later phases on the aggregate gate and continues
+under existing authorization. Existing task-system identities remain unchanged;
+replacement execution scopes are not new remote children. On direct
 atomic invocation, implementor returns the replacement DAG to its caller as
 `FAIL`, not `BLOCKED`, and never dispatches another implementor or supervisor.
-The plan supervisor reuses its rendered
-`decompose` executor during recovery; without an installed hook it updates the
-inline macro DAG and discloses missing durable task-system materialization. A
+The plan supervisor uses `decompose` only for initial materialization, never for
+reprojection over active children. Legacy loop continuations retain their existing
+materialization contract. A
 replacement that appears overbroad invalidates the partition and causes a
 non-mutating revision of the same deterministic slices, never a recursive split.
 Only inability to preserve the
@@ -219,6 +234,33 @@ non-mutating recovery path or a standing-authority new episode under the
 bounded episode contract below. Hard limits remain in force.
 Retryable FAIL uses `retry`; overbroad FAIL uses `split`; verified external BLOCKED
 uses `external_block`; PASS uses `none`. Exhaustion alone never means BLOCKED.
+
+### Diagnosis-driven plan amendment
+
+Exhaustion ends the failed approach and returns its existing diagnosis, attempts,
+violated criterion, accepted work and candidate/checkpoint evidence to planning
+through the execution owner. Wait for an in-flight diagnostic rather than duplicate
+it. Planner Amend may change suggested architecture, libraries, phase boundaries
+and implementation-specific checks, while preserving task/plan objectives and
+required behavior. Pause affected writers and revise owning specs plus baseline
+explicitly before resumed implementation. Retain prior failures and invalidate
+only affected evidence; unaffected independent work can continue.
+
+The durable versioned amendment names prior plan revision, affected phase IDs,
+contract/criteria delta, cause-avoiding alternative and eligible bounded allowance.
+Independent plan-reviewer PASS is required (at most two passes for each materially
+distinct amendment); reuse planning/reviewer sessions and the existing execution
+owner. For a host without safe active-projection revision, retain published parent
+and child identities/progress and bind the amendment locator/review receipt in the
+checkpoint and affected packets. The explicit amendment is the active execution
+contract; do not claim the original published body changed or project duplicates.
+Routing changes likewise preserve accepted work and history.
+
+In-scope amendments use existing execution authority. Cumulative counters, hard
+limits and episode limits remain; rewording, renaming or an equivalent approach
+does not renew them. An amended approach must explain how it avoids the diagnosed
+cause. No objective-preserving alternative within remaining authority/budget means
+one evidence-backed unresolved decision or limit, not another replanning cycle.
 
 After a phase's second substantive code or specification rejection, supervision
 requires a root-cause diagnostic before another mutation. Reuse a finding's recorded diagnosis;
@@ -304,7 +346,9 @@ cap imposed by this workflow. Explicit task, host, provider, spending, safety an
 policy hard limits remain non-renewable by an ordinary continuation instruction.
 
 After soft exhaustion, standing executable task authority permits the delivery owner
-to evaluate a renewed episode without another user message. A renewed episode
+to evaluate a renewed episode without another user message. New execution first
+requires the diagnosis-driven planning amendment above; legacy loop continuations
+retain their existing contract. A renewed episode
 allows at most two mutations by default. Record the original authority locator, new evidence
 or diagnosis or authorized scope change, and a materially distinct causal strategy
 before opening it. A new model, session, command spelling, or scope name is not a

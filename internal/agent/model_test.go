@@ -197,7 +197,7 @@ func TestAutonomousFlowPreservesOnlyExternalGates(t *testing.T) {
 	plannerBody := strings.Join(strings.Fields(planner.Body), " ")
 	for _, anchor := range []string{
 		"direct execution intent or a trusted executable task is standing authority",
-		"dispatch `plan-supervisor`",
+		"dispatch the recommended `implementor` or `plan-supervisor`",
 		"Do not ask for a second confirmation",
 	} {
 		if !strings.Contains(plannerBody, anchor) {
@@ -957,7 +957,8 @@ func TestSupervisorsRecoverOverbroadPhasesByStableBaseDecomposition(t *testing.T
 		{"plan-supervisor", []string{
 			"mandatorily before a fourth mutation",
 			"non-mutating aggregate acceptance gate",
-			"The rendered decompose executor is reusable",
+			"Use decompose for initial materialization only",
+			"return the proposal to planner Amend and verify its",
 			"owned by at least one complete vertical slice",
 			"Failed-branch changes are reference material only",
 			"failed parent attempts\nattributable to its owned path",
@@ -1035,7 +1036,7 @@ func TestSupervisorsRecoverOverbroadPhasesByStableBaseDecomposition(t *testing.T
 		forbidden string
 	}{
 		{"loop-supervisor.md", "ATOMIC -- Yes --> SPLIT --> REPORT", "| `decompose` | Structural recovery"},
-		{"plan-supervisor.md", "CAP_SPLIT -- Yes --> FREEZE --> SPLIT --> AGG --> DEC", "SPLIT --> EXTERNAL"},
+		{"plan-supervisor.md", "AMEND -- reviewed partition --> FREEZE --> SPLIT --> AGG --> SEL", "AGG --> DEC"},
 	} {
 		body, err := os.ReadFile(filepath.Join("..", "..", "docs", "architecture", tc.path))
 		if err != nil {

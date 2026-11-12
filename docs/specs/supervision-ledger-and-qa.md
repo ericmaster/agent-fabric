@@ -216,6 +216,13 @@ histories. All may consume objective task evidence and supplied prior findings.
 
 ### Continuity and checkpoints
 
+Native completion/identity observations and unchanged-input evidence are sufficient
+when unambiguous. The deterministic support helper is for identity/freshness gaps,
+not mandatory repeated packet reconstruction. Persist actual dispatch/return and
+state changes only. Bind the active plan-amendment locator and its review receipt
+as evidence before resuming affected work; keep historical revisions outside the
+current packet. Optional host mirrors remain outside acceptance and default off.
+
 The implementor is the sole local recovery owner for a phase/atomic task. The plan
 supervisor preserves the DAG and resumes that implementor's recorded
 session. Pass the recorded child continuation ID to the harness resume mechanism

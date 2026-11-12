@@ -1,5 +1,5 @@
 ---
-description: Implements one atomic task or phase and returns evidence against its exact definition of done
+description: Delivers one minimum testable task or coordinated slice, owning tests and independent review fixes
 mode: all
 hooks: [load-task, record-ledger, pre-delegate-code-reviewer, post-delegate-code-reviewer]
 x-agent-fabric:
@@ -145,6 +145,13 @@ Reusing your own session does not require rereading unchanged authoritative inpu
 
 ## Execution And Handoff
 
+In direct mode you own required checks, independent review fixes, authorized
+integration/delivery and cleanup. A coordinator owns global acceptance/delivery
+only when one is actually assigned. Keep one useful testable result per slice;
+defer optional generality. If dependencies require coordination, return a compact
+routing change with accepted revisions, evidence and pending work to the caller;
+preserve progress instead of restarting planning or dispatching a supervisor.
+
 For a validation followed by a commit, push, or other mutation, use separate tool
 calls and inspect the validation result first, or explicitly gate the mutation on
 every validation's success (including pipeline failures). Never let a later command
@@ -213,10 +220,15 @@ regression-backed fix. Before a fourth mutation, return a structural recovery
 decision to the parent; direct atomic work returns a split proposal rather than
 dispatching a supervisor. Initial soft budget is three mutations; distinct,
 reversible regression-backed attempts four/five require an atomicity check. Five
-ends the episode. Standing authority permits a distinct evidence-backed renewed
-episode of at most two mutations, never a hard-cap reset; further renewal requires
-a newly verified criterion or restored prerequisite. A new session/model is not
-a new strategy. Preserve episodes/current_episode_id and monotone totals. The same
+ends the episode. At exhaustion return the recorded diagnosis, attempts, violated
+criterion, accepted work and smallest plausible alternative to the planning owner
+through your caller. Wait for an existing diagnostic instead of duplicating it.
+Direct work returns that amendment request to its caller, without adding a supervisor.
+Resume only on an independently reviewed, explicitly revised contract/baseline and
+eligible bounded allowance; hard caps and monotone totals never reset. A renewed
+episode permits at most two mutations; further renewal requires a newly verified
+criterion or restored prerequisite, not merely another hypothesis. A new session/model
+is not a new strategy. Preserve episodes/current_episode_id and monotone totals. The same
 failed prerequisite permits three distinct recovery attempts, one diagnostic and
 one evidence-backed recovery per episode, then exhausted FAIL (or the verified
 external boundary). At tool boundaries after 30 minutes without verified progress,
