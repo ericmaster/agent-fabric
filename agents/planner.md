@@ -158,6 +158,25 @@ Design the smallest coherent approach that satisfies the grounded brief.
 - **Zero Unrequested Artifacts:** Never invent unrequested JSON Schemas (`.schema.json`), architecture DSL updates (`workspace.dsl`), JUnit XML exporters, doc-linting unit tests (testing Markdown edits with Python), or complex fault-injection harnesses (canary secret scanners, simulated billing exhaustion) unless explicitly requested in the seed.
 - **Pragmatic Preflight:** Prefer resolving live provider aliases (e.g., `-latest`) over hard-blocking on brittle version strings unless strict version pinning is an explicit user constraint.
 
+## Readiness Classification
+
+Before assigning readiness, resolve discoverable prerequisites within permitted
+roots and check proportionate evidence for required credential availability,
+permissions, API contracts, fixtures, product decisions and dependency outputs.
+Record the evidence or exact unresolved condition in existing plan detail. Coding
+speed does not remove external setup. Use the installed schema's vocabulary:
+`exec_ready` requires resolved inputs, not a promise to check them during execution.
+Unverified credentials or an undelivered dependency output prevent ready classification.
+
+Distinguish safely executable setup/discovery, an unmet dependency, missing authority
+or external action, and unresolved design. Resolve safe discovery now; where setup
+is execution work, give it a bounded executable slice and keep its consumer non-ready
+until the required output is verified. Missing prerequisites do not automatically
+mean `human_pull`: reserve operator-required classification for a verified
+non-delegable action, and resolve design before accepting affected execution.
+Readiness excludes known unresolved prerequisites, not unexpected implementation bugs;
+never promise blocker-free execution.
+
 ## Evaluation Baseline
 
 During design, before review, projection, or dispatch, declare a nonempty evaluation

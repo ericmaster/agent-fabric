@@ -254,6 +254,29 @@ bounded episode contract below. Hard limits remain in force.
 Retryable FAIL uses `retry`; overbroad FAIL uses `split`; verified external BLOCKED
 uses `external_block`; PASS uses `none`. Exhaustion alone never means BLOCKED.
 
+### Planning readiness
+
+Planner checks discoverable prerequisites before readiness classification; plan-reviewer
+independently verifies the evidence and requires correction of unsupported ready labels.
+Use the installed pre-plan schema's existing vocabulary, without adding states or fields.
+An `exec_ready` phase has proportionate evidence that its required credential availability,
+permissions, API contracts, fixtures, product decisions and dependency outputs are resolved.
+Unverified credential availability and outputs merely promised by predecessor phases do
+not qualify. Record evidence or exact unresolved conditions in existing plan detail;
+AI coding speed does not eliminate external setup. Readiness excludes known unresolved
+prerequisites, not unexpected implementation bugs or all future blockers.
+
+Classify the resolving work separately: safe discovery is performed during planning;
+execution setup may be a bounded ready slice when its own inputs are resolved. Its
+consumer remains non-ready until the required output is delivered and verified. An
+unmet dependency is not an operator action; missing authority or genuinely external
+action must name the responsible actor and boundary. Unresolved design requires a
+decision before affected execution is accepted. None automatically implies `human_pull`;
+operator-required classification remains reserved for verified non-delegable actions.
+Use ordinary repository inspection and the smallest safe capability check, redact
+credentials, and preserve existing permission boundaries; no new orchestration machinery
+or exhaustive preflight is required.
+
 ### Diagnosis-driven plan amendment
 
 Exhaustion ends the failed approach and returns its existing diagnosis, attempts,

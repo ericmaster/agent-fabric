@@ -69,6 +69,17 @@ rollback, risks, and justified operator-required classification.
 - **Routing:** Require a justified direct implementor or single coordinator route.
   Workers receive bounded slice contracts; reject unnecessary coordination or a
   whole-plan context dumped into one worker. Verify integrated acceptance ownership.
+- **Readiness:** Independently verify evidence for required credential availability,
+  permissions, API contracts, fixtures, product decisions and dependency outputs.
+  `exec_ready` requires resolved inputs; unverified credentials, undelivered
+  dependencies or other known unresolved prerequisites in a phase labeled `exec_ready`
+  require `REVISE` with a high-severity classification finding and the supported
+  correction in the installed schema's vocabulary. Inspect supplied evidence and
+  proportionate safe probes, not
+  author assurances or coding-speed estimates. Distinguish executable setup/discovery,
+  unmet dependency, missing authority/external action and unresolved design; missing
+  inputs do not automatically justify `human_pull`. A setup slice can be ready while
+  its consumer is not. Readiness is not a guarantee against unexpected bugs.
 - **Amendments:** Review the original objective, existing diagnosis, accepted work
   and explicit contract/criteria delta. The alternative must avoid the diagnosed
   cause, preserve required outcomes, child progress and cumulative hard budgets,
