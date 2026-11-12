@@ -16,8 +16,8 @@ body{margin:0;background:#090d16;color:#e2e8f0;font-family:system-ui,sans-serif}
 <body><main class="fabric-page">
 <header class="mb-6">
 <p class="text-xs tracking-widest uppercase text-cyan-300">Agent Fabric + nimbler-ops · Proposed changes · 12 November 2026</p>
-<h1 class="text-3xl md:text-4xl font-bold mt-3">Same human clarity.<br>One execution owner.</h1>
-<p class="text-slate-400 mt-3 max-w-3xl">Keep HTML questionnaires, diagrams, explained plans, browser validation and meaningful independent reviews. Remove the default supervisor relay and repeated machine-facing checks.</p>
+<h1 class="text-3xl md:text-4xl font-bold mt-3">Same human clarity.<br>The right execution mode.</h1>
+<p class="text-slate-400 mt-3 max-w-3xl">The planner recommends direct implementation or coordinated slices. Keep HTML planning, browser validation and independent reviews. Adapt the existing supervisor into a coordinator when the plan needs one.</p>
 </header>
 <div class="grid lg:grid-cols-2 gap-5">
 <section class="fabric-panel" aria-labelledby="current-title">
@@ -42,31 +42,35 @@ style V fill:#422d16,stroke:#f59e0b</pre>
 </section>
 <section class="fabric-panel" aria-labelledby="proposed-title">
 <h2 id="proposed-title" class="text-cyan-300">Proposed workflow</h2>
-<p class="text-sm text-slate-400 mt-2 mb-3">Keep planning and review. Hand the accepted plan once to the agent responsible for execution and delivery.</p>
+<p class="text-sm text-slate-400 mt-2 mb-3">The planner proposes the mode with a short justification; plan review checks it. Large plans get bounded workers, not one enormous context.</p>
 <div class="fabric-scroll" tabindex="0" aria-label="Proposed workflow diagram; scroll to inspect">
-<pre class="mermaid" data-mermaid-source="flowchart TD&#10;P[Planner: HTML decisions and explained plan] --&gt; R[Independent plan review]&#10;R -- revise --&gt; P&#10;R -- pass --&gt; H[Ops: publish once and reuse execution grant]&#10;H -- one handoff --&gt; I[Execution owner: code and tests]&#10;I --&gt; C[Independent code review]&#10;C -- fix --&gt; I&#10;C -- accept --&gt; V[Same owner: integrate and verify]&#10;V -- next slice --&gt; I&#10;V -- scope complete --&gt; D[Deliver verified result]&#10;style I fill:#164e63,stroke:#22d3ee&#10;style V fill:#164e63,stroke:#22d3ee">flowchart TD
-P[Planner: HTML decisions and explained plan] --> R[Independent plan review]
+<pre class="mermaid" data-mermaid-source="flowchart TD&#10;P[Planner: HTML plan and suggested mode] --&gt; R[Independent review of plan and routing]&#10;R -- revise --&gt; P&#10;R -- pass --&gt; H[Continue under existing authorization]&#10;H --&gt; M{Execution mode}&#10;M -- direct --&gt; I[Implementor: code and tests]&#10;I --&gt; C[Independent code review]&#10;C -- fix --&gt; I&#10;C -- accept --&gt; D[Owner integrates, verifies and delivers]&#10;M -- coordinated --&gt; K[Existing supervisor as coordinator]&#10;K -- bounded slices --&gt; W[Implementors with independent reviews]&#10;W -- results or cross-slice blockers --&gt; K&#10;K -- all slices accepted --&gt; D&#10;style I fill:#164e63,stroke:#22d3ee&#10;style K fill:#164e63,stroke:#22d3ee&#10;style W fill:#164e63,stroke:#22d3ee">flowchart TD
+P[Planner: HTML plan and suggested mode] --> R[Independent review of plan and routing]
 R -- revise --> P
-R -- pass --> H[Ops: publish once and reuse execution grant]
-H -- one handoff --> I[Execution owner: code and tests]
+R -- pass --> H[Continue under existing authorization]
+H --> M{Execution mode}
+M -- direct --> I[Implementor: code and tests]
 I --> C[Independent code review]
 C -- fix --> I
-C -- accept --> V[Same owner: integrate and verify]
-V -- next slice --> I
-V -- scope complete --> D[Deliver verified result]
+C -- accept --> D[Owner integrates, verifies and delivers]
+M -- coordinated --> K[Existing supervisor as coordinator]
+K -- bounded slices --> W[Implementors with independent reviews]
+W -- results or cross-slice blockers --> K
+K -- all slices accepted --> D
 style I fill:#164e63,stroke:#22d3ee
-style V fill:#164e63,stroke:#22d3ee</pre>
+style K fill:#164e63,stroke:#22d3ee
+style W fill:#164e63,stroke:#22d3ee</pre>
 </div>
-<p class="text-sm mt-4"><span class="text-cyan-300 font-semibold">Cyan = one execution owner.</span> That agent fixes failures, responds to review and delivers. A supervisor is optional when multiple independent workers genuinely need coordination.</p>
+<p class="text-sm mt-4"><span class="text-cyan-300 font-semibold">Cyan = the selected execution mode.</span> Direct: the implementor owns delivery. Coordinated: the supervisor owns integration and overall delivery; each worker owns its slice's coding, tests and review fixes. No nested supervisors.</p>
 </section>
 </div>
 <section class="mt-7" aria-labelledby="changes-title">
 <h2 id="changes-title" class="mb-4">Four concrete changes</h2>
 <div class="grid md:grid-cols-2 gap-4">
-<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">1. Remove the default supervisor relay</h3><p class="mt-2">Change Fabric's planner handoff and implementor delivery responsibility. The planner stays focused on human understanding; the execution owner handles code, tests, review fixes and integration.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> a dev-preview smoke test fails. The owner fixes it and reruns the affected check instead of returning the problem through a coordinating session.</p></article>
-<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">2. Align the Ops hooks with existing authority</h3><p class="mt-2">Update the decomposition overlay and adapter to consume one valid execution grant. Project children only when independently tracked phases are useful. Preserve publication readback and duplicate prevention.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> “Implement this approved dev plan” proceeds to work without another “Shall I start?” prompt. A plan-only request still stops at the plan.</p></article>
-<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">3. Resume from one compact checkpoint</h3><p class="mt-2">Keep the same owner, pending action, changed inputs and evidence links. Remove routine full-packet reconstruction and episode paperwork. Recheck evidence only when its inputs or requirements change.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> after a pause, resume the known atomicity fix rather than rebuilding eight input references and launching another review of unchanged material. Hard budgets still apply.</p></article>
-<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">4. Keep hooks as adapters, not extra reviewers</h3><p class="mt-2">Keep local checkpoint durability where needed; make secondary replication explicitly useful. Leave optional external pre-review outside the default route. Keep browser checks with the agent doing the work.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> an unavailable memory mirror does not delay a valid local result. This is already non-gating today; the change reduces default plumbing, not the verification bar.</p></article>
+<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">1. Planner recommends the handoff mode</h3><p class="mt-2">Add a routing recommendation and one-sentence reason to the explained plan. Use <code>implementor</code> for one coherent task; use <code>plan-supervisor</code> for multiple slices with dependencies, parallel work or substantial integration. Plan review can challenge unnecessary coordination.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> “Direct: one authenticated preview change.” Or “Coordinated: bot runtime, builder and WhatsApp integration share an API contract.” The choice follows structure, not an arbitrary file count.</p></article>
+<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">2. Make the supervisor a coordinator</h3><p class="mt-2">Reuse <code>plan-supervisor</code>. It assigns bounded slices, tracks dependencies, resolves cross-slice issues and owns integrated acceptance/delivery. Workers handle their own debugging and review fixes. Remove duplicate worker bookkeeping and routine finding relays.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> a worker fixes its failing test locally. An incompatible shared API goes to the coordinator. Only affected dependent work waits; no supervisor is spawned underneath another supervisor.</p></article>
+<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">3. Bound context, preserve continuity</h3><p class="mt-2">The coordinator keeps the plan, dependencies, accepted revisions, open findings and next actions. Each worker receives only its slice, relevant contracts and checks. Completed slices become compact checkpoints with evidence links, not copied transcripts. Slices may run sequentially or independently in parallel.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> the WhatsApp worker receives the accepted bot API contract, not every builder discussion. If direct work reveals genuine coordination needs, hand completed evidence to a coordinator without restarting planning or resetting budgets.</p></article>
+<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">4. Simplify Ops hooks and authorization</h3><p class="mt-2">“Continue under existing authorization” means no repeated permission prompt for already-authorized scope. Align the decomposition overlay/adapter with the selected mode; preserve publication readback and duplicate prevention. Keep optional mirrors and external pre-review outside the critical path.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> “Implement this approved dev plan” authorizes its in-scope work and fixes. Viewing a plan is not execution permission. New scope, spending and production retain their applicable approval boundaries.</p></article>
 </div>
 </section>
 <section class="fabric-panel mt-5"><h2>What does not change</h2><p class="mt-2">HTML questionnaires and explanations · free-text human decisions · browser validation · required tests · independent plan/code review for this MVP · explicit production confirmation · real permission and spending boundaries · no false PASS.</p><p class="text-sm text-slate-400 mt-2">Fewer handoffs is the proposed improvement—not fewer checks or less human understanding. Genuine quota failures still require capacity or an authorized alternative.</p></section>

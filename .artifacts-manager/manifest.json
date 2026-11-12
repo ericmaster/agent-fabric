@@ -4,10 +4,10 @@
   "artifacts": [
     {
       "id": "agent-fabric-architecture-lifecycle",
-      "title": "Agent Workflow — Current vs Proposed",
+      "title": "Agent Workflow — Direct or Coordinated Execution",
       "type": "html",
       "file": "agent-fabric-architecture-lifecycle.html",
-      "description": "Two side-by-side workflow diagrams and four proposed changes, preserving human planning and independent review",
+      "description": "Current versus proposed routing: planner selects implementor or supervisor-as-coordinator, with bounded context and clear authorization",
       "tags": [
         "architecture",
         "agents",
@@ -19,7 +19,7 @@
         "mermaid"
       ],
       "createdAt": "2026-09-01T16:16:44.484Z",
-      "updatedAt": "2026-11-12T01:26:19.280Z"
+      "updatedAt": "2026-11-12T01:45:37.403Z"
     },
     {
       "id": "agent-fabric-task-retrospective-implementation-plan",
