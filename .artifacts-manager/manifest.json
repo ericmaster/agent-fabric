@@ -4,13 +4,12 @@
   "artifacts": [
     {
       "id": "agent-fabric-architecture-lifecycle",
-      "title": "Agent Fabric — Current vs Proposed Workflow",
+      "title": "Agent Workflow — Current vs Proposed",
       "type": "html",
       "file": "agent-fabric-architecture-lifecycle.html",
-      "description": "Side-by-side workflow comparison, exact Fabric and Ops changes, and seven concrete examples preserving human understanding",
+      "description": "Two side-by-side workflow diagrams and four proposed changes, preserving human planning and independent review",
       "tags": [
         "architecture",
-        "lifecycle",
         "agents",
         "harness-review",
         "simplification",
@@ -20,7 +19,7 @@
         "mermaid"
       ],
       "createdAt": "2026-09-01T16:16:44.484Z",
-      "updatedAt": "2026-11-11T18:37:16.351Z"
+      "updatedAt": "2026-11-12T01:26:19.280Z"
     },
     {
       "id": "agent-fabric-task-retrospective-implementation-plan",
