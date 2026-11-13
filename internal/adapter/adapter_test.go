@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
@@ -393,5 +395,214 @@ func TestEvalDoDOpenCodeRendering(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// openCodeV230Discoverable is the catalog predicate from anomalyco/opencode
+// v2.3.0 packages/core/src/tool/plugin/subagent.ts: mode !== "primary" &&
+// !hidden && Permission.evaluate("subagent", id, caller.permissions).effect !== "deny".
+// evaluate is findLast Wildcard.match; an unmatched request defaults to ask.
+func openCodeV230Discoverable(mode string, hidden bool, id string, rules []openCodeRule) bool {
+	if mode == "primary" || hidden {
+		return false
+	}
+	effect := "ask"
+	for _, rule := range rules {
+		if openCodeWildcard(rule.action, "subagent") && openCodeWildcard(rule.resource, id) {
+			effect = rule.effect
+		}
+	}
+	return effect != "deny"
+}
+
+type openCodeRule struct{ action, resource, effect string }
+
+func openCodeWildcard(pattern, input string) bool {
+	pattern = strings.ReplaceAll(pattern, "\\", "/")
+	input = strings.ReplaceAll(input, "\\", "/")
+	var b strings.Builder
+	b.WriteByte('^')
+	for i := 0; i < len(pattern); i++ {
+		switch pattern[i] {
+		case '*':
+			b.WriteString(".*")
+		case '?':
+			b.WriteByte('.')
+		case '.', '+', '^', '$', '{', '}', '(', ')', '|', '[', ']', '\\':
+			b.WriteByte('\\')
+			b.WriteByte(pattern[i])
+		default:
+			b.WriteByte(pattern[i])
+		}
+	}
+	b.WriteByte('$')
+	return regexp.MustCompile(b.String()).MatchString(input)
+}
+
+func parseOpenCodeFront(body string) (mode string, hidden bool, model string, rules []openCodeRule) {
+	front := strings.SplitN(body, "\n---\n", 2)[0]
+	for _, line := range strings.Split(front, "\n") {
+		switch {
+		case strings.HasPrefix(line, "mode: "):
+			mode = strings.TrimSpace(strings.TrimPrefix(line, "mode: "))
+		case strings.HasPrefix(line, "hidden: "):
+			hidden = strings.TrimSpace(strings.TrimPrefix(line, "hidden: ")) == "true"
+		case strings.HasPrefix(line, "model: "):
+			model = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "model: ")), `"`)
+		}
+	}
+	for _, rule := range strings.Split(body, "  - action: ")[1:] {
+		rule = strings.Split(rule, "\n---\n")[0]
+		lines := strings.Split(rule, "\n")
+		parsed := openCodeRule{action: strings.Trim(lines[0], `"`)}
+		for _, line := range lines[1:] {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "resource: ") {
+				parsed.resource = strings.Trim(strings.TrimPrefix(line, "resource: "), `"`)
+			}
+			if strings.HasPrefix(line, "effect: ") {
+				parsed.effect = strings.Trim(strings.TrimPrefix(line, "effect: "), `"`)
+			}
+		}
+		rules = append(rules, parsed)
+	}
+	return mode, hidden, model, rules
+}
+
+func TestOpenCodeRequiredReviewersDiscoverable(t *testing.T) {
+	m, err := LoadMapping(filepath.Join("..", "..", "adapters", "opencode.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Join("..", "..", "agents"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	type rendered struct {
+		mode   string
+		hidden bool
+		rules  []openCodeRule
+	}
+	agents := map[string]rendered{}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		d, err := agent.ParseFile(filepath.Join("..", "..", "agents", entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _, _, err := Render("opencode", d, m, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mode, hidden, _, rules := parseOpenCodeFront(body)
+		agents[d.ID] = rendered{mode, hidden, rules}
+	}
+	discover := func(caller string) []string {
+		var got []string
+		for id, candidate := range agents {
+			if openCodeV230Discoverable(candidate.mode, candidate.hidden, id, agents[caller].rules) {
+				got = append(got, id)
+			}
+		}
+		sort.Strings(got)
+		return got
+	}
+	planner := discover("planner")
+	for _, id := range []string{"plan-reviewer", "code-reviewer"} {
+		if !slicesContains(planner, id) {
+			t.Errorf("NR2-planner-discovers: planner catalog missing %s: %v", id, planner)
+		}
+	}
+	for _, id := range []string{"report-reviewer", "qa-runner", "expert-debugger"} {
+		if slicesContains(planner, id) {
+			t.Errorf("NR2-other-hidden-targets: planner catalog includes %s: %v", id, planner)
+		}
+	}
+	if got := discover("implementor"); len(got) != 1 || got[0] != "code-reviewer" {
+		t.Fatalf("NR2-implementor-only-code-reviewer: catalog = %v, want [code-reviewer]", got)
+	}
+}
+
+func slicesContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestOpenCodeReviewerVisibilityPreservesPermissions(t *testing.T) {
+	opencode, err := LoadMapping(filepath.Join("..", "..", "adapters", "opencode.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPerms := map[string]string{
+		"plan-reviewer": "permissions:\n  - action: \"edit\"\n    resource: \"*\"\n    effect: \"deny\"\n  - action: \"shell\"\n    resource: \"*\"\n    effect: \"allow\"\n",
+		"code-reviewer": "permissions:\n  - action: \"edit\"\n    resource: \"*\"\n    effect: \"deny\"\n  - action: \"shell\"\n    resource: \"*\"\n    effect: \"allow\"\n  - action: \"subagent\"\n    resource: \"*\"\n    effect: \"deny\"\n  - action: \"webfetch\"\n    resource: \"*\"\n    effect: \"deny\"\n  - action: \"websearch\"\n    resource: \"*\"\n    effect: \"deny\"\n",
+	}
+	for id, perms := range wantPerms {
+		d, err := agent.ParseFile(filepath.Join("..", "..", "agents", id+".md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d.Fabric.Visibility != "hidden" {
+			t.Fatalf("canonical %s visibility = %q", id, d.Fabric.Visibility)
+		}
+		body, _, _, err := Render("opencode", d, opencode, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(body, "hidden: false\n") {
+			t.Fatalf("NR2-planner-discovers: %s still hidden from OpenCode 2.3.0 catalog", id)
+		}
+		_, _, model, _ := parseOpenCodeFront(body)
+		if model != "openai/gpt-6.1-sol#high" {
+			t.Fatalf("NR2-reviewer-restrictions: %s model = %q", id, model)
+		}
+		if !strings.Contains(body, perms) || strings.Contains(body, "effect: \"ask\"") {
+			t.Fatalf("NR2-reviewer-restrictions: %s permissions changed:\n%s", id, body)
+		}
+	}
+	hiddenIDs := []string{"plan-reviewer", "code-reviewer", "report-reviewer", "qa-runner", "expert-debugger"}
+	for _, id := range hiddenIDs[2:] {
+		d, err := agent.ParseFile(filepath.Join("..", "..", "agents", id+".md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _, _, err := Render("opencode", d, opencode, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(body, "hidden: true\n") {
+			t.Fatalf("NR2-other-hidden-targets: OpenCode unhid %s", id)
+		}
+	}
+	for _, target := range []string{"kilo", "antigravity", "claude", "pi", "codex"} {
+		mapping, err := LoadMapping(filepath.Join("..", "..", "adapters", target+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range hiddenIDs {
+			d, err := agent.ParseFile(filepath.Join("..", "..", "agents", id+".md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d.Fabric.Visibility != "hidden" {
+				t.Fatalf("canonical %s visibility changed", id)
+			}
+			body, _, _, err := Render(target, d, mapping, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(body, "hidden: false") {
+				t.Fatalf("NR2-other-hidden-targets: %s emitted OpenCode hidden override for %s", target, id)
+			}
+			if target != "pi" && target != "codex" && !strings.Contains(body, "visibility: \"hidden\"") {
+				t.Fatalf("NR2-other-hidden-targets: %s lost canonical hidden visibility for %s", target, id)
+			}
+		}
 	}
 }

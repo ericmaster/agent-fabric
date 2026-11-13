@@ -3,7 +3,7 @@ title: "Spec: Agent Fabric core CLI, schema, adapters, and packaging"
 type: spec
 status: active
 covers: cmd/agent-fabric/, internal/agent/, internal/adapter/, internal/manifest/, extensions/pi/, scripts/
-last_checked: 2026-10-30
+last_checked: 2026-11-13
 ---
 
 # Agent Fabric Specification
@@ -45,9 +45,17 @@ override owned only by the global manifest, never creating or modifying a
 project-local hub file. Exact-agent overrides for non-OpenCode targets are rejected
 rather than applied inconsistently.
 
-OpenCode targets the V2 agent contract (verified against 2.0.30): model effort is
+OpenCode targets the V2 agent contract (schema verified against 2.0.30): model effort is
 encoded as `provider/model#variant` (an explicit variant in model wins), visibility
-becomes `hidden`, and permissions are ordered `{action,resource,effect}` rules.
+becomes boolean `hidden`, and permissions are ordered `{action,resource,effect}` rules.
+OpenCode 2.3.0 subagent discovery (`packages/core/src/tool/plugin/subagent.ts` at tag
+v2.3.0) lists an agent only when `mode !== "primary" && !hidden && Permission.evaluate("subagent", agent.id, caller.permissions).effect !== "deny"`.
+`hidden` is a catalog filter, not an autocomplete-only flag. Canonical `visibility: hidden`
+remains authoritative for every other target and for agents that must stay out of that
+catalog. The OpenCode renderer emits `hidden: false` only for `plan-reviewer` and
+`code-reviewer`, so a caller that already allows them can discover both, while
+implementor's destination cap still admits only `code-reviewer`. This exception does
+not change permissions, models, canonical visibility, or any other harness.
 Portable bash/task map to shell/subagent; network covers webfetch/websearch only,
 not shell/MCP egress or an OS sandbox. Omit legacy variant/sandbox/visibility/
 isolation/permission/tools/hooks frontmatter; resolved hook commands remain in the

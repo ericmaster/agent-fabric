@@ -11,7 +11,13 @@ Do not restart live sessions to test new agent definitions.
 ## Native contract
 
 Fabric's OpenCode renderer targets V2: `model: provider/model#variant`, boolean
-`hidden`, and ordered `permissions` with action/resource/effect. Portable bash/task
+`hidden`, and ordered `permissions` with action/resource/effect. At tag v2.3.0,
+subagent discovery lists an agent only when `mode !== "primary" && !hidden &&`
+the caller's `subagent` permission effect is not `deny`. That `hidden` flag is a
+catalog filter, not an autocomplete-only hint from mixed V1 docs. The renderer
+therefore emits `hidden: false` only for `plan-reviewer` and `code-reviewer`;
+other hidden agents and every other harness stay on canonical visibility.
+Contract: [`docs/specs/agent-fabric.md`](../specs/agent-fabric.md). Portable bash/task
 become shell/subagent. Tool allowlists become permission rules; role denies survive.
 Network-deny covers webfetch/websearch, not OS egress or arbitrary MCP services.
 This is not an OS sandbox. Other harnesses retain their own rendering.
@@ -79,7 +85,7 @@ applies when the host permits it.
 ## Authoritative references (2.0.30)
 
 - [Agent schema](https://github.com/anomalyco/opencode/blob/v2.0.30/services/www/src/docs/content/agents.mdx)
-- [Native subagent lifecycle](https://github.com/anomalyco/opencode/blob/v2.0.30/packages/core/src/tool/plugin/subagent.ts)
+- [Native subagent lifecycle](https://github.com/anomalyco/opencode/blob/v2.0.30/packages/core/src/tool/plugin/subagent.ts); catalog predicate verified at [v2.3.0](https://github.com/anomalyco/opencode/blob/v2.3.0/packages/core/src/tool/plugin/subagent.ts)
 - [V1→V2 plugins](https://github.com/anomalyco/opencode/blob/v2.0.30/services/www/src/docs/content/build/plugins/migrate-v1.mdx)
 
 Current Context7 results mix V1 and V2 documentation. Use them for discovery, then

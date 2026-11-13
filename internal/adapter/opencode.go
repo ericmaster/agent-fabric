@@ -86,8 +86,12 @@ func openCodeMarkdown(d agent.Definition, p Profile) string {
 	if effort == "" {
 		effort = d.Fabric.Effort
 	}
+	// OpenCode 2.3.0 lists a subagent only when mode !== "primary" && !hidden
+	// && the caller's subagent permission is not deny. Canonical visibility
+	// stays hidden; only these two must be discoverable on this target.
+	hidden := d.Fabric.Visibility == "hidden" && d.ID != "plan-reviewer" && d.ID != "code-reviewer"
 	fmt.Fprintf(&b, "---\ndescription: %q\nmode: %s\nmodel: %q\nhidden: %t\n",
-		d.Description, d.Mode, openCodeModel(p.Model, effort), d.Fabric.Visibility == "hidden")
+		d.Description, d.Mode, openCodeModel(p.Model, effort), hidden)
 	if rules := openCodePermissionRules(permissions(d, p), p.Tools); rules != "" {
 		b.WriteString("permissions:\n" + rules)
 		// Scope this role's new capability after profile/tool allows, without
