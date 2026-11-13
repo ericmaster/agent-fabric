@@ -21,6 +21,7 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ### Added
 
+- `huitl` skill (`skills/huitl/SKILL.md`): model-invoked Human Understanding In The Loop certification via grounded Q&A, strict LLM judging, clarification loop to 100% or decline, and gitignored certificate output under `.agents/reports/huitl/`.
 - `agent-fabric route`: advisory difficulty router (easy → implementor; complex → planner), with explicit override/escalation and no dispatch or automatic retry. Contract: [`docs/specs/difficulty-router.md`](docs/specs/difficulty-router.md).
 
 ## [0.3.0] - 2026-10-31

@@ -182,6 +182,7 @@ class ReleaseAndBootstrapFixtureTests(FixtureBase):
         self.assertIn("skills/harness-review/scripts/install_context.py", names)
         self.assertIn("skills/harness-review/references/pichamber.md", names)
         self.assertIn("skills/harness-review/references/activation.md", names)
+        self.assertIn("skills/huitl/SKILL.md", names)
         self.assertIn("skills/task-review/SKILL.md", names)
         self.assertNotIn("skills/task-review/scripts/audit.py", names)
         self.assertIn("extensions/pi/index.ts", names)

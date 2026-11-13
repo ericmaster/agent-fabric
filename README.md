@@ -228,6 +228,15 @@ agent reports and dispatch receipts are not proof of successful delivery.
 See the [runbook](docs/runbooks/task-retrospective.md) for audit and old-hook
 removal, and the [contract](docs/specs/task-retrospective.md) for safety boundaries.
 
+## HUITL
+
+After a non-trivial implementation is ready to close or a non-trivial plan is
+presented for acceptance, invoke [`huitl`](skills/huitl/SKILL.md) to verify
+human understanding rather than code correctness. The agent asks 3–5 questions
+grounded in the diff or plan, scores answers with a strict judge pass, clarifies
+gaps until 100% understanding or explicit decline, and writes a certificate under
+`.agents/reports/huitl/`. Trivial edits and pure docs-only changes are skipped unless HUITL is explicitly requested.
+
 ## Release And Maintainer Checks
 
 ```sh

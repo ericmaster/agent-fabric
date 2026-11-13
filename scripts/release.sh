@@ -16,6 +16,8 @@ for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; d
   tar -C "$root" --exclude=hooks/retrospective -cf - agents adapters hooks assets | tar -C "$work" -xf -
   mkdir -p "$work/skills"
   cp -R "$root/skills/harness-review" "$work/skills/harness-review"
+  mkdir -p "$work/skills/huitl"
+  cp "$root/skills/huitl/SKILL.md" "$work/skills/huitl/"
   mkdir -p "$work/skills/task-review"
   cp "$root/skills/task-review/SKILL.md" "$work/skills/task-review/"
   mkdir -p "$work/extensions/pi" "$work/extensions/opencode"
