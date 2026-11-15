@@ -256,6 +256,28 @@ uses `external_block`; PASS uses `none`. Exhaustion alone never means BLOCKED.
 
 ### Planning readiness
 
+#### Objective-bounded MVP phases
+
+Planner and plan-reviewer anchor every decision to the observable objective.
+Additional complexity in a plan that already meets it is out of scope: propose it
+in the existing backlog home, or existing plan detail when no backlog home is
+available; no remote ticket creation without specific authority. Necessary security
+gaps must be reviewed and resolved, never deferred because this is an MVP.
+
+Every phase is an implementable and E2E-evaluable MVP estimated at <=1 hour,
+including mandatory tests and review. Existing phase detail names the useful
+outcome, evaluation path and sizing rationale. This is a sizing gate, not a time
+guarantee. Split oversized or uncertain phases before acceptance or execution;
+retain required safety/tests and useful vertical results, not horizontal-only work.
+Keep the grill: every interview/design/review iteration reapplies these criteria
+and the readiness rules below, preserving prior decisions and evidence. Reopen a
+closed decision only with new evidence identifying that decision.
+
+Token/secret creation requiring human intervention is a separate phase with a
+named actor, verifiable nonsecret availability/permission output and dependent
+consumers. Consumers stay non-ready until that output is verified. This does not
+classify safe delegable setup automatically as `human_pull`.
+
 Planner checks discoverable prerequisites before readiness classification; plan-reviewer
 independently verifies the evidence and requires correction of unsupported ready labels.
 Use the installed pre-plan schema's existing vocabulary, without adding states or fields.
@@ -434,6 +456,20 @@ Automatic continuations cannot turn waiting or a hard cap into new work. A soft
 episode ending transfers recovery to the delivery owner, not to the user's inbox.
 
 ## Delivery ownership and checkout closure
+
+### Unfinished-stop status
+
+Before any blocked or otherwise unfinished stop, the task owner creates or updates
+a simple status HTML through the `with-artifact` skill's storage, registration and
+viewer contract. It states implemented work, pending work, the clear reason for the
+stop and a recommendation. Reference phase IDs when a plan exists; without a plan,
+describe the task without inventing phases. Reuse the same artifact ID and file
+on updates. Never include secrets or claim PASS for unrun/failed checks.
+Read-only reviewers and parent-owned workers return facts to that owner rather
+than writing a competing artifact or exceeding permissions. If safe storage or
+viewer access is impossible, report the actual impediment and delivery pending;
+never invent a link or publish unsafely. This obligation grants no new publication
+authority. Templates and viewer mechanics belong to `with-artifact`, not each agent.
 
 Plan and deploy supervisors own delivery, not merely dispatch or a local PASS.
 They and implementor use mode `all` for native delegation and direct use; legacy

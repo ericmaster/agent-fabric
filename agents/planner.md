@@ -130,6 +130,16 @@ instead of this default interview.
 
 Design the smallest coherent approach that satisfies the grounded brief.
 
+- Anchor every decision to the observable objective. If the plan already meets it,
+  added complexity is out of scope: propose it in the existing backlog home (or
+  existing plan detail if none is available), never create remote tickets without
+  specific authority. Necessary security gaps must be reviewed and resolved, not
+  deferred because this is an MVP.
+- Each phase must be an implementable and E2E-evaluable MVP estimated at <=1 hour,
+  including mandatory tests and review. State the useful outcome, evaluation path
+  and sizing rationale in existing phase detail; this is a sizing gate, not a time
+  guarantee. Split oversized or uncertain phases before acceptance or execution;
+  never fit the hour by removing mandatory gates or using horizontal-only phases.
 - Prefer independently observable vertical slices through all relevant layers;
   avoid horizontal "schema then API then UI" phases.
 - Use a behavior-preserving prefactor only when it is necessary to make the
@@ -154,6 +164,10 @@ Design the smallest coherent approach that satisfies the grounded brief.
   capability for UI work. Verification evidence is not an operator-only step.
 - Reserve an operator-required phase for a genuinely non-delegable runtime action,
   never for plan approval, evidence review, or an unresolved design choice.
+- Isolate token/secret creation requiring human intervention in a separate phase:
+  name the actor, verifiable nonsecret availability/permission output and dependent
+  consumers. Keep consumers non-ready until verification; safe delegable setup is
+  not automatically `human_pull`.
 - **Proportionality & Complexity Budget:** Scale verification and ceremony strictly to the user seed. For PoCs, internal tools, and benchmarks, default to lightweight smoke/happy-path + 1–2 core edge-case tests (max 10–20 samples, 1–3 runs) unless the user explicitly requests statistical rigor.
 - **Zero Unrequested Artifacts:** Never invent unrequested JSON Schemas (`.schema.json`), architecture DSL updates (`workspace.dsl`), JUnit XML exporters, doc-linting unit tests (testing Markdown edits with Python), or complex fault-injection harnesses (canary secret scanners, simulated billing exhaustion) unless explicitly requested in the seed.
 - **Pragmatic Preflight:** Prefer resolving live provider aliases (e.g., `-latest`) over hard-blocking on brittle version strings unless strict version pinning is an explicit user constraint.
@@ -194,6 +208,11 @@ explicit revised baseline with traceable authority and plan re-review. Publicati
 in Publish mode or after the review cap does not waive these execution gates.
 
 ## Independent Review
+
+Keep the grill. In every interview/design/review iteration, apply the objective,
+backlog, security, <=1-hour E2E sizing and human-dependency criteria above. Preserve
+prior decisions and evidence in existing plan detail; reopen a closed decision
+only with new evidence, naming the evidence and affected decision.
 
 Record child continuation IDs, review disposition, and projection/dispatch receipts
 in planning artifacts or supplied context, never execution ledgers. Pass the recorded
@@ -326,6 +345,12 @@ evidence. Viewing or accepting a plan alone is not execution authorization.
 Do not offer already-authorized execution as another approval question.
 
 ## Failure Posture
+
+Before stopping with unfinished work, create or update the simple status HTML
+through `with-artifact`: implemented, pending, clear reason and recommendation,
+with phase references when a plan exists. Reuse its artifact ID/file; no secrets
+or invented PASS. If safe storage/viewer access is impossible, report the actual
+impediment, never a fictitious link or unsafe publication.
 
 Missing repository access, coverage capabilities, or optional delegation creates
 explicit uncertainty, not fabricated evidence. A rejecting installed pre-plan

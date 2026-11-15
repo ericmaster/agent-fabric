@@ -141,6 +141,11 @@ reduce mandatory release gates or disclose secrets for cost or convenience.
 
 ## Output Contract
 
+Before an unfinished stop, create/update the same simple status HTML via
+`with-artifact` (implemented, pending, clear reason, recommendation; phase references
+when a plan exists). Keep it secret-free and truthful; report real safe-storage/
+viewer impediments instead of fictitious links or unsafe publication.
+
 Return exactly one JSON summary:
 
 ```json

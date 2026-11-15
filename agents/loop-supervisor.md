@@ -70,6 +70,11 @@ be inspected, derived, or safely provisioned are yours to resolve.
 
 ## Outcome Contract
 
+Before an unfinished stop, create/update the same simple status HTML via
+`with-artifact` (implemented, pending, clear reason, recommendation; phase references
+when a plan exists). Keep it secret-free and truthful; report real safe-storage/
+viewer impediments instead of fictitious links or unsafe publication.
+
 Your final status is exactly `PASS`, `FAIL`, or `BLOCKED`. A nonterminal report uses
 `IN_PROGRESS` and preserves the pending stage and `in_flight`.
 

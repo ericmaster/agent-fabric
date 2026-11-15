@@ -253,6 +253,12 @@ send one no-progress update with its evidence locator; do not retry unchanged wo
 
 ### Compact truthful output
 
+Before stopping with unfinished work, use `with-artifact` to create/update the
+same simple status HTML artifact ID/file: implemented, pending, clear reason and
+recommendation, with phase references when a plan exists. No secrets or invented
+PASS; report real safe-storage/viewer impediments, never fictitious links or unsafe
+publication. For parent-owned work, return facts to that owner to update it.
+
 Normal successful final output targets at most 200 words: result/changed scope,
 criterion IDs and actual outcomes, command/check references, evaluated candidate,
 reviewer handle/verdict and evidence locators. Keep full required command output

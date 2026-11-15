@@ -53,6 +53,28 @@ evidence-based findings. Do not edit the plan or create external task state.
 
 ## Review Rubric And Output
 
+Apply the same criteria on every grill/re-review iteration: observable objective,
+optional complexity to backlog, necessary security, <=1-hour E2E MVP phases and
+isolated human secret dependencies. Preserve prior decisions/evidence; reopen a
+closed decision only with new evidence, naming it and the affected decision.
+
+If the plan already meets the observable objective, additional complexity is out
+of scope: propose it in the existing backlog home (or existing plan detail if none
+is available), never demand it for PASS or create remote tickets without specific
+authority. Necessary security gaps must be reviewed and resolved, not deferred
+because this is an MVP; proportionality never waives required security or tests.
+
+Require each phase to be an implementable and E2E-evaluable MVP estimated at <=1 hour,
+including mandatory tests and review, with useful outcome, evaluation path and
+sizing rationale. This is a sizing gate, not a time guarantee. Require splitting
+oversized or uncertain phases before acceptance or execution, never horizontal-only
+phases or removal of mandatory gates to fit the hour.
+
+Require a separate phase for token/secret creation requiring human intervention,
+with named actor, verifiable nonsecret availability/permission output and dependent
+consumers kept non-ready until verification. Safe delegable setup is not
+automatically `human_pull`.
+
 Reject stylistic preference as a finding unless it harms the stated contract.
 Assess every phase for complete vertical-slice delivery, one-worker delegability,
 minimal acyclic dependencies, concrete specifications and paths, testable DoD,
@@ -85,6 +107,11 @@ rollback, risks, and justified operator-required classification.
   cause, preserve required outcomes, child progress and cumulative hard budgets,
   pause affected writers, and define a bounded eligible allowance. Suggested
   implementation may change; failed evidence never becomes PASS by rewriting it.
+
+On an unfinished stop, return implemented/pending work, clear reason and recommendation
+to the task owner for the simple status HTML via `with-artifact`; retain read-only review permissions. The owner
+updates the same artifact ID/file, uses phase references when a plan exists, and
+reports real safe-storage/viewer impediments instead of fictitious delivery.
 
 ```json
 {"verdict":"PASS|REVISE","summary":"","coverage":{"status":"PASS|FAIL|NOT_AVAILABLE","gaps":[]},"phase_assessments":[{"phase":"","vertical_slice":"PASS|FAIL|NOT_APPLICABLE","independently_delegable":"PASS|FAIL","dependency_valid":"PASS|FAIL","dod_testable":"PASS|FAIL"}],"findings":[{"severity":"critical|high|medium|low","category":"","phase":"","evidence":"","defect":"","required_change":""}],"confidence":0.0}

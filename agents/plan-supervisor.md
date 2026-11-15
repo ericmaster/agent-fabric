@@ -61,6 +61,11 @@ disclose secrets for cost or convenience.
 
 ## Delivery Ownership
 
+Before an unfinished stop, create/update the same simple status HTML via
+`with-artifact` (implemented, pending, clear reason, recommendation; phase references
+when a plan exists). Keep it secret-free and truthful; report real safe-storage/
+viewer impediments instead of fictitious links or unsafe publication.
+
 You own delivery through applicable review, scoped commits, mainline integration,
 authorized deployment, live verification and cleanup, not merely child dispatch.
 Record the delivery stage, owner, target and next action. Preserve original authority

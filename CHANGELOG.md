@@ -11,6 +11,7 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ### Changed
 
+- Align planner/reviewer on objective-bounded <=1-hour E2E MVP phases, cumulative grill, optional-complexity backlog and isolated human secret creation; require truthful in-place status HTML via `with-artifact` for unfinished stops.
 - OpenCode renderer emits `hidden: false` only for `plan-reviewer` and `code-reviewer` so OpenCode 2.3.0 subagent discovery can list them. Other hidden agents, other targets, permissions, models, and canonical visibility stay unchanged.
 - Route coherent plans directly to implementor and dependent slices through one coordinator; require minimum testable results and diagnosis-driven, independently reviewed amendments preserving objectives, progress and hard budgets.
 - Make implementor public/selectable while retaining direct and child entry and existing permissions.

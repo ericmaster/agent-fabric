@@ -53,6 +53,56 @@ func TestRenderTargets(t *testing.T) {
 	}
 }
 
+// Spec: docs/specs/supervision-and-delivery.md — Objective-bounded MVP phases,
+// Unfinished-stop status. These check shipped instructions, not model compliance.
+func TestMVPPlanningAndStatusRendering(t *testing.T) {
+	scenarios := map[string][]string{
+		"short-e2e-phase":       {"implementable and E2E-evaluable MVP estimated at <=1 hour", "including mandatory tests and review", "sizing gate, not a time guarantee"},
+		"oversized-phase":       {"before acceptance or execution", "horizontal-only phases"},
+		"optional-improvement":  {"existing backlog home", "existing plan detail if none", "remote tickets without specific authority"},
+		"necessary-security":    {"Necessary security gaps must be reviewed and resolved, not deferred because this is an MVP"},
+		"human-secret-isolated": {"separate phase", "human intervention", "verifiable nonsecret availability/permission output", "dependent consumers", "non-ready until verification", "not automatically `human_pull`"},
+		"cumulative-grill":      {"prior decisions", "evidence", "closed decision only with new evidence"},
+	}
+	for _, target := range []string{"opencode", "antigravity", "claude", "codex", "pi"} {
+		mapping, err := LoadMapping(filepath.Join("..", "..", "adapters", target+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range []string{"planner", "plan-reviewer", "implementor", "plan-supervisor", "loop-supervisor", "deploy-supervisor", "bug-fixer"} {
+			d, err := agent.ParseFile(filepath.Join("..", "..", "agents", id+".md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			rendered, _, _, err := Render(target, d, mapping, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Codex quotes its developer_instructions as one TOML string.
+			rendered = strings.ReplaceAll(rendered, `\n`, " ")
+			body := strings.Join(strings.Fields(rendered), " ")
+			t.Run(target+"/"+id, func(t *testing.T) {
+				if id == "planner" || id == "plan-reviewer" {
+					for name, wants := range scenarios {
+						t.Run(name, func(t *testing.T) {
+							for _, want := range wants {
+								if !strings.Contains(body, want) {
+									t.Errorf("missing instruction %q", want)
+								}
+							}
+						})
+					}
+				}
+				for _, want := range []string{"with-artifact", "status HTML", "phase references when a plan exists", "reason", "recommendation", "viewer", "fictitious"} {
+					if !strings.Contains(body, want) {
+						t.Errorf("unfinished stop with/without plan missing %q", want)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestRenderAntigravityProjectPathUsesWorkspaceAgentDirectory(t *testing.T) {
 	d := agent.Definition{ID: "planner", Description: "Planner", Mode: "primary", Body: "plan\n", Fabric: agent.Fabric{Profile: "planner"}}
 	m := Mapping{Profiles: map[string]Profile{"planner": {Model: "gemini/test"}}}
