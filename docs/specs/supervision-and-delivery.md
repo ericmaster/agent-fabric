@@ -269,9 +269,9 @@ including mandatory tests and review. Existing phase detail names the useful
 outcome, evaluation path and sizing rationale. This is a sizing gate, not a time
 guarantee. Split oversized or uncertain phases before acceptance or execution;
 retain required safety/tests and useful vertical results, not horizontal-only work.
-Keep the grill: every interview/design/review iteration reapplies these criteria
-and the readiness rules below, preserving prior decisions and evidence. Reopen a
-closed decision only with new evidence identifying that decision.
+Apply these criteria and readiness rules initially; re-review unresolved findings,
+changed scope and delta-induced regressions, reusing unchanged evidence. Preserve
+prior decisions; reopen a closed decision only with new evidence identifying it.
 
 Token/secret creation requiring human intervention is a separate phase with a
 named actor, verifiable nonsecret availability/permission output and dependent

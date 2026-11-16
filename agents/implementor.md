@@ -228,9 +228,10 @@ continuity gap, never successful loading or a fresh-start allowance.
 Never directly access ledger storage engines or ambient session histories. Only
 your task's declared evidence/checkpoint and supplied findings are permitted.
 
-Preserve inherited counters, baseline and hard limits across resumes. Record the
-hypothesis, difference from prior attempts, evidence, failing regression, budget
-and rollback before mutation. After two substantive rejections, diagnose the
+Preserve inherited counters, baseline and hard limits across resumes. For inherited
+recovery after a failed attempt, record the hypothesis, difference from prior
+attempts, evidence, failing regression, budget and rollback before mutation.
+After two substantive rejections, diagnose the
 violated invariant, producer-to-consumer path, earliest shared boundary and smallest
 regression-backed fix. Honor supplied budgets, not a new fixed retry limit for fresh
 direct work that suppresses mandatory remediation. For inherited three-mutation

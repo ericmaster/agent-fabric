@@ -209,10 +209,10 @@ in Publish mode or after the review cap does not waive these execution gates.
 
 ## Independent Review
 
-Keep the grill. In every interview/design/review iteration, apply the objective,
-backlog, security, <=1-hour E2E sizing and human-dependency criteria above. Preserve
-prior decisions and evidence in existing plan detail; reopen a closed decision
-only with new evidence, naming the evidence and affected decision.
+Apply the design criteria above initially. On re-review, check unresolved findings,
+changed scope and regressions caused by the delta, reusing unchanged evidence.
+Preserve prior decisions in existing plan detail; reopen a closed decision only
+with new evidence, naming the evidence and affected decision.
 
 Record child continuation IDs, review disposition, and projection/dispatch receipts
 in planning artifacts or supplied context, never execution ledgers. Pass the recorded

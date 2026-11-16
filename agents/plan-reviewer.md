@@ -53,10 +53,10 @@ evidence-based findings. Do not edit the plan or create external task state.
 
 ## Review Rubric And Output
 
-Apply the same criteria on every grill/re-review iteration: observable objective,
-optional complexity to backlog, necessary security, <=1-hour E2E MVP phases and
-isolated human secret dependencies. Preserve prior decisions/evidence; reopen a
-closed decision only with new evidence, naming it and the affected decision.
+Apply the rubric below initially. On re-review, check unresolved findings, changed
+scope and regressions caused by the delta, reusing unchanged evidence. Preserve
+prior decisions; reopen a closed decision only with new evidence, naming it and
+the affected decision.
 
 If the plan already meets the observable objective, additional complexity is out
 of scope: propose it in the existing backlog home (or existing plan detail if none
