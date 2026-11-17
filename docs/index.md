@@ -41,6 +41,7 @@ document's home is ambiguous, and apply the frontmatter from §4.
 - [`specs/supervision-and-delivery.md`](specs/supervision-and-delivery.md) — Autonomous execution authority, bounded episodes, delivery ownership, native asynchronous orchestration, phase closure, and bug intake orchestrator.
 - [`specs/supervision-ledger-and-qa.md`](specs/supervision-ledger-and-qa.md) — Deterministic supervision support (`support.py`), discretionary QA and startup contracts, and supervisor ledger hook (`record-ledger.py`), continuity, and curation firewall.
 - [`specs/task-retrospective.md`](specs/task-retrospective.md) — Harness review: supervisor–worker investigation, verified blockers, scoped correction and one audit per engine.
+  Human walkthrough: [Harness review — architecture & workflow](https://artifacts.nimblersoft.com/project/agent-fabric/artifact/harness-review-guide) (explanatory, not a plan).
 - [`specs/retrospective-monitor.md`](specs/retrospective-monitor.md) — Opt-in native session observer (`monitor.py`) and spool retention contract.
 
 ## Runbooks

@@ -7,6 +7,7 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ### Removed
 
+- Retire the temporary retrospective implementation-plan artifact; replace it with a current-state harness-review architecture/workflow guide. Projektor remains the plan SSOT.
 - Remove the retrospective decisions artifact; retain its condensed historical decision in Projektor and keep future task-plan updates and decision comments there.
 - Withdraw unreleased optional fail-open Decide screening from `guard check`. `op: "screen"` and request fields `text`, `assessment`, and `model` are invalid. Historical screening environment names do not configure a model client. Deterministic shell and read checks are unchanged.
 

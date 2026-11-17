@@ -22,18 +22,21 @@
       "updatedAt": "2026-11-12T08:19:18.230Z"
     },
     {
-      "id": "agent-fabric-task-retrospective-implementation-plan",
-      "title": "Agent Fabric — Task Retrospective Implementation Plan",
-      "type": "markdown",
-      "file": "plan-task-retrospective.md",
-      "description": "Approved three-phase plan for success-gated Jev retrospectives and visible automatic instruction correction; Claude adapter deferred",
+      "id": "harness-review-guide",
+      "title": "Harness review — architecture & workflow",
+      "type": "html",
+      "file": "harness-review-guide.html",
+      "description": "Current harness-review roles, bounded workflow, correction gates and evidence boundaries; explanatory only, not a plan.",
       "tags": [
-        "planning",
+        "architecture",
+        "harness-review",
         "agents",
-        "retrospective"
+        "retrospective",
+        "tailwind",
+        "mermaid"
       ],
-      "createdAt": "2026-09-30T11:54:28.624Z",
-      "updatedAt": "2026-09-30T11:54:28.624Z"
+      "createdAt": "2026-11-17T10:48:29.000Z",
+      "updatedAt": "2026-11-17T10:48:29.000Z"
     }
   ]
 }

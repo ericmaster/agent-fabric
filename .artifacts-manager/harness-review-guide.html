@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Harness review — architecture &amp; workflow</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <style>
+    body{margin:0;background:#090d16;color:#e2e8f0;font:1rem/1.65 system-ui,sans-serif}
+    .hr-guide{max-width:1080px;margin:auto;padding:24px;overflow-wrap:anywhere}
+    .hr-guide h1,.hr-guide h2,.hr-guide h3{line-height:1.25}
+    .hr-guide h1{font-size:clamp(1.9rem,5vw,3rem);font-weight:700}
+    .hr-guide h2{font-size:1.35rem;font-weight:650;margin:0 0 14px}
+    .hr-guide h3{font-size:1rem;font-weight:650;color:#a5b4fc;margin:0 0 6px}
+    .hr-guide p{margin:0 0 12px}
+    .hr-guide a{color:#67e8f9;text-decoration:underline;text-underline-offset:3px}
+    .hr-guide code{font-size:.88em}
+    .hr-guide .hr-surface{background:#131b2e;border:1px solid #273249;border-radius:14px;padding:22px}
+    .hr-guide .hr-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:24px 0 18px}
+    .hr-guide .hr-tabs button{border:1px solid #334155;border-radius:8px;padding:9px 16px;background:#131b2e;color:#cbd5e1;cursor:pointer;font:inherit}
+    .hr-guide .hr-tabs button[aria-selected=true]{background:#312e81;border-color:#818cf8;color:#fff}
+    .hr-guide :focus-visible{outline:3px solid #67e8f9;outline-offset:4px}
+    .hr-guide .hr-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+    .hr-guide .hr-grid>*{min-width:0}
+    .hr-guide .hr-steps{padding-left:24px;margin:0}
+    .hr-guide .hr-steps li{padding-left:6px;margin-bottom:20px}
+    .hr-guide .hr-steps li:last-child{margin-bottom:0}
+    .hr-guide .hr-scroll{overflow:auto;max-width:100%;max-height:560px;scrollbar-width:auto;border-radius:8px;background:#090d16;padding:12px}
+    .hr-guide .mermaid{margin:0;font-size:.8rem;white-space:pre}
+    .hr-guide .mermaid svg{display:block;width:auto!important;height:auto!important;max-width:none!important}
+    .hr-guide [data-mermaid-state=error]{white-space:pre-wrap;color:#fda4af}
+    .hr-guide [hidden]{display:none!important}
+    .hr-guide details{margin-top:16px}
+    .hr-guide summary{cursor:pointer;color:#a5b4fc;font-weight:600}
+    .hr-guide footer{color:#94a3b8;font-size:.85rem;margin-top:24px}
+    @media(max-width:640px){.hr-guide{padding:16px}.hr-guide .hr-grid{grid-template-columns:1fr}.hr-guide .hr-surface{padding:16px}}
+  </style>
+</head>
+<body>
+<main class="hr-guide">
+  <header>
+    <p class="text-sm uppercase tracking-widest text-cyan-300">Agent Fabric · current-state explainer</p>
+    <h1>Improve the harness.<br><span class="text-indigo-300">Do not re-review the task.</span></h1>
+    <p class="mt-4 max-w-3xl text-slate-300">Harness review is a bounded retrospective on <strong>how an agent worked</strong>: repeated tool errors, stalls, orchestration mistakes or misleading context. It is not business-task acceptance, a continuous monitor or a new execution service.</p>
+    <p class="text-sm text-slate-400">Reading guide, not policy or a plan. Canonical sources govern behavior; Projektor owns plans, plan amendments and task decisions.</p>
+  </header>
+  <nav class="hr-tabs" role="tablist" aria-label="Guide sections">
+    <button role="tab" id="tab-architecture" aria-controls="architecture" aria-selected="true" tabindex="0">Architecture</button>
+    <button role="tab" id="tab-workflow" aria-controls="workflow" aria-selected="false" tabindex="-1">Workflow</button>
+    <button role="tab" id="tab-boundaries" aria-controls="boundaries" aria-selected="false" tabindex="-1">Evidence &amp; boundaries</button>
+  </nav>
+
+  <section id="architecture" role="tabpanel" aria-labelledby="tab-architecture">
+    <div class="hr-surface">
+      <h2>One visible parent. Independent child roles.</h2>
+      <p>The task owner evaluates whether review is useful after verified task closure. When justified, it launches one fresh, visible native review session. That supervisor owns a single review episode; investigation, correction and patch review are sibling children, not a chain of supervisors.</p>
+      <div class="hr-scroll" tabindex="0" aria-label="Architecture diagram; scroll to explore">
+        <pre class="mermaid" data-mermaid-source="flowchart TB&#10;  O[Task owner at completed checkpoint] --&gt;|When justified| S[One visible review supervisor]&#10;  S --&gt; I[Read-only investigator]&#10;  S --&gt;|If authorized correction needed| W[Writer in isolated worktree]&#10;  S --&gt; P[Independent patch reviewer]&#10;  W --&gt; C[Canonical source and regression tests]&#10;  C --&gt; P&#10;  P --&gt;|Accepted patch and required checks| D[Supervisor integrates and verifies]&#10;  S --&gt; A[Private append-only audit]&#10;  D --&gt; A">flowchart TB
+  O[Task owner at completed checkpoint] -->|When justified| S[One visible review supervisor]
+  S --> I[Read-only investigator]
+  S -->|If authorized correction needed| W[Writer in isolated worktree]
+  S --> P[Independent patch reviewer]
+  W --> C[Canonical source and regression tests]
+  C --> P
+  P -->|Accepted patch and required checks| D[Supervisor integrates and verifies]
+  S --> A[Private append-only audit]
+  D --> A</pre>
+      </div>
+      <p class="mt-3 text-sm text-slate-400">The writer and patch reviewer are conditional. A supported no-change outcome ends without a patch. Child results return to the supervisor; children do not delegate or launch reviews of their own episode.</p>
+    </div>
+    <div class="hr-grid mt-4">
+      <article class="hr-surface"><h3>Existing harness, no daemon</h3><p>OpenCode/OpenChamber and Pi/PiChamber provide native sessions, history and tools. A short installed instruction pointer prompts evaluation; the full skill loads on demand. No observer, schedule, transcript-import pipeline or model switch is required.</p></article>
+      <article class="hr-surface"><h3>Three separate homes</h3><p>Git owns executable workflows, contracts and fixes. Native history plus private evidence and audit records support claims. Projektor owns task plans and concise decision comments. This page only explains those relationships.</p></article>
+    </div>
+  </section>
+
+  <section id="workflow" role="tabpanel" aria-labelledby="tab-workflow" hidden>
+    <div class="hr-surface">
+      <h2>From execution friction to a verified improvement</h2>
+      <ol class="hr-steps">
+        <li><h3>1 · Complete the original task, then evaluate</h3><p>Finish deliverables, required checks, authorized delivery, live verification and owned cleanup. Blocked, paused or phase-complete is not finished. Only an explicit early-review request overrides this gate, with the checkpoint labeled incomplete. Expected red tests and productive exploration alone do not justify review.</p></li>
+        <li><h3>2 · Route the role and preserve identity</h3><p>The top-level task owner runs the audit source preflight and checks for an existing review of the checkpoint. Reuse that review when present. Otherwise launch one visible native parent; record <code>review_requested</code>, require <code>review_started</code> before history reads, and verify prompt acceptance and visibility. A launch is not PASS.</p></li>
+        <li><h3>3 · Investigate a bounded causal window</h3><p>One read-only child examines actual original history and the guidance available at the time—not just the author's final summary. Default budget: at most <strong>two friction windows and 12 history/tool retrieval calls</strong>, including recovery. Aim for <strong>one high-impact correction, two maximum</strong>; report inspected/excluded ranges and stop when cause, owner and a safe check are established.</p></li>
+        <li><h3>4 · Correct only a demonstrated cause</h3><p>Clear guidance ignored calls for adherence, not another rule. A proven tool bug belongs in its implementation owner. An uncertain selected cause permits one bounded diagnostic child per source/issue. Supported corrections require verified authority, canonical-source edits and regression checks; no speculative cleanup.</p></li>
+        <li><h3>5 · Independently accept and deliver the patch</h3><p>A separate writer uses an isolated worktree, then returns a frozen candidate and actual test results. A different child reviews the patch. The supervisor integrates only after acceptance and required checks, rechecks target HEAD/dirty state, verifies managed installation when applicable and closes eligible owned worktrees. At most <strong>two cumulative correction starts per original source</strong>; resumes never reset the budget.</p></li>
+        <li><h3>6 · Report the bounded outcome</h3><p>Record the four checks below, coverage, real session/revision locators and delivery evidence. Summarize <em>problem → correction or justified no-change → validation</em>, with unresolved blockers explicit. Default launch is asynchronous: the source returns the review ID without polling or copying the verdict back unless requested.</p></li>
+      </ol>
+    </div>
+    <details class="hr-surface"><summary>A concrete example</summary><p class="mt-3">An agent repeatedly guesses a CLI flag despite an existing runbook. The investigator compares the failed calls with that runbook. If guidance was already clear, the outcome can be justified no-change. If the documented command is demonstrably stale, an authorized writer fixes its canonical owner, validates the real command and obtains independent patch acceptance. A new monitoring service would not address this bounded cause.</p></details>
+  </section>
+
+  <section id="boundaries" role="tabpanel" aria-labelledby="tab-boundaries" hidden>
+    <div class="hr-surface">
+      <h2>Four checks, not an exhaustive scorecard</h2>
+      <dl class="hr-grid">
+        <div><dt><h3>evidence_scope</h3></dt><dd>Selected native history establishes the cause, owner and authority—or supports a bounded no-change decision.</dd></div>
+        <div><dt><h3>improvement_actions</h3></dt><dd>Selected findings are remediated or justified as no-change. Confirmed unresolved causes are not PASS.</dd></div>
+        <div><dt><h3>verification</h3></dt><dd>Actual focused causal/regression checks support the outcome. Unrun or mocked checks remain labeled as such.</dd></div>
+        <div><dt><h3>safe_delivery</h3></dt><dd>Claimed integration, applicable managed installation and owned cleanup are verified without touching foreign work.</dd></div>
+      </dl>
+      <p class="mt-4"><strong>PASS</strong> means only the declared scope passed. Failed checks yield <strong>FIX_NEEDED</strong>; missing required evidence, capability or authority yields <strong>BLOCKED</strong>. Only verification/delivery may be not applicable, with a reason. A worker's blocker claim needs an independent supervisor probe and exact boundary before closure.</p>
+    </div>
+    <div class="hr-grid mt-4">
+      <article class="hr-surface"><h3>Audit is a receipt, not proof</h3><p><code>skills/harness-review/scripts/audit.py</code> writes private append-only engine JSONL under the user's Agent Fabric state store. OpenChamber uses the OpenCode file; PiChamber uses Pi. Keep session IDs, checks, coverage and revision locators—not raw transcripts, secrets or environments. Retain failures; recording failure stops dependent actions.</p><p>Records are agent-reported. Native history and actual command evidence must corroborate success. Counts do not prove all tasks were reviewed, autonomous model compliance or measurable savings.</p></article>
+      <article class="hr-surface"><h3>Authority stays narrow</h3><p>Carry the user's applicable maintenance authority and canonical owner into the review; task authority alone does not permit global changes. Preserve models, credentials, permissions and foreign work. Product changes need their own scope; production deployment requires explicit approval. Plan-only and report-only instructions still win.</p><p>Legacy Jev/spool/plugin tooling is compatibility-only, not the active skill's path. Do not reactivate old observers, import historical learning stores or create recursive retrospectives.</p></article>
+    </div>
+    <details class="hr-surface"><summary>What the user sees at task closure</summary><p class="mt-3">One concise decision: <strong>launched</strong> with a real ID; <strong>not needed</strong> with an evidence-based reason; <strong>deferred</strong> with the pending gate and owner; <strong>blocked</strong> with the exact boundary; <strong>opted out</strong> by explicit instruction; or <strong>covered</strong> by an existing review. No new status ledger is needed.</p></details>
+  </section>
+
+  <footer>
+    <p><strong>Canonical sources:</strong>
+      <a href="https://github.com/ericmaster/agent-fabric/blob/main/skills/harness-review/SKILL.md" target="_blank" rel="noopener noreferrer">Executable skill</a> ·
+      <a href="https://github.com/ericmaster/agent-fabric/blob/main/docs/specs/task-retrospective.md" target="_blank" rel="noopener noreferrer">Behavioral contract</a> ·
+      <a href="https://github.com/ericmaster/agent-fabric/blob/main/skills/harness-review/references/activation.md" target="_blank" rel="noopener noreferrer">Activation pointer</a> ·
+      <a href="https://github.com/ericmaster/agent-fabric/blob/main/skills/harness-review/scripts/audit.py" target="_blank" rel="noopener noreferrer">Audit implementation</a>
+    </p>
+    <p>Current-state explanation based on the canonical sources, 17 November 2026. This is neither a plan, a live monitor, an execution receipt nor authority to change a system.</p>
+  </footer>
+</main>
+<script>
+  const tabs = [...document.querySelectorAll('[role="tab"]')];
+  function activate(tab, focus = false) {
+    tabs.forEach(item => {
+      const selected = item === tab;
+      item.setAttribute('aria-selected', String(selected));
+      item.tabIndex = selected ? 0 : -1;
+      document.getElementById(item.getAttribute('aria-controls')).hidden = !selected;
+    });
+    if (focus) tab.focus();
+  }
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => activate(tab));
+    tab.addEventListener('keydown', event => {
+      const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length :
+        event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length :
+        event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+      if (next !== null) { event.preventDefault(); activate(tabs[next], true); }
+    });
+  });
+</script>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.17.1/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad:false, securityLevel:'strict', theme:'dark',
+    flowchart:{htmlLabels:false,useMaxWidth:false,wrappingWidth:240},
+    sequence:{useMaxWidth:false},class:{useMaxWidth:false},state:{useMaxWidth:false},
+    er:{useMaxWidth:false},gantt:{useMaxWidth:false} });
+  let sequence = 0;
+  for (const element of document.querySelectorAll('pre.mermaid[data-mermaid-source]')) {
+    const source = element.dataset.mermaidSource;
+    try {
+      await mermaid.parse(source);
+      const {svg,bindFunctions} = await mermaid.render(`harness-review-${++sequence}`,source);
+      element.innerHTML = svg;
+      element.dataset.mermaidState = 'rendered';
+      bindFunctions?.(element);
+    } catch (error) {
+      element.textContent = source;
+      element.dataset.mermaidState = 'error';
+      console.error('Harness review diagram failed',error);
+    }
+  }
+</script>
+</body>
+</html>
