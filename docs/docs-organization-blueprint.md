@@ -20,10 +20,8 @@ Two environments, deliberately separated:
 **Rules:**
 
 1. **Separate owners.** Canonical `agents/` and `docs/specs/` own executable behavior
-   and contracts; runbooks own command recipes. Projektor owns task plans and decisions.
-   The versioned `.artifacts-manager/agent-fabric-architecture-lifecycle.html` is the
-   [single human workflow reference](https://artifacts.nimblersoft.com/project/agent-fabric/artifact/agent-fabric-architecture-lifecycle),
-   not execution authority. Update it with workflow changes; other overviews link to it.
+   and contracts; runbooks own command recipes. See [`AGENTS.md`](../AGENTS.md)
+   for the human workflow reference and maintenance rule.
 2. **Scratch is input, never output.** An agent may *read* the scratch space to synthesize a
    document, but the synthesized result is committed to `docs/` — the scratch original is not
    the deliverable and is never linked as the canonical reference.

@@ -16,11 +16,11 @@ canonical workflows into native configurations for OpenCode, Kilo, Antigravity C
 > [`docs/docs-organization-blueprint.md`](docs/docs-organization-blueprint.md).
 > **Live Sync:** Keep this file updated with relevant code changes in the same commit.
 > **Human workflow reference:** [Agent workflow](https://artifacts.nimblersoft.com/project/agent-fabric/artifact/agent-fabric-architecture-lifecycle)
-> is the single human overview. Update `.artifacts-manager/agent-fabric-architecture-lifecycle.html`
-> and its manifest metadata in the same change as routing, role, gate, recovery,
-> delivery or post-task-review behavior changes; verify against canonical agents,
-> owning specs and affected implementation. Keep current-state only. Other human
-> entry points link here; technical contracts and specialist runbooks remain separate.
+> `.artifacts-manager/agent-fabric-architecture-lifecycle.html` is the single human overview;
+> canonical agents and specs define behavior, and Projektor owns plans and task decisions.
+> Update the artifact and manifest metadata in the same change as routing, role, gate,
+> recovery, delivery or post-task-review changes; verify against canonical sources.
+> Keep it current-state only; other human entry points link here.
 > **Context Hygiene:** Apply the `context-hygiene` skill before writing or revising any
 > documentation or spec; keep each fact in its SSOT and link instead of repeating it.
 
