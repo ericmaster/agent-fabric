@@ -19,8 +19,11 @@ Two environments, deliberately separated:
 
 **Rules:**
 
-1. **The repository is the SSOT.** `docs/` is the single source of truth for architecture,
-   decisions, contracts, and procedures. Nothing outside it is authoritative.
+1. **Separate owners.** Canonical `agents/` and `docs/specs/` own executable behavior
+   and contracts; runbooks own command recipes. Projektor owns task plans and decisions.
+   The versioned `.artifacts-manager/agent-fabric-architecture-lifecycle.html` is the
+   [single human workflow reference](https://artifacts.nimblersoft.com/project/agent-fabric/artifact/agent-fabric-architecture-lifecycle),
+   not execution authority. Update it with workflow changes; other overviews link to it.
 2. **Scratch is input, never output.** An agent may *read* the scratch space to synthesize a
    document, but the synthesized result is committed to `docs/` — the scratch original is not
    the deliverable and is never linked as the canonical reference.
@@ -34,7 +37,7 @@ Two environments, deliberately separated:
    except `CHANGELOG.md`, the release-history SSOT. Collect pending changes under `[Unreleased]`,
    preserve published release entries, and group them by actual version and release date.
    Never invent prior releases or unverified changes. Keep historical decision rationale in
-   `docs/adr/`; use Git and Plane for commit/task detail and link instead of copying history.
+   `docs/adr/`; use Git for commit detail and Projektor for task plans and decisions.
 6. **ADR lifecycle.** During unreleased work, related ADRs may be edited, merged, or squashed
    to retain the latest decision before release. Once a release is cut, published ADRs are
    historical records: preserve them and record later decisions in a new ADR with `supersedes`.

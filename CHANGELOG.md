@@ -13,6 +13,7 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ### Changed
 
+- Make the lifecycle artifact the single current human workflow reference; replace duplicate per-agent diagrams with pointers and require same-change maintenance.
 - Limit plan re-reviews to unresolved findings and changed scope/regressions; reserve pre-mutation recovery journaling for inherited failed attempts rather than fresh direct work.
 - Align planner/reviewer on objective-bounded <=1-hour E2E MVP phases, cumulative grill, optional-complexity backlog and isolated human secret creation; require truthful in-place status HTML via `with-artifact` for unfinished stops.
 - OpenCode renderer emits `hidden: false` only for `plan-reviewer` and `code-reviewer` so OpenCode 2.3.0 subagent discovery can list them. Other hidden agents, other targets, permissions, models, and canonical visibility stay unchanged.

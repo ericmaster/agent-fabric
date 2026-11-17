@@ -223,41 +223,23 @@ func TestAutonomousFlowPreservesOnlyExternalGates(t *testing.T) {
 		}
 	}
 
-	plannerArchitecture, err := os.ReadFile(filepath.Join("..", "..", "docs", "architecture", "planner.md"))
+	workflow, err := os.ReadFile(filepath.Join("..", "..", ".artifacts-manager", "agent-fabric-architecture-lifecycle.html"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	plannerArchitectureBody := string(plannerArchitecture)
+	workflowBody := string(workflow)
 	for _, anchor := range []string{
-		"Execution intent + current review PASS",
-		"plan-supervisor",
-		"orchestration rather than",
+		"Continue already-authorized work without repeated approval",
+		"execution handoff still needs current reviewer PASS",
+		"production deployment requires explicit human confirmation",
+		"separately scoped, authorized post-merge release",
 	} {
-		if !strings.Contains(plannerArchitectureBody, anchor) {
-			t.Errorf("planner architecture lost autonomous handoff %q", anchor)
+		if !strings.Contains(workflowBody, anchor) {
+			t.Errorf("human workflow reference lost authority boundary %q", anchor)
 		}
 	}
-	if strings.Contains(plannerArchitectureBody, "AUTH{Explicit approval?}") {
-		t.Error("planner architecture restored live approval gate")
-	}
-
-	deployArchitecture, err := os.ReadFile(filepath.Join("..", "..", "docs", "architecture", "deploy-supervisor.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	deployArchitectureBody := string(deployArchitecture)
-	for _, anchor := range []string{
-		"Traceable parent authority",
-		"cannot manufacture a new release objective",
-		"durable task authority",
-	} {
-		if !strings.Contains(deployArchitectureBody, anchor) {
-			t.Errorf("deploy architecture lost durable provenance %q", anchor)
-		}
-	}
-	if strings.Contains(deployArchitectureBody, "Explicit Operator\\nAuthorization Signed?") ||
-		strings.Contains(deployArchitectureBody, "human authorization") {
-		t.Error("deploy architecture restored live confirmation gate")
+	if strings.Contains(workflowBody, "AUTH{Explicit approval?}") {
+		t.Error("human workflow reference restored redundant live approval gate")
 	}
 }
 
@@ -562,51 +544,23 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 		}
 	})
 
-	t.Run("dispatcher architecture keeps direct entry separate from packet-labelled fresh edges", func(t *testing.T) {
-		tests := []struct {
-			agent   string
-			anchors []string
-		}{
-			{"planner", []string{
-				"Direct user invocation is not a fresh-child handoff, so its intake packet is optional.",
-				`FRESH -->|"intake Delegation Packet"| INTAKE`,
-				`MAP -->|"validated discovery packet"| GAPS`,
-				`WRITE -- "No · validated review packet" --> REVIEWER`,
-				`CAP -- "No · refreshed review packet" --> REVIEWER`,
-			}},
-			{"plan-supervisor", []string{
-				"Direct user invocation is not a fresh-child handoff, so its intake packet is optional.",
-				`FRESH -->|"intake Delegation Packet"| INTAKE`,
-				`BRIEF -->|"validated phase packet"| DISPATCH`,
-				`FAIL_CLASS -->|"validated recovery packet"| DIAG`,
-				`EXHAUST -- "No · refreshed phase packet" --> DISPATCH`,
-			}},
-			{"loop-supervisor", []string{
-				"Direct user invocation is not a fresh-child handoff, so its intake packet is optional.",
-				`FRESH -->|"intake Delegation Packet"| LT`,
-				`BRIEF -->|"validated implementor packet"| IMPL`,
-				`IMPL -->|"validated review packet"| REV`,
-				`QA_DECIDE -->|"run · validated QA packet"| QA`,
-				`PRESERVE -->|"validated recovery packet"| DIAG_CTX`,
-				`BUDGET -- "Yes · validated retry packet" --> IMPL`,
-			}},
-			{"bug-fixer", []string{
-				"Direct user invocation is not a fresh-child handoff, so its intake packet is optional.",
-				`BF -->|"optional validated review packet"| RR`,
-				`ART -->|"validated autonomous projection"| DEC`,
-				`GATE -- "needs-plan: validated planner packet" --> PLAN`,
-			}},
-		}
-		for _, tt := range tests {
-			t.Run(tt.agent, func(t *testing.T) {
-				architecture, err := os.ReadFile(filepath.Join("..", "..", "docs", "architecture", tt.agent+".md"))
+	t.Run("architecture entry points link to one human reference and canonical roles", func(t *testing.T) {
+		const reference = "https://artifacts.nimblersoft.com/project/agent-fabric/artifact/agent-fabric-architecture-lifecycle"
+		for _, name := range []string{
+			"planner", "plan-reviewer", "plan-supervisor", "loop-supervisor", "implementor",
+			"code-reviewer", "qa-runner", "expert-debugger", "bug-fixer", "deploy-supervisor",
+		} {
+			t.Run(name, func(t *testing.T) {
+				architecture, err := os.ReadFile(filepath.Join("..", "..", "docs", "architecture", name+".md"))
 				if err != nil {
 					t.Fatal(err)
 				}
-				for _, anchor := range tt.anchors {
-					if !strings.Contains(string(architecture), anchor) {
-						t.Errorf("%s architecture missing %q", tt.agent, anchor)
-					}
+				body := string(architecture)
+				if !strings.Contains(body, reference) || !strings.Contains(body, "../../agents/"+name+".md") {
+					t.Errorf("%s entry point must link to the human reference and canonical role", name)
+				}
+				if strings.Contains(body, "```mermaid") {
+					t.Errorf("%s entry point duplicates human workflow diagrams", name)
 				}
 			})
 		}
@@ -644,30 +598,24 @@ func TestCanonicalFreshContextDelegationContracts(t *testing.T) {
 		}
 	})
 
-	t.Run("system overview routes direct implementation and review", func(t *testing.T) {
-		overview, err := os.ReadFile(filepath.Join("..", "..", "docs", "architecture", "system-overview.md"))
+	t.Run("human reference routes direct implementation and independent review", func(t *testing.T) {
+		overview, err := os.ReadFile(filepath.Join("..", "..", ".artifacts-manager", "agent-fabric-architecture-lifecycle.html"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		body := string(overview)
 		for _, edge := range []string{
-			`IMPL -->|"validated review packet dispatch"| CREV`,
-			`CREV -->|"review result; same-session remediation"| IMPL`,
-			`IMPL -->|"evidence + original review locator"| PSUP`,
-			`PSUP -.->|"optional validated QA packet dispatch"| QAR`,
-			`QAR -->|"QA result"| PSUP`,
+			`T[Authorized task] -->|Bounded change| I[Implementor: edit and test]`,
+			`M -->|Direct| I`,
+			`M -->|Coordinated| C[One plan-supervisor]`,
+			`I --> R[Independent code reviewer]`,
+			`R -->|Fix findings| I`,
+			`R -->|ACCEPT final candidate| O{Delivery ownership}`,
+			`O -->|Coordinated slice evidence| C`,
+			`Extra QA sessions are discretionary; required runtime or visual checks are not.`,
 		} {
 			if !strings.Contains(body, edge) {
-				t.Errorf("system overview missing supervisor-owned edge %q", edge)
-			}
-		}
-		for _, line := range strings.Split(body, "\n") {
-			edge := strings.ReplaceAll(strings.TrimSpace(line), " ", "")
-			if strings.HasPrefix(edge, "IMPL-->") && strings.Contains(edge, "LSUP") {
-				t.Errorf("new tasks must not require loop-supervisor: %s", line)
-			}
-			if strings.HasPrefix(edge, "CREV-->") && strings.Contains(edge, "QAR") {
-				t.Errorf("code reviewer must return to loop supervisor, not dispatch QA: %s", line)
+				t.Errorf("human workflow reference missing route or review boundary %q", edge)
 			}
 		}
 	})
@@ -821,50 +769,6 @@ func TestSupervisorResumeHandleIsMandatory(t *testing.T) {
 		}
 	}
 
-	for _, tc := range []struct {
-		name, path string
-		wants      []string
-		forbids    []string
-	}{
-		{
-			name: "plan-supervisor architecture",
-			path: filepath.Join("..", "..", "docs", "architecture", "plan-supervisor.md"),
-			wants: []string{
-				"Resume recorded implementor",
-				"new session only on new resolving authority / approved scope identity change / unavailable recorded continuation",
-				"context length: resume or BLOCKED",
-			},
-			forbids: []string{"new session only on authority/scope/unavailable", "fresh context for context length"},
-		},
-		{
-			name: "loop-supervisor architecture",
-			path: filepath.Join("..", "..", "docs", "architecture", "loop-supervisor.md"),
-			wants: []string{
-				"Resume recorded expert-debugger session",
-				"context length: resume or BLOCKED",
-				"reuse recorded diagnosis",
-			},
-			forbids: []string{"Fresh diagnostic context", "fresh context for context length"},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			architecture, err := os.ReadFile(tc.path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			body := string(architecture)
-			for _, want := range tc.wants {
-				if !strings.Contains(body, want) {
-					t.Errorf("%s missing continuity contract %q", tc.name, want)
-				}
-			}
-			for _, forbidden := range tc.forbids {
-				if strings.Contains(body, forbidden) {
-					t.Errorf("%s still authorizes continuity loophole %q", tc.name, forbidden)
-				}
-			}
-		})
-	}
 }
 
 func TestSupervisionRecoveryContracts(t *testing.T) {
@@ -1030,25 +934,6 @@ func TestSupervisorsRecoverOverbroadPhasesByStableBaseDecomposition(t *testing.T
 		}
 	}
 
-	for _, tc := range []struct {
-		path      string
-		want      string
-		forbidden string
-	}{
-		{"loop-supervisor.md", "ATOMIC -- Yes --> SPLIT --> REPORT", "| `decompose` | Structural recovery"},
-		{"plan-supervisor.md", "AMEND -- reviewed partition --> FREEZE --> SPLIT --> AGG --> SEL", "AGG --> DEC"},
-	} {
-		body, err := os.ReadFile(filepath.Join("..", "..", "docs", "architecture", tc.path))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(string(body), tc.want) {
-			t.Errorf("%s missing state transition %q", tc.path, tc.want)
-		}
-		if strings.Contains(string(body), tc.forbidden) {
-			t.Errorf("%s retains ambiguous transition %q", tc.path, tc.forbidden)
-		}
-	}
 }
 
 func TestReviewerAndQARunnerScopeBoundaries(t *testing.T) {

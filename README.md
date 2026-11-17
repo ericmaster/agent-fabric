@@ -4,6 +4,9 @@ Agent Fabric installs twelve portable agents into OpenCode, Kilo, Antigravity CL
 Codex, Claude Code, and Pi. It copies generated files and records ownership in a
 manifest so upgrades do not overwrite user edits.
 
+[Agent workflow](https://artifacts.nimblersoft.com/project/agent-fabric/artifact/agent-fabric-architecture-lifecycle)
+is the single human guide to routing, planning, implementation, recovery and delivery.
+
 ## Requirements
 
 Linux or macOS on amd64 or arm64. The bootstrap needs `curl`, `tar`, and either

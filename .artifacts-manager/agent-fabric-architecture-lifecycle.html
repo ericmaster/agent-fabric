@@ -1,114 +1,126 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Agent workflow — Implemented simplification</title>
+<title>Agent Fabric — Agent workflow</title>
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <style>
-body{margin:0;background:#090d16;color:#e2e8f0;font-family:system-ui,sans-serif}*{box-sizing:border-box}
-.fabric-page{max-width:1200px;margin:auto;padding:28px 18px}.fabric-panel{min-width:0;background:#131b2e;border:1px solid #ffffff18;border-radius:14px;padding:20px}
-.fabric-page h2{font-size:1.25rem;font-weight:700}.fabric-page p{line-height:1.6}.fabric-scroll{overflow:auto;max-width:100%;max-height:820px;scrollbar-width:auto;padding:8px}.fabric-scroll svg{display:block;width:auto!important;height:auto!important;max-width:none!important;margin:auto}
-.fabric-scroll:focus-visible,summary:focus-visible{outline:2px solid #22d3ee;outline-offset:3px}.fabric-page code{font-size:.8rem;overflow-wrap:anywhere}.fabric-page [data-mermaid-state=error]{white-space:pre-wrap;color:#fda4af}
-@media(max-width:650px){.fabric-page{padding:20px 12px}.fabric-panel{padding:14px}}
+body{margin:0;background:#090d16;color:#e2e8f0;font:1rem/1.65 system-ui,sans-serif}
+.fabric-page{max-width:1100px;margin:auto;padding:28px 18px;overflow-wrap:anywhere}
+.fabric-page *{box-sizing:border-box}
+.fabric-page h1{font-size:clamp(2rem,5vw,3rem);font-weight:700;line-height:1.2}
+.fabric-page h2{font-size:1.3rem;font-weight:650;margin-bottom:12px;line-height:1.3}
+.fabric-page p{margin:0 0 12px}
+.fabric-page a{color:#67e8f9;text-decoration:underline;text-underline-offset:3px}
+.fabric-page code{font-size:.88em}
+.fabric-page .fabric-panel{min-width:0;background:#131b2e;border:1px solid #ffffff18;border-radius:14px;padding:20px}
+.fabric-page .fabric-scroll{overflow:auto;max-width:100%;max-height:560px;scrollbar-width:auto;padding:12px;background:#090d16;border-radius:8px}
+.fabric-page .mermaid{margin:0;white-space:pre;font-size:.8rem}
+.fabric-page .mermaid svg{display:block;width:auto!important;height:auto!important;max-width:none!important;margin:auto}
+.fabric-page [data-mermaid-state=error]{white-space:pre-wrap;color:#fda4af}
+.fabric-page :focus-visible{outline:3px solid #22d3ee;outline-offset:4px}
+.fabric-page summary{cursor:pointer;color:#a5b4fc;font-weight:600}
+.fabric-page :target{scroll-margin-top:16px}
+@media(max-width:650px){.fabric-page{padding:20px 12px}.fabric-page .fabric-panel{padding:16px}}
 </style>
 </head>
-<body><main class="fabric-page">
+<body>
+<main class="fabric-page">
 <header class="mb-6">
-<p class="text-xs tracking-widest uppercase text-cyan-300">Agent Fabric + nimbler-ops · Implemented and installed · 12 November 2026</p>
-<h1 class="text-3xl md:text-4xl font-bold mt-3">Same human clarity.<br>The right execution mode.</h1>
-<p class="text-slate-400 mt-3 max-w-3xl">The planner recommends direct implementation or coordinated slices. Keep HTML planning, browser validation and independent reviews. Adapt the existing supervisor into a coordinator when the plan needs one.</p>
+  <p class="text-xs tracking-widest uppercase text-cyan-300">Agent Fabric · Human workflow reference</p>
+  <h1>One task. The smallest useful path.</h1>
+  <p class="mt-4 max-w-3xl text-slate-300">Use an implementor for a bounded change. Add planning when the approach needs design, and one coordinator only when slices need coordination. Independent review and required checks remain part of delivery.</p>
+  <p class="text-sm text-slate-400">This is the single human workflow overview. Canonical agents and specs define behavior; this installation uses Projektor for plans and task decisions, not HTML artifacts.</p>
 </header>
-<div class="grid lg:grid-cols-2 gap-5">
-<section class="fabric-panel" aria-labelledby="current-title">
-<h2 id="current-title" class="text-amber-300">Previous workflow — comparison</h2>
-<p class="text-sm text-slate-400 mt-2 mb-3">The previous planned-task route spread execution and delivery across a supervisor and an implementor.</p>
-<div class="fabric-scroll" tabindex="0" aria-label="Previous workflow diagram; scroll to inspect">
-<pre class="mermaid" data-mermaid-source="flowchart TD&#10;P[Planner: HTML decisions and explained plan] --&gt; R[Independent plan review]&#10;R -- revise --&gt; P&#10;R -- pass --&gt; H[Ops: publish and project phases]&#10;H --&gt; S[Supervisor: packets and ledger]&#10;S -- dispatch --&gt; I[Implementor: code and tests]&#10;I --&gt; C[Independent code review]&#10;C -- fix --&gt; I&#10;C -- accept --&gt; V[Supervisor: reconcile and integrate]&#10;V -- next phase --&gt; S&#10;V -- all phases verified --&gt; D[Deliver verified result]&#10;style S fill:#422d16,stroke:#f59e0b&#10;style V fill:#422d16,stroke:#f59e0b">flowchart TD
-P[Planner: HTML decisions and explained plan] --> R[Independent plan review]
-R -- revise --> P
-R -- pass --> H[Ops: publish and project phases]
-H --> S[Supervisor: packets and ledger]
-S -- dispatch --> I[Implementor: code and tests]
-I --> C[Independent code review]
-C -- fix --> I
-C -- accept --> V[Supervisor: reconcile and integrate]
-V -- next phase --> S
-V -- all phases verified --> D[Deliver verified result]
-style S fill:#422d16,stroke:#f59e0b
-style V fill:#422d16,stroke:#f59e0b</pre>
-</div>
-<p class="text-sm mt-4"><span class="text-amber-300 font-semibold">Amber = coordination overhead.</span> The same supervisor appears at dispatch and reconciliation. The previous Ops overlay also asked for approval and offered execution again; that conflict is resolved.</p>
+<nav class="flex flex-wrap gap-x-5 gap-y-2 mb-6 text-sm" aria-label="Workflow sections">
+  <a href="#routing">Routing</a><a href="#planning">Planning</a><a href="#implementation">Implementation</a><a href="#recovery">Recovery</a><a href="#delivery">Delivery</a><a href="#review">Harness review</a><a href="#sources">Sources</a>
+</nav>
+
+<section id="routing" class="fabric-panel">
+  <h2>Choose the owner, not a fixed pipeline</h2>
+  <p><code>agent-fabric route</code> advises <strong>easy → implementor</strong> or <strong>complex → planner</strong>. It does not dispatch agents or watch tests. A planner recommends direct implementation or coordinated slices based on dependencies and integration needs.</p>
+  <div class="fabric-scroll" tabindex="0" aria-label="Agent workflow diagram; scroll horizontally and vertically to explore">
+    <pre class="mermaid" data-mermaid-source="flowchart TD&#10;  T[Authorized task] --&gt;|Bounded change| I[Implementor: edit and test]&#10;  T --&gt;|Needs design| P[Planner: minimum useful slices]&#10;  P --&gt; PR[Independent plan reviewer]&#10;  PR --&gt;|Revise| P&#10;  PR --&gt;|PASS and ready inputs| M{Reviewed execution mode}&#10;  M --&gt;|Direct| I&#10;  M --&gt;|Coordinated| C[One plan-supervisor]&#10;  C --&gt;|Bounded slice| I&#10;  I --&gt; R[Independent code reviewer]&#10;  R --&gt;|Fix findings| I&#10;  R --&gt;|ACCEPT final candidate| O{Delivery ownership}&#10;  O --&gt;|Direct task| D[Owner integrates and verifies delivery]&#10;  O --&gt;|Coordinated slice evidence| C&#10;  C --&gt;|All slices and integrated checks accepted| D&#10;  D --&gt; H[Evaluate post-task harness review]">flowchart TD
+  T[Authorized task] -->|Bounded change| I[Implementor: edit and test]
+  T -->|Needs design| P[Planner: minimum useful slices]
+  P --> PR[Independent plan reviewer]
+  PR -->|Revise| P
+  PR -->|PASS and ready inputs| M{Reviewed execution mode}
+  M -->|Direct| I
+  M -->|Coordinated| C[One plan-supervisor]
+  C -->|Bounded slice| I
+  I --> R[Independent code reviewer]
+  R -->|Fix findings| I
+  R -->|ACCEPT final candidate| O{Delivery ownership}
+  O -->|Direct task| D[Owner integrates and verifies delivery]
+  O -->|Coordinated slice evidence| C
+  C -->|All slices and integrated checks accepted| D
+  D --> H[Evaluate post-task harness review]</pre>
+  </div>
+  <p class="mt-3 text-sm text-slate-400">Simplified successful execution paths, not a runtime state machine. All paths require a measurable acceptance baseline before edits. Plan-only requests stop at publication; publication alone never authorizes execution.</p>
 </section>
-<section class="fabric-panel" aria-labelledby="proposed-title">
-<h2 id="proposed-title" class="text-cyan-300">Installed workflow</h2>
-<p class="text-sm text-slate-400 mt-2 mb-3">The planner proposes the mode with a short justification; plan review checks it. Large plans get bounded workers, not one enormous context.</p>
-<div class="fabric-scroll" tabindex="0" aria-label="Installed workflow diagram; scroll to inspect">
-<pre class="mermaid" data-mermaid-source="flowchart TD&#10;P[Planner: minimum slices and suggested mode] --&gt; R[Independent review of plan and routing]&#10;R -- revise --&gt; P&#10;R -- pass --&gt; H[Continue under existing authorization]&#10;H --&gt; M{Execution mode}&#10;M -- direct --&gt; I[Implementor: code and tests]&#10;I --&gt; C[Independent code review]&#10;C -- fix --&gt; I&#10;C -- accept --&gt; D[Owner integrates, verifies and delivers]&#10;M -- coordinated --&gt; K[Existing supervisor as coordinator]&#10;K -- minimum testable slices --&gt; W[Implementors with independent reviews]&#10;W -- results or cross-slice blockers --&gt; K&#10;K -- all slices accepted --&gt; D&#10;I -- recovery budget exhausted --&gt; E[Return diagnosis and failure evidence]&#10;W -- recovery budget exhausted --&gt; E&#10;E -- amend approach, preserve objective --&gt; P&#10;style I fill:#164e63,stroke:#22d3ee&#10;style K fill:#164e63,stroke:#22d3ee&#10;style W fill:#164e63,stroke:#22d3ee">flowchart TD
-P[Planner: minimum slices and suggested mode] --> R[Independent review of plan and routing]
-R -- revise --> P
-R -- pass --> H[Continue under existing authorization]
-H --> M{Execution mode}
-M -- direct --> I[Implementor: code and tests]
-I --> C[Independent code review]
-C -- fix --> I
-C -- accept --> D[Owner integrates, verifies and delivers]
-M -- coordinated --> K[Existing supervisor as coordinator]
-K -- minimum testable slices --> W[Implementors with independent reviews]
-W -- results or cross-slice blockers --> K
-K -- all slices accepted --> D
-I -- recovery budget exhausted --> E[Return diagnosis and failure evidence]
-W -- recovery budget exhausted --> E
-E -- amend approach, preserve objective --> P
-style I fill:#164e63,stroke:#22d3ee
-style K fill:#164e63,stroke:#22d3ee
-style W fill:#164e63,stroke:#22d3ee</pre>
+
+<div class="grid md:grid-cols-2 gap-4 mt-4">
+  <section id="planning" class="fabric-panel">
+    <h2>1 · Plan only what needs planning</h2>
+    <p>The planner inspects current behavior, resolves decision-critical gaps and defines useful, end-to-end testable slices estimated at ≤1 hour each, including tests and review. This is a sizing gate, not a time promise. Required safety stays in scope; optional complexity goes to the existing backlog.</p>
+    <p>Pin outcomes, checks, evidence locations and rollback before implementation. Verify prerequisites before marking a slice ready. Human-only secret creation is separate; dependent work waits for verified availability.</p>
+    <p>Plan review checks scope, readiness and routing. Default: at most two passes for a multi-phase plan. Explicit Publish may skip remaining review, but execution handoff still needs current reviewer PASS, no blocking findings and execution authority. The planner does not implement.</p>
+  </section>
+  <section id="implementation" class="fabric-panel">
+    <h2>2 · Keep implementation and fixes together</h2>
+    <p>The implementor owns diagnosis, edits, required runtime checks and review fixes in one session. Freeze the candidate for an independent, read-only code-reviewer; ordinary fixes resume that reviewer. Later edits invalidate affected checks and review evidence.</p>
+    <p>A coordinator owns dependencies and integrated acceptance, not product implementation. Workers receive bounded slices, contracts and checks—not whole transcripts. If nested review dispatch is unavailable, the parent invokes the reviewer directly; missing review is incomplete acceptance.</p>
+    <p>Fresh direct work needs no supervisor ledger. Coordinated work has one macro-state owner; explicit checkpoint continuations retain their history and limits. No nested supervisors or new loop-supervisor tasks.</p>
+  </section>
+  <section id="recovery" class="fabric-panel">
+    <h2>3 · Repair causes; amend exhausted approaches</h2>
+    <p>Resolve safe, in-scope setup and local/Dev failures under existing authority. Verify a child's blocker instead of forwarding it unchanged. Reuse recorded sessions, diagnoses and unchanged evidence; preserve inherited retry and spending limits.</p>
+    <p>When recovery is exhausted, return the failed approach, attempts, violated requirement and accepted work through the execution owner to planner Amend. Pause affected writers, revise the relevant specs and baseline, obtain independent plan-reviewer PASS, then resume the existing owner.</p>
+    <p>An amendment must avoid the diagnosed cause while preserving the objective. Renaming work never resets limits. Unaffected independent work may continue; a genuine external boundary names the exact missing action or decision.</p>
+  </section>
+  <section id="delivery" class="fabric-panel">
+    <h2>4 · Deliver evidence, not just a patch</h2>
+    <p>Direct implementors own authorized integration and delivery. With coordinated slices, the plan-supervisor owns the combined result. An early smoke or <code>implementation_ready</code> report is provisional; missing, failed, stale or unrun mandatory evidence cannot PASS.</p>
+    <p>Close with required checks, independent acceptance of the final candidate, scoped commit/integration, retained evidence and eligible task-owned cleanup. Preserve foreign work. Extra QA sessions are discretionary; required runtime or visual checks are not.</p>
+    <p>Continue already-authorized work without repeated approval. New scope and permission boundaries still apply; production deployment requires explicit human confirmation and rollback/live verification controls. An unfinished stop reports what works, what remains and why, with one reusable status artifact when safely publishable.</p>
+  </section>
 </div>
-<p class="text-sm mt-4"><span class="text-cyan-300 font-semibold">Cyan = the selected execution mode.</span> Direct: the implementor owns delivery. Coordinated: the supervisor owns integration and overall delivery; each worker owns its slice's coding, tests and review fixes. No nested supervisors. Exhausted recovery returns through the owner to planning with the existing diagnosis; only affected work is paused.</p>
+
+<section id="review" class="fabric-panel mt-4">
+  <h2>5 · Evaluate how the agent worked</h2>
+  <p>After the original task's checks, authorized delivery and cleanup, the top-level owner evaluates harness review and states its decision. Expected red tests or useful exploration alone do not warrant a retrospective. Early review requires an explicit user request.</p>
+  <p>When justified, one visible review supervisor uses independent child roles to investigate bounded execution friction and deliver a supported correction—or a justified no-change outcome. This improves the harness; it does not re-certify the task. See the <a href="https://artifacts.nimblersoft.com/project/agent-fabric/artifact/harness-review-guide" target="_blank" rel="noopener noreferrer">specialist harness-review guide</a> for that internal workflow.</p>
 </section>
-</div>
-<section class="mt-7" aria-labelledby="changes-title">
-<h2 id="changes-title" class="mb-4">Four concrete changes</h2>
-<div class="grid md:grid-cols-2 gap-4">
-<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">1. Planner recommends the handoff mode</h3><p class="mt-2">Add a routing recommendation and one-sentence reason to the explained plan. Use <code>implementor</code> for one coherent task; use <code>plan-supervisor</code> for multiple slices with dependencies, parallel work or substantial integration. Plan review can challenge unnecessary coordination.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> “Direct: one authenticated preview change.” Or “Coordinated: bot runtime, builder and WhatsApp integration share an API contract.” The choice follows structure, not an arbitrary file count.</p></article>
-<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">2. Make the supervisor a coordinator</h3><p class="mt-2">Reuse <code>plan-supervisor</code>. It assigns bounded slices, tracks dependencies, resolves cross-slice issues and owns integrated acceptance/delivery. Workers handle their own debugging and review fixes. Remove duplicate worker bookkeeping and routine finding relays.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> a worker fixes its failing test locally. An incompatible shared API goes to the coordinator. Only affected dependent work waits; no supervisor is spawned underneath another supervisor.</p></article>
-<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">3. Bound context, preserve continuity</h3><p class="mt-2">The coordinator keeps the plan, dependencies, accepted revisions, open findings and next actions. Each worker receives only its slice, relevant contracts and checks. Completed slices become compact checkpoints with evidence links, not copied transcripts. Slices may run sequentially or independently in parallel.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> the WhatsApp worker receives the accepted bot API contract, not every builder discussion. If direct work reveals genuine coordination needs, hand completed evidence to a coordinator without restarting planning or resetting budgets.</p></article>
-<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">4. Simplify Ops hooks and authorization</h3><p class="mt-2">“Continue under existing authorization” means no repeated permission prompt for already-authorized scope. Align the decomposition overlay/adapter with the selected mode; preserve publication readback and duplicate prevention. Keep optional mirrors and external pre-review outside the critical path.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> “Implement this approved dev plan” authorizes its in-scope work and fixes. Viewing a plan is not execution permission. New scope, spending and production retain their applicable approval boundaries.</p></article>
-</div>
-</section>
-<section class="mt-7" aria-labelledby="minimum-title">
-<h2 id="minimum-title" class="mb-4">Additional rules: explain impact, deliver minimum slices, amend failed approaches</h2>
-<div class="grid md:grid-cols-3 gap-4">
-<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">Diagrams explain system impact</h3><p class="mt-2">For each grilling question, show the affected component, module or product: changed boundaries, data flow, state, deployment or user journey. Selecting an option updates that system view. A question node branching to A/B is not an explanation.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> “Shared storage or per-bot storage?” shows where each bot reads/writes, which data is isolated and how provisioning changes—not a diamond pointing to the two answers. Show relevant trade-offs beside the diagram. An unknown “Other” answer stays explicitly unresolved until interpreted; do not invent its effects.</p></article>
-<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">Every slice ends in a minimum viable result</h3><p class="mt-2">The planner must name one useful behavior, the smallest working path, a reproducible demo/test and what is deliberately deferred. Avoid framework-first phases, bundles of unrelated behaviors and speculative flexibility. A component slice is valid if its real contract can be exercised independently; mocks alone do not prove integration.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> “Create one bot, save its prompt and run one sandbox conversation” precedes “all channels, generic workflow engine and migration of every bot.” Later capabilities remain in the plan. Auth and tenant isolation required for that first path are not optional.</p></article>
-<article class="fabric-panel"><h3 class="text-cyan-300 font-semibold">Exhaustion triggers plan amendment</h3><p class="mt-2">When recovery iterations are exhausted, reuse the dispatched diagnosis and send its result to the planning owner. If diagnosis is still running, wait for it rather than launch a duplicate. Return the failed approach, attempted fixes, violated requirement, accepted work and smallest plausible alternative.</p><p class="text-sm text-slate-400 mt-2"><strong>Example:</strong> a generic action scheduler repeatedly fails atomicity checks. Planning may replace it with one durable serialized command path that meets the same concurrency and reliability objective, deferring general scheduling only if the objective permits it. Review the amendment, then resume the affected slice.</p></article>
-</div>
-</section>
-<section class="fabric-panel mt-5"><h2>Planner and plan-reviewer definition changes</h2>
-<p class="mt-2"><strong>Planner:</strong> produce minimum viable slices, not merely “vertical” ones. For each: <em>what works at the end, how we demonstrate it, why this is the minimum, and what comes later</em>. Classify outcome constraints separately from suggested implementation. Support an amendment of affected in-flight phases instead of rejecting all refinement of approved plans.</p>
-<p class="mt-2"><strong>Plan reviewer:</strong> ask “Can anything be removed while preserving this slice's useful result?” Reject phases that only prepare infrastructure without an exercisable result, or accumulate unrelated capabilities. Prefer subtraction or a smaller alternative over new machinery. Review amendments against the original objective, diagnosis and revised checks—not against an obsolete implementation suggestion.</p>
-<p class="mt-2"><strong>Flexible specs, explicit revisions:</strong> algorithm, library, internal architecture, phase boundaries and implementation-specific tests may change when evidence supports a better minimum solution. Update the owning spec and affected acceptance criteria before further implementation; retain the reason and prior failures. Do not mark old failed checks as passed, or silently remove required product behavior.</p>
-<p class="text-sm text-slate-400 mt-2">The four canonical roles now require the minimum-result test and reviewed Amend path. Active projected tasks retain their bodies and IDs: the accepted versioned amendment becomes the explicit execution contract in checkpoints and affected worker packets. Structural splits update the macro DAG without reprojecting children. The installed questionnaire uses system-impact views.</p>
-</section>
-<section class="fabric-panel mt-5"><h2>Keep replanning from becoming another endless loop</h2><p class="mt-2">Reuse the same planning/reviewer sessions and accepted checkpoints. An amendment must explain how it avoids the diagnosed cause and provide a genuinely different, testable approach. Preserve cumulative history and hard spending/safety limits; define a bounded implementation allowance for the amended approach. Rewording a plan or renaming a slice does not renew a budget.</p><p class="mt-2">An in-scope alternative proceeds under existing authority after review, without another routine permission request. If no objective-preserving alternative exists, report the specific product decision, unavailable capability or hard limit. Do not retry the same failure through repeated planning cycles. Independent unaffected slices can continue.</p></section>
-<section class="fabric-panel mt-5"><h2>What does not change</h2><p class="mt-2">HTML questionnaires and explanations · free-text human decisions · browser validation · original plan/task objectives · required behavior and safety constraints · independent plan/code review for this MVP · explicit production confirmation · real permission and spending boundaries · no false PASS.</p><p class="text-sm text-slate-400 mt-2">Implementation suggestions are revisable; the objective is not silently negotiable. Relevant checks follow an explicitly reviewed spec amendment. Genuine quota failures still require capacity or an authorized alternative.</p></section>
-<details class="fabric-panel mt-5"><summary class="text-cyan-300 cursor-pointer font-semibold">Scope, evidence and edit locations</summary>
-<p class="mt-3">These are simplified stage diagrams for the reviewed planned-task route, not complete runtime state machines. They omit optional QA agents, optional legacy external pre-review and deprecated loop-supervisor continuations. An amendment returns to the existing execution owner after review, preserving progress and budgets rather than creating a new execution tree.</p>
-<p class="mt-3"><strong>Fabric:</strong> four canonical roles, owning supervision contracts and architecture diagrams. <strong>Ops:</strong> planner overlays, projection CLI authorization alias and opt-in checkpoint replicas. <strong>Questionnaire owner:</strong> artifacts-manager's <code>skills/with-artifact/</code> and owning spec. All 24 selected generated agents were verified across six installed harnesses with existing model routing preserved; linked Ops overlays and the managed questionnaire installation were verified.</p>
-<p class="mt-3">Source session: <code>ses_e424ad8e1ffehYpOrIRl5vnzDq</code>. Review: <code>ses_e3462e763ffeCjF191MWpT6BgU</code>. Evidence includes the heavyweight resume <code>msg_1cb409a37001guh3ILOOe0kOiq</code> and genuine quota error <code>msg_1ca2b1f66001bWIybItqEB7Wex</code>. Two source-history windows were sampled; full descendant execution was not audited.</p>
-<p class="mt-3"><strong>Validation:</strong> Fabric Go suite; 77 focused Ops tests; questionnaire unit and desktop/mobile viewer checks, including all options, rapid selection and free text; independent AGY reviews accepted after correcting stale split-recovery instructions. The Ops coverage scan still reports unrelated untracked <code>inti-delivery</code> work. Existing sessions may need reloading to consume updated prompts.</p>
-<p class="mt-3"><strong>Measure impact next:</strong> compare time to usable result, user nudges, repeated checks and coordinating sessions on a comparable real slice. No speedup is measured yet.</p>
+
+<details class="fabric-panel mt-4" id="supporting-roles">
+  <summary>Supporting roles and host wiring</summary>
+  <p class="mt-3"><strong>Bug-fixer</strong> captures and independently reviews a defect report, then routes an executable fix or needs-plan work. <strong>Expert-debugger</strong> provides a bounded diagnosis when assigned. <strong>QA-runner</strong> runs selected dynamic checks. <strong>Deploy-supervisor</strong> owns a separately scoped, authorized post-merge release. None is a mandatory extra layer for every task.</p>
+  <p>Each fresh child needs a self-contained packet: declared roots, scope, authoritative inputs, permitted paths, checks, evidence and rollback. Missing authoritative inputs stop dispatch; ordinary discoverable setup is work, not a missing contract.</p>
+  <p>Canonical definitions are rendered by harness adapters; configured hooks enrich task context, publication and checkpoints. Hooks resolve at install/sync, with Markdown preferred over scripts. Portable shell hooks are explicit instructions, not runtime event enforcement. Wait for native completion signals rather than polling agents.</p>
+  <p><strong>Compatibility:</strong> existing loop-supervisor continuations retain their identities, evidence and budgets; they are not the entry point for new work.</p>
 </details>
-<footer class="mt-5 text-sm text-slate-500">Implemented · Managed prompts and questionnaire verified · Existing routing preserved · Performance benefit not yet measured</footer>
+
+<footer id="sources" class="fabric-panel mt-4 text-sm text-slate-400">
+  <h2>Source of behavior</h2>
+  <p><a href="https://github.com/ericmaster/agent-fabric/tree/main/agents" target="_blank" rel="noopener noreferrer">Canonical agent definitions</a> ·
+  <a href="https://github.com/ericmaster/agent-fabric/blob/main/docs/specs/supervision-and-delivery.md" target="_blank" rel="noopener noreferrer">Supervision and delivery</a> ·
+  <a href="https://github.com/ericmaster/agent-fabric/blob/main/docs/specs/delegation-and-evaluation.md" target="_blank" rel="noopener noreferrer">Delegation and evaluation</a> ·
+  <a href="https://github.com/ericmaster/agent-fabric/blob/main/docs/specs/difficulty-router.md" target="_blank" rel="noopener noreferrer">Advisory router</a> ·
+  <a href="https://github.com/ericmaster/agent-fabric/blob/main/skills/harness-review/SKILL.md" target="_blank" rel="noopener noreferrer">Harness-review skill</a></p>
+  <p>Update this guide in the same change whenever routing, roles, gates, recovery, delivery or post-task review changes. Keep it current-state only; implementation claims and installation state require their own evidence.</p>
+</footer>
 </main>
 <script type="module">
 import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.17.1/dist/mermaid.esm.min.mjs';
-mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'dark',flowchart:{htmlLabels:false,useMaxWidth:false,wrappingWidth:220,nodeSpacing:25,rankSpacing:32},sequence:{useMaxWidth:false},class:{useMaxWidth:false},state:{useMaxWidth:false},er:{useMaxWidth:false},gantt:{useMaxWidth:false}});
-let i=0;
+mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'dark',flowchart:{htmlLabels:false,useMaxWidth:false,wrappingWidth:240,nodeSpacing:25,rankSpacing:32},sequence:{useMaxWidth:false},class:{useMaxWidth:false},state:{useMaxWidth:false},er:{useMaxWidth:false},gantt:{useMaxWidth:false}});
+let sequence=0;
 for(const element of document.querySelectorAll('pre.mermaid[data-mermaid-source]')){
- const source=element.dataset.mermaidSource;
- try{await mermaid.parse(source);const {svg,bindFunctions}=await mermaid.render('fabric-compare-'+(++i),source);element.innerHTML=svg;element.dataset.mermaidState='rendered';bindFunctions?.(element)}
- catch(error){element.textContent=source;element.dataset.mermaidState='error';console.error(error)}
+  const source=element.dataset.mermaidSource;
+  try{await mermaid.parse(source);const {svg,bindFunctions}=await mermaid.render('fabric-workflow-'+(++sequence),source);element.innerHTML=svg;element.dataset.mermaidState='rendered';bindFunctions?.(element)}
+  catch(error){element.textContent=source;element.dataset.mermaidState='error';console.error(error)}
 }
 </script>
-</body></html>
+</body>
+</html>
