@@ -9,7 +9,8 @@ canonical workflows into native configurations for OpenCode, Kilo, Antigravity C
 > **Documentation:** Keep specs and non-ADR docs current-state only, except `CHANGELOG.md`.
 > Maintain `CHANGELOG.md` as the release-history SSOT: collect changes under `[Unreleased]`,
 > preserve published release entries, and use actual versions/dates; never invent prior releases.
-> Keep historical decision rationale in `docs/adr/`; use Git and Plane for commit/task detail.
+> Keep architectural rationale in `docs/adr/`; Git owns commit detail, Projektor owns task plans and decisions.
+> Update authorized plans in Projektor and add one short decision paragraph on each affected issue; apply context hygiene rather than creating decision artifacts.
 > **ADR Lifecycle:** Before release, ADRs may be edited, merged, or squashed to retain the latest decision; after
 > release, preserve published ADRs and use a new superseding ADR. Full filing rules:
 > [`docs/docs-organization-blueprint.md`](docs/docs-organization-blueprint.md).
