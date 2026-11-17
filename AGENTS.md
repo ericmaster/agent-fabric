@@ -6,14 +6,9 @@ canonical workflows into native configurations for OpenCode, Kilo, Antigravity C
 > [!IMPORTANT]
 > **AGENTS.md CRITICAL RULES:**
 > **No Fluff:** Minimum characters. Concise but 100% complete.
-> **Documentation:** Keep specs and non-ADR docs current-state only, except `CHANGELOG.md`.
-> Maintain `CHANGELOG.md` as the release-history SSOT: collect changes under `[Unreleased]`,
-> preserve published release entries, and use actual versions/dates; never invent prior releases.
-> Keep architectural rationale in `docs/adr/`; Git owns commit detail, Projektor owns task plans and decisions.
+> **Documentation:** Before documentation changes, apply `context-hygiene` and read
+> [filing, current-state, release-history and ADR rules](docs/docs-organization-blueprint.md#1-the-clean-divide-versioned-wiki-vs-scratch-space).
 > Update authorized plans in Projektor and add one short decision paragraph on each affected issue; apply context hygiene rather than creating decision artifacts.
-> **ADR Lifecycle:** Before release, ADRs may be edited, merged, or squashed to retain the latest decision; after
-> release, preserve published ADRs and use a new superseding ADR. Full filing rules:
-> [`docs/docs-organization-blueprint.md`](docs/docs-organization-blueprint.md).
 > **Live Sync:** Keep this file updated with relevant code changes in the same commit.
 > **Human workflow reference:** [Agent workflow](https://artifacts.nimblersoft.com/project/agent-fabric/artifact/agent-fabric-architecture-lifecycle)
 > `.artifacts-manager/agent-fabric-architecture-lifecycle.html` is the single human overview;
@@ -21,15 +16,8 @@ canonical workflows into native configurations for OpenCode, Kilo, Antigravity C
 > Update the artifact and manifest metadata in the same change as routing, role, gate,
 > recovery, delivery or post-task-review changes; verify against canonical sources.
 > Keep it current-state only; other human entry points link here.
-> **Context Hygiene:** Apply the `context-hygiene` skill before writing or revising any
-> documentation or spec; keep each fact in its SSOT and link instead of repeating it.
-
-> [!WARNING]
-> **Avoid Redundant Documentation.** AGENTS.md is the Single Source of Truth. Do NOT create
-> separate MAINTENANCE.md / ARCHITECTURE.md files that duplicate what is here. Domain
-> terminology belongs in [CONTEXT.md](CONTEXT.md); decisions in `docs/adr/`; module
-> contracts in `docs/specs/`; command recipes in `docs/runbooks/`. Filing rules:
-> [`docs/docs-organization-blueprint.md`](docs/docs-organization-blueprint.md).
+> **Ownership:** This file owns repository working guidance; [docs/index.md](docs/index.md)
+> locates domain and module owners. Do not add parallel MAINTENANCE.md / ARCHITECTURE.md guides.
 
 ## Layout
 
@@ -49,13 +37,6 @@ fixtures/                Golden test fixtures for adapter rendering (+ retrospec
 scripts/                 Release packaging and bootstrap tooling
 ```
 
-## First-time setup
-
-```bash
-go test ./...
-go build -o agent-fabric ./cmd/agent-fabric
-```
-
 ## Daily commands
 
 CLI discovery: `agf --help`; `agf sync --help` and `agf hub install --help`
@@ -69,35 +50,24 @@ print flags/defaults without loading sources or writing state (exit 0).
 
 ## Architecture at a glance
 
-- **Phase ownership:** Planner recommends direct implementor or one plan-supervisor coordinator for bounded minimum testable slices. Implementor owns tests/review fixes and direct delivery; coordinator owns dependencies/integrated delivery. Exhausted recovery returns diagnosis to planner Amend, retaining objectives, accepted work and budgets. `loop-supervisor` is legacy-only. OpenCode scopes implementor delegation to code-reviewer. Contract: `docs/specs/supervision-and-delivery.md`.
-- **MVP planning/status:** Objective-bounded <=1-hour E2E phases, cumulative grill, optional-complexity backlog and isolated human secret dependencies; unfinished stops use `with-artifact` status HTML. Contract: [`Planning readiness`](docs/specs/supervision-and-delivery.md#planning-readiness) and [`Unfinished-stop status`](docs/specs/supervision-and-delivery.md#unfinished-stop-status).
+Canonical `agents/<id>.md` bodies carry complete portable workflows; adapters render
+native configurations. Preserve standalone role instructions when the source repository
+is unavailable to installed agents. This repository guide routes maintainers to contracts;
+it does not replace exported role behavior.
 
-- **Secret guard:** `internal/guard` and `guard check` inspect shell syntax/read metadata with private denial audit. Default use is a voluntary check. `--assets secret-guard --tools pi` installs one Pi discovery entry. `--assets secret-guard --tools opencode` installs one OpenCode read entry and records shell as non-support. Other routes are not enforcement. Contract: [`docs/specs/secret-guard.md`](docs/specs/secret-guard.md).
-- **Canonical Definitions as SSOT:** Canonical agent workflows live exclusively in `agents/<id>.md` and contain full portable behavior, permissions, and declarative hook placeholders. Spec: `docs/specs/agent-fabric.md`.
-- **Self-Locating Delegation:** Fresh-context handoffs use the fail-closed Delegation Packet contract defined normatively in [`docs/specs/delegation-and-evaluation.md`](docs/specs/delegation-and-evaluation.md); hooks only enrich or validate it.
-- **Eval before implementation:** Pin measurable criteria before mutation; reconcile candidate-linked evidence before PASS, including direct atomic work. Contract: [`Pre-implementation evaluation baseline`](docs/specs/delegation-and-evaluation.md#pre-implementation-evaluation-baseline).
-- **Harness-Isolated Rendering:** Adapters (`adapters/<target>.json` + `internal/adapter/`) map abstract profiles (`planner`, `worker`, `reviewer`, `supervisor`) to harness-specific models and tool syntax without contaminating canonical bodies.
-- **Pi:** `extensions/pi` adds current-session Fabric role modes from global rendered agents; optional upstream `subagent` provides fresh-context delegation. Modes retain the active model and enforce exact tool lists, not OS isolation. Post-task review uses `harness-review`; setup/tests: `docs/runbooks/pi.md`.
-- **OpenCode 2:** Native ordered permissions (`bash`→`shell`, `task`→`subagent`), `model#variant`, `hidden`; explicit `external_directory` guards survive tool allowlists (contract: `docs/specs/agent-fabric.md`). OpenCode 2.3.0 discovery excludes `hidden` agents, so this renderer emits `hidden: false` only for `plan-reviewer` and `code-reviewer`; other agents, targets, permissions, and canonical visibility are unchanged. Portable hooks render as explicit body commands, not plugin frontmatter. Compatibility/rollout: `docs/runbooks/opencode2-supervision.md`.
-- **Deterministic Hook Resolution:** Install and sync resolve portable hooks (`load-task`, `pre-plan`, `classify`, `label`, `decompose`, `post-plan`, `record-ledger`, `pre-deploy`, `post-deploy`) once from `~/.agent-hooks/`.
-- **Lean direct execution:** Fresh implementor needs no micro ledger or supervisor report; parent phases keep macro ownership, explicit legacy checkpoints keep continuity. Implementor ledger rendering is an on-demand reference; other roles remain eager. Contract: `docs/specs/supervision-ledger-and-qa.md`. Advisory CLI contract: `docs/specs/difficulty-router.md`.
-- **Atomic Manifest Ownership:** Project and global installs maintain `.agent-fabric-manifest.json`. Modified user files are preserved during sync unless `--force` is specified.
-- **Task Continuity:** Supervisors must pass the recorded child continuation ID on later dispatches. A new session is allowed only for new resolving authority, an approved scope-identity change, or unavailable continuation. Reuse a finding's recorded diagnosis. Hook: `hooks/supervisor/record-ledger.py`. Contract: [`docs/specs/supervision-ledger-and-qa.md`](docs/specs/supervision-ledger-and-qa.md). Tests: `python3 -m unittest discover -s tests -p 'test_supervisor_ledger.py'` and `TestSupervisorResumeHandleIsMandatory`.
-- **Instincts (advisory lessons):** Signed reusable lessons may carry `confidence` ∈ [0.3, 0.9] and `applicability` `project` (default) | `global`. Weighted advisory only — never DoD/permission authority. Contract: `docs/specs/task-retrospective.md` (Reusable lessons / Instincts).
-- **Harness review:** The top-level task owner evaluates completed execution and communicates its decision at closure, including delegated work and direct skill maintenance. One visible parent uses fresh-context child subagents; aim for one high-impact correction, two maximum, with bounded history coverage rather than exhaustive auditing. Preserve nonrecursive roles, completion gate, maintenance authority, independent patch acceptance and safe delivery. Workflow: `skills/harness-review/SKILL.md`; contract: `docs/specs/task-retrospective.md`. Install only the short native-context pointer; no extra service.
-- **Read-only Preflight:** `python3 hooks/supervisor/support.py` (JSON stdin) reconciles host observations/owned Linux command identities, fingerprints declared actual inputs for verified receipt reuse, and validates compact handoffs. No dispatch, process control or new persistence. Contract: [`docs/specs/supervision-ledger-and-qa.md`](docs/specs/supervision-ledger-and-qa.md) (`Deterministic supervision support`). Tests: `python3 -m unittest discover -s tests -p 'test_supervisor_support.py'`.
-- **Supervisor Resolution:** Supervisors verify child blocker claims with capability probes and bounded recovery across tools, fixtures, workspaces, Dev state and scoped releases. Final blockers name the exact external-only action and failed probes; unavailable capability/credentials, product intent, explicit policy/scope boundaries and secret disclosure remain limits. Spec: [`docs/specs/supervision-and-delivery.md`](docs/specs/supervision-and-delivery.md).
-- **Durable Task Authority:** Executable tasks authorize the complete in-scope flow without repeated confirmation, with proportional checkpoint/canary/rollback controls. Plan-only/report-only scope stops execution; release requires a named target, DoD, rollback and traceable authority. Spec: [`docs/specs/supervision-and-delivery.md`](docs/specs/supervision-and-delivery.md).
-- **Budget Efficiency:** Use the least expensive adequate model, delegation count, and verification set; reuse sessions/evidence and scope re-reviews to open findings, changes and regressions. Escalate only after objective failure; never reduce mandatory DoD gates for cost. Spec: [`docs/specs/supervision-and-delivery.md`](docs/specs/supervision-and-delivery.md).
-- **Outcome-first QA:** Source-design fidelity is separate from screenshot regression; verify a representative page early. Repeated prerequisite recovery has a cross-role no-progress circuit breaker. Contract: [`docs/specs/supervision-ledger-and-qa.md`](docs/specs/supervision-ledger-and-qa.md) (`Outcome-first verification and bounded recovery`).
-- **Visible Progress:** Early functional smoke → provisional isolated implementation; broader checks/review run on frozen inputs in background. No Done/integration/deployment before acceptance. Contract: [`docs/specs/supervision-and-delivery.md`](docs/specs/supervision-and-delivery.md) (`Bounded episodes, waiting, and reduced delivery`).
-- **Compact Context:** One current packet and report locators; retain loaded checkpoint, use record receipts and status-only `compact: true` loads. Full load remains required for recovery/decisions. Contract: [`docs/specs/supervision-ledger-and-qa.md`](docs/specs/supervision-ledger-and-qa.md) (`Continuity and checkpoints`).
-- **Crash-safe Resume:** Resume-critical checkpoints, candidates and receipts use a durable private root; temporary storage is scratch. Missing evidence is not PASS and does not reset budgets. Contract: [`docs/specs/supervision-and-delivery.md`](docs/specs/supervision-and-delivery.md) (`Bounded episodes, waiting, and reduced delivery`).
-- **Phase Closure:** Validate → independent review → scoped commit/integration → verified durable receipt → eligible owned cleanup; compact planning decisions, preserve unresolved evidence. Contract: [`docs/specs/supervision-and-delivery.md`](docs/specs/supervision-and-delivery.md) (`Phase closure and compact planning`).
-- **Discretionary QA:** Recommended, not mandatory; the delivery supervisor decides run/skip/reuse/defer. QA-only execution blockers go upward without freezing implementation; unrun checks never become PASS. Setup changes belong to implementation roles under existing authority. Spec: [`docs/specs/supervision-ledger-and-qa.md`](docs/specs/supervision-ledger-and-qa.md) (`Discretionary QA Contract`).
-- **Delivery & Recovery:** Supervisors own integration, authorized deployment, verification and clean closure. Soft exhaustion triggers evidence-backed bounded recovery under standing task authority, not repeated permission requests; preserve history and explicit hard caps. Prefer a single-writer current checkout after dirty-work triage; isolate concurrent writers or when mandated. Never discard/commit foreign work. Contract: [`docs/specs/supervision-and-delivery.md`](docs/specs/supervision-and-delivery.md) (`Delivery ownership and checkout closure`; `Native asynchronous orchestration`).
+Read the relevant contract before changing or applying its behavior:
 
-- **Evidence:** JSONL entries are agent reports, not automatic proof of success. Record native session IDs, actual checks, patch/revision and outcome; preserve failures and history. Route harness-review roles at skill step 0 before launch; review/correction leaves never start recursive retrospectives. Legacy retrospective CLI/data remain compatibility utilities, not part of the skill's delivery path.
+- **Definitions, adapters, permissions and install ownership:** [Core schema, adapters and manifest ownership](docs/specs/agent-fabric.md#core-schema-adapters-and-manifest-ownership).
+- **Hooks, Codex rendering and releases:** [Hook resolution and packaging](docs/specs/agent-fabric.md#hook-resolution-codex-adapter-and-release-packaging).
+- **Pi / OpenCode host setup and compatibility:** [Pi runbook](docs/runbooks/pi.md), including isolated version-pinned test fixtures; [OpenCode 2 runbook](docs/runbooks/opencode2-supervision.md).
+- **Delegation / implementation:** Before dispatch or mutation, read [packet validation](docs/specs/delegation-and-evaluation.md#fresh-context-delegation-contract) and [evaluation baseline and acceptance](docs/specs/delegation-and-evaluation.md#pre-implementation-evaluation-baseline).
+- **Routing, role ownership, authority, recovery and budgets:** [Autonomous execution](docs/specs/supervision-and-delivery.md#autonomous-execution-contract); CLI recommendations: [difficulty router](docs/specs/difficulty-router.md).
+- **Planning / unfinished work:** [Planning readiness](docs/specs/supervision-and-delivery.md#planning-readiness), [plan amendment](docs/specs/supervision-and-delivery.md#diagnosis-driven-plan-amendment), and [unfinished-stop status](docs/specs/supervision-and-delivery.md#unfinished-stop-status).
+- **Progress, durable resume and delivery:** [Bounded episodes](docs/specs/supervision-and-delivery.md#bounded-episodes-waiting-and-reduced-delivery), [checkout closure](docs/specs/supervision-and-delivery.md#delivery-ownership-and-checkout-closure), [async orchestration](docs/specs/supervision-and-delivery.md#native-asynchronous-orchestration), and [phase closure](docs/specs/supervision-and-delivery.md#phase-closure-and-compact-planning).
+- **Preflight / ledger / QA:** [Read-only support](docs/specs/supervision-ledger-and-qa.md#deterministic-supervision-support), [continuity and compact checkpoints](docs/specs/supervision-ledger-and-qa.md#continuity-and-checkpoints), [outcome-first verification](docs/specs/supervision-ledger-and-qa.md#outcome-first-verification-and-bounded-recovery), and [discretionary QA](docs/specs/supervision-ledger-and-qa.md#discretionary-qa-contract).
+- **Secret guard changes or installation:** [Guard coverage and limits](docs/specs/secret-guard.md); do not infer enforcement from installation.
+- **Task completion:** Evaluate and communicate the [harness-review decision](docs/specs/task-retrospective.md#decision-ownership-and-closure) after [the completion gate](docs/specs/task-retrospective.md#entry-point). On activation, load [the executable skill](skills/harness-review/SKILL.md) and route the assignment at step 0 before launch.
+- **Review audit / advisory lessons:** [Audit evidence](docs/specs/task-retrospective.md#audit), [runtime and legacy compatibility](docs/specs/task-retrospective.md#runtime-boundary-and-compatibility), and [Instincts](docs/specs/task-retrospective.md#reusable-lessons--instincts).
 
 ## Testing
 
@@ -106,6 +76,7 @@ print flags/defaults without loading sources or writing state (exit 0).
 - Skill/audit tests: `python3 -m unittest discover -s tests -p 'test_harness_review_audit.py'`. No provider/API key required.
 - Legacy retrospective tests use local mocks and preserve historical failure/permission/provenance guards; no live provider call is implied by passing them.
 - Release/bootstrap fixture tests: `python3 -m unittest discover -s tests -p 'test_retrospective_release.py'` (local fake curl; no network, no real OpenCode server).
+- Supervisor hooks: `python3 -m unittest discover -s tests -p 'test_supervisor_*.py'`; continuation also has the Go guard `TestSupervisorResumeHandleIsMandatory`.
 - Run `go test ./...` before committing.
 
 ## Secrets
@@ -114,4 +85,4 @@ Zero secrets, API keys, or provider tokens are tracked in this repository. Authe
 
 ## Specs
 
-Module and CLI behavioral contracts live in [`docs/specs/agent-fabric.md`](docs/specs/agent-fabric.md), [`docs/specs/delegation-and-evaluation.md`](docs/specs/delegation-and-evaluation.md), [`docs/specs/supervision-and-delivery.md`](docs/specs/supervision-and-delivery.md), [`docs/specs/supervision-ledger-and-qa.md`](docs/specs/supervision-ledger-and-qa.md), [`docs/specs/secret-guard.md`](docs/specs/secret-guard.md), and [`docs/specs/task-retrospective.md`](docs/specs/task-retrospective.md). Behavior change = update the owning spec in the same commit as code.
+Behavior change = update the owning spec above in the same commit as code.
