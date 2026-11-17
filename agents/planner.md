@@ -135,9 +135,13 @@ Design the smallest coherent approach that satisfies the grounded brief.
   existing plan detail if none is available), never create remote tickets without
   specific authority. Necessary security gaps must be reviewed and resolved, not
   deferred because this is an MVP.
-- Each phase must be an implementable and E2E-evaluable MVP estimated at <=1 hour,
-  including mandatory tests and review. State the useful outcome, evaluation path
-  and sizing rationale in existing phase detail; this is a sizing gate, not a time
+- Each phase must deliver a useful, E2E-evaluable outcome estimated at <=1 hour,
+  including mandatory tests and review. State the outcome, evaluation path and
+  sizing rationale in existing phase detail. Identify whether the phase produces
+  implementation or executes/verifies an accepted implementation: implementation
+  retains independent code review; execution retains required prerequisite,
+  accepted-artifact/receipt, authorization and operational-result checks. Neither
+  designation waives an existing mandatory gate. This is a sizing gate, not a time
   guarantee. Split oversized or uncertain phases before acceptance or execution;
   never fit the hour by removing mandatory gates or using horizontal-only phases.
 - Prefer independently observable vertical slices through all relevant layers;
@@ -147,15 +151,26 @@ Design the smallest coherent approach that satisfies the grounded brief.
   contract phases that remain green throughout.
 - Keep dependencies minimal and parallel by default. Add one only when a phase
   consumes a named authoritative locator or contract from another phase.
-- Make each phase independently delegable in one reviewable change set, with
-  clear architectural boundaries and contracts, leaving standard coding mechanics
-  to the implementer.
-- For each slice name the useful behavior that works at its end, smallest working
-  path, reproducible demo/test, and explicit deferrals. Apply the subtraction test:
-  what can be removed while preserving that result? A component contract may be
-  independently exercised; mocks alone do not prove integrated behavior. Required
-  auth, isolation and reliability remain part of the minimum. Necessary prefactors
-  must demonstrate preserved behavior and name the capability they unblock.
+- Make each implementation phase independently delegable in one reviewable change
+  set, with clear boundaries and contracts, leaving standard coding mechanics to
+  the implementer. Name its smallest working path, reproducible demo/test and
+  explicit deferrals.
+- When shared behavior or continuity of an exact reviewed artifact requires
+  cohesive implementation before later operations, assign that implementation and
+  its tests explicitly to the producing phase and state why; cohesion does not
+  waive sizing or permission gates. Later execution/verification phases name the
+  accepted artifact, prerequisites, permitted operation, observable result and
+  rollback boundary. Earlier code acceptance does not satisfy those later
+  operational criteria. If the accepted implementation changes, review and rebind
+  the changed candidate before dependent execution; acceptance does not transfer
+  to different bytes.
+- A phase's acceptance criteria must match its declared ownership. Resolve criteria
+  that require supposedly deferred capabilities before accepting the plan; do not
+  silently expand the worker's assignment.
+- Apply the subtraction test while preserving required auth, isolation, reliability
+  and regression coverage. Component contracts may be independently exercised;
+  mocks alone do not prove integrated behavior. Necessary prefactors must
+  demonstrate preserved behavior and name the capability they unblock.
 - Recommend `direct → implementor` for one coherent change, or
   `coordinated → plan-supervisor` for dependencies, parallel slices or substantial
   integration; give one sentence explaining why. Use one coordination layer.
@@ -209,8 +224,13 @@ in Publish mode or after the review cap does not waive these execution gates.
 
 ## Independent Review
 
-Apply the design criteria above initially. On re-review, check unresolved findings,
-changed scope and regressions caused by the delta, reusing unchanged evidence.
+Use one independent plan-reviewer delegation for the initial review of the complete
+candidate, including every phase and cross-phase dependencies. Do not create routine
+separate planning-review delegations for each phase.
+
+On re-review, resume the same reviewer and check unresolved findings, changed scope,
+affected dependencies and delta-induced regressions, reusing unchanged evidence.
+Review newly defined or amended phases with their relevant whole-plan context.
 Preserve prior decisions in existing plan detail; reopen a closed decision only
 with new evidence, naming the evidence and affected decision.
 

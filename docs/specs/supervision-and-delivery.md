@@ -28,10 +28,21 @@ Planner remains the planning owner. Loop-supervisor is deprecated for new tasks;
 existing continuations keep their identity, workflow, evidence and budgets without
 migration/cancellation/reset. Legacy loop-specific contracts below apply only there.
 
-Each slice ends in a minimum viable testable result: useful working behavior,
-smallest exercisable path, reproducible demo/test and explicit deferrals. Apply a
-subtraction test before adding infrastructure or optional generality. Required
-safety, isolation and reliability remain in scope; a necessary prefactor proves
+Each phase declares whether it produces implementation or executes/verifies an
+accepted implementation in existing objective/implementation prose. Implementation
+phases own a reviewable change set, smallest working path, reproducible demo/test
+and explicit deferrals. Shared behavior or exact-reviewed-artifact continuity can
+justify cohesive implementation and tests before later operations; name that
+ownership and reason without waiving sizing or permission gates.
+Execution/verification phases name the accepted artifact/receipt, prerequisites,
+authority, permitted operation, observable result and rollback boundary. Prior code
+acceptance does not satisfy operational acceptance or transfer to different bytes:
+review and rebind a changed candidate before dependent execution.
+Acceptance criteria must match declared ownership; resolve criteria requiring
+supposedly deferred capabilities before accepting the plan.
+
+Apply a subtraction test before adding infrastructure or optional generality. Required
+safety, isolation, reliability and regression coverage remain in scope; a necessary prefactor proves
 preserved behavior and names what it unblocks. Component contracts may be exercised
 independently, but mocks alone cannot establish integrated acceptance. The coordinator
 keeps compact dependencies, accepted revisions, open findings and next actions;
@@ -264,14 +275,25 @@ in the existing backlog home, or existing plan detail when no backlog home is
 available; no remote ticket creation without specific authority. Necessary security
 gaps must be reviewed and resolved, never deferred because this is an MVP.
 
-Every phase is an implementable and E2E-evaluable MVP estimated at <=1 hour,
+Every phase delivers a useful, E2E-evaluable outcome estimated at <=1 hour,
 including mandatory tests and review. Existing phase detail names the useful
 outcome, evaluation path and sizing rationale. This is a sizing gate, not a time
 guarantee. Split oversized or uncertain phases before acceptance or execution;
 retain required safety/tests and useful vertical results, not horizontal-only work.
-Apply these criteria and readiness rules initially; re-review unresolved findings,
-changed scope and delta-induced regressions, reusing unchanged evidence. Preserve
-prior decisions; reopen a closed decision only with new evidence identifying it.
+Implementation retains independent code review; execution retains prerequisite,
+accepted-artifact/receipt, authorization and operational-result checks. Neither
+designation waives existing mandatory gates. Review execution-only phases using
+the existing `vertical_slice: NOT_APPLICABLE` assessment with an explanation;
+delegability, dependency validity and DoD testability still apply.
+
+One independent planning-review delegation initially assesses the complete candidate,
+every phase and cross-phase dependencies, not routine separate reviews per phase.
+Resume the same reviewer for unresolved findings, changed scope, affected dependencies
+and delta-induced regressions, reusing unchanged evidence. Review new/amended phases
+with relevant whole-plan context. Preserve prior decisions; reopen a closed decision
+only with new evidence identifying it. Retain the two-pass default cap, complete
+self-locating packet on every pass and existing unavailable-continuation handling.
+This planning review does not replace independent code review or integrated acceptance.
 
 Token/secret creation requiring human intervention is a separate phase with a
 named actor, verifiable nonsecret availability/permission output and dependent

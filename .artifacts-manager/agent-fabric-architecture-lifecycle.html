@@ -65,7 +65,7 @@ body{margin:0;background:#090d16;color:#e2e8f0;font:1rem/1.65 system-ui,sans-ser
     <h2>1 · Plan only what needs planning</h2>
     <p>The planner inspects current behavior, resolves decision-critical gaps and defines useful, end-to-end testable slices estimated at ≤1 hour each, including tests and review. This is a sizing gate, not a time promise. Required safety stays in scope; optional complexity goes to the existing backlog.</p>
     <p>Pin outcomes, checks, evidence locations and rollback before implementation. Verify prerequisites before marking a slice ready. Human-only secret creation is separate; dependent work waits for verified availability.</p>
-    <p>Plan review checks scope, readiness and routing. Default: at most two passes for a multi-phase plan. Explicit Publish may skip remaining review, but execution handoff still needs current reviewer PASS, no blocking findings and execution authority. The planner does not implement.</p>
+    <p>One independent plan review assesses every phase, its acceptance criteria and cross-phase dependencies, including readiness and routing. Implementation phases own cohesive code and tests; execution/verification phases consume accepted artifacts and prove their operational outcomes. Re-review focuses on changes and affected dependencies. Default: at most two passes for a multi-phase plan. Explicit Publish may skip remaining review, but execution handoff still needs current reviewer PASS, no blocking findings and execution authority. The planner does not implement.</p>
   </section>
   <section id="implementation" class="fabric-panel">
     <h2>2 · Keep implementation and fixes together</h2>

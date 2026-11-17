@@ -44,7 +44,7 @@ func TestPhaseClosureAndCompactPlanning(t *testing.T) {
 			var wants []string
 			if role == "planner" {
 				wants = []string{
-					"with clear architectural boundaries and contracts, leaving standard coding mechanics to the implementer",
+					"with clear boundaries and contracts, leaving standard coding mechanics to the implementer",
 					"**Proportionality & Complexity Budget:** Scale verification and ceremony strictly to the user seed",
 					"**Zero Unrequested Artifacts:** Never invent unrequested JSON Schemas (`.schema.json`), architecture DSL updates (`workspace.dsl`)",
 					"**Pragmatic Preflight:** Prefer resolving live provider aliases (e.g., `-latest`) over hard-blocking on brittle version strings",

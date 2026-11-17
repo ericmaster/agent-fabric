@@ -57,7 +57,9 @@ func TestRenderTargets(t *testing.T) {
 // Unfinished-stop status. These check shipped instructions, not model compliance.
 func TestMVPPlanningAndStatusRendering(t *testing.T) {
 	scenarios := map[string][]string{
-		"short-e2e-phase":       {"implementable and E2E-evaluable MVP estimated at <=1 hour", "including mandatory tests and review", "sizing gate, not a time guarantee"},
+		"short-e2e-phase":       {"E2E-evaluable outcome estimated at <=1 hour", "including mandatory tests and review", "sizing gate, not a time guarantee"},
+		"phase-ownership":       {"independent code review", "operational", "different bytes"},
+		"whole-plan-review":     {"complete candidate", "cross-phase dependencies", "affected dependencies"},
 		"oversized-phase":       {"before acceptance or execution", "horizontal-only phases"},
 		"optional-improvement":  {"existing backlog home", "existing plan detail if none", "remote tickets without specific authority"},
 		"necessary-security":    {"Necessary security gaps must be reviewed and resolved, not deferred because this is an MVP"},
