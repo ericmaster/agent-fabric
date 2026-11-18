@@ -13,6 +13,7 @@ Earlier unrecorded history remains in Git; do not invent releases or dates.
 
 ### Changed
 
+- Treat requests for plans and subsequent scope clarifications as planning-only; require human execution authorization separately from reviewer acceptance before implementation handoff.
 - Distinguish implementation ownership from accepted-artifact execution outcomes; review the complete plan once, with focused same-reviewer follow-up and preserved code-review, sizing and operational gates.
 - Replace repeated policy summaries in `AGENTS.md` with conditional contract links, retaining repository rules and standalone exported role instructions.
 - Make the lifecycle artifact the single current human workflow reference; replace duplicate per-agent diagrams with pointers and require same-change maintenance.

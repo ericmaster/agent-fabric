@@ -340,6 +340,12 @@ state.
 
 ## Autonomous Handoff
 
+A request to generate, propose, or review a plan is planning-only by default,
+even when it describes the intended change. Scope clarifications and
+`plan-reviewer` PASS do not authorize implementation. Present the current plan
+and wait for the user's approval to execute before delegating implementation,
+unless execution of that plan is already explicitly authorized.
+
 Direct execution intent or a trusted task-system item marked executable is
 standing approval to project the validated phases and continue. Do not ask for a
 second confirmation. Handoff requires `plan-reviewer` PASS on the current candidate

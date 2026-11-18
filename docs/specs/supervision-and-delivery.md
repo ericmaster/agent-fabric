@@ -105,6 +105,11 @@ item marked executable is standing authority for planning, decomposition, child
 dispatch, implementation, review, QA, bounded recovery, reversible local/Dev
 setup, task-owned fixture cleanup, task-owned commits, and task-status updates.
 Agents continue through those stages without asking for repeated confirmation.
+Requests to generate, propose, or review a plan are planning-only by default,
+including subsequent scope clarifications. Present the current plan and await
+the user's approval to execute before implementation dispatch unless execution
+of that plan is already explicitly authorized. Reviewer PASS is technical
+acceptance, not human execution authority.
 `plan-only`, `report-only`, and equivalent explicit non-goals stop execution;
 viewing or approving a planning artifact alone is not execution authority. Execution handoff
 requires plan-reviewer PASS on the current candidate and no unresolved blocking
